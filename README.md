@@ -18,11 +18,11 @@ Partially observed Markov processes are a type of [State Space Model](https://en
 
 ![POMP DAG](Figures/PompDag.png)
 
-The distribution, p, represents the Markov transition kernel of the state space. The distribution pi, represents the observation distribution, parameterised by the state space. The function f is a linear deterministic function, which can be used to add cyclic seasonal components to the state space. The function g is the linking-function from a (generalised linear model)[https://en.wikipedia.org/wiki/Generalized_linear_model], which transforms the state space into the parameter space of the observation model.
+The distribution, p, represents the Markov transition kernel of the state space. The distribution pi, represents the observation distribution, parameterised by the state space. The function f is a linear deterministic function, which can be used to add cyclic seasonal components to the state space. The function g is the linking-function from a [generalised linear model](https://en.wikipedia.org/wiki/Generalized_linear_model), which transforms the state space into the parameter space of the observation model.
 
 ## Simulating the State Space
 
-A typical diffusion process is the (Ornstein-Uhlenbeck process)[https://en.wikipedia.org/wiki/Ornstein%E2%80%93Uhlenbeck_process], which can be simulated by specifying the parameters of the process, `theta`, the mean of the process, `alpha` how quickly the process reverts to the mean and `sigma` the noise of the process. Then we must specify an initial state, which is done by drawing from a Gaussian distribution, since the exact solution to the OU process is a Gaussian distribution. Then we pass a `stepFunction` containing the exact solution to the OU process, relying on only the previous value of the realisation (because the process is  Markovian) and the time difference between realisations.
+A typical diffusion process is the [Ornstein-Uhlenbeck process](https://en.wikipedia.org/wiki/Ornstein%E2%80%93Uhlenbeck_process), which can be simulated by specifying the parameters of the process, `theta`, the mean of the process, `alpha` how quickly the process reverts to the mean and `sigma` the noise of the process. Then we must specify an initial state, which is done by drawing from a Gaussian distribution, since the exact solution to the OU process is a Gaussian distribution. Then we pass a `stepFunction` containing the exact solution to the OU process, relying on only the previous value of the realisation (because the process is  Markovian) and the time difference between realisations.
 
 ```scala
 import model.StateSpace._
@@ -67,7 +67,7 @@ val sims = simData(times, mod(params))
 
 If we wish to consider more complex process, for instance a Bernoulli model with a seasonal probability, then we have to add deterministic values to the state before applying the observation distribution. The function, f, is a linear deterministic function which can be used to add seasonal factors to the system state. In order to acheive this in a compositional way, we don't need to define a new value for f, we can simple 'add' a seasonal model to the existing Bernoulli model. This will allow the state space to vary seasonally.
 
-Models are represented as a function from `Parameters => Model`, this means models definted unparameterised. A function for combining two unparameterised models is `Model.op`, this function is associative, but not commutative. This is because the function selects the leftmost Model's observation and linking functions. For full details of model composition, consult the wiki page (Model Composition)[wiki/Composing-Models]. The code snippet below shows how to construct a seasonal Bernoulli model, the observation distribution is Bernoulli, but the probability of an event occuring follows a daily (period T = 24) cycle if we assume observations are made once every hour.
+Models are represented as a function from `Parameters => Model`, this means models definted unparameterised. A function for combining two unparameterised models is `Model.op`, this function is associative, but not commutative. This is because the function selects the leftmost Model's observation and linking functions. For full details of model composition, consult the wiki page [Model Composition](wiki/Composing-Models). The code snippet below shows how to construct a seasonal Bernoulli model, the observation distribution is Bernoulli, but the probability of an event occuring follows a daily (period T = 24) cycle if we assume observations are made once every hour.
 
 ```scala
   val bernoulliParams = LeafParameter(
@@ -87,11 +87,11 @@ Models are represented as a function from `Parameters => Model`, this means mode
   val sims = simData(times, mod(params))
 ```
 
-![Seasonal Bernoulli Model](Figures/SeasonalBernoulli.png)
+![Seasonal Bernoulli Model](Figures/seasonalBernoulliSims.png)
 
 ## Inference Using a Fully Specified Model
 
-If we have a fully specified model, ie the posterior distributions of the parameters given the data so far are available to us, then we can use a bootstrap particle filter (see (Sequential Monte Carlo Methods in Practice)[https://www.springer.com/us/book/9780387951461]) to determine the hidden state space of the observations. Consider the simulated Bernoulli model, the parameters are given by:
+If we have a fully specified model, ie the posterior distributions of the parameters given the data so far are available to us, then we can use a bootstrap particle filter (see [Sequential Monte Carlo Methods in Practice](https://www.springer.com/us/book/9780387951461)) to determine the hidden state space of the observations. Consider the simulated Bernoulli model, the parameters are given by:
 
 ```scala
 val p = LeafParameter(
@@ -115,13 +115,13 @@ We can consider the point values of the parameters to be the mean of the posteri
   val filtered = bootstrapPf(1000, data, mod)(p)
 ```
 
-The figure below shows the actual simulated state, plotted next to the estimate state and 99% (credible intervals)[https://en.wikipedia.org/wiki/Credible_interval].
+The figure below shows the actual simulated state, plotted next to the estimate state and 99% [credible intervals](https://en.wikipedia.org/wiki/Credible_interval).
 
 ![Bernoulli Filtered](Figures/BernoulliFiltered.png)
 
 ## Inference for the Full Joint Posterior Distribution
 
-Say we have observed a time depending process in the real world, and don't have the parameters available for the model. We wish to carry out inference for the state space and the parameters of the model simultaneously. This framework implements the Particle Marginal Metropolis Hastings (PMMH) Algorithm (see (Doucet et al. 2009)[http://www.stats.ox.ac.uk/~doucet/andrieu_doucet_holenstein_PMCMC.pdf]). The likelihood of the state space and parameters given the observations can be determined using a particle filter, then a standard Metropolis-Hastings update step is used to create a Markov Chain representing the full join posterior of the model given the observed real-world process.
+Say we have observed a time depending process in the real world, and don't have the parameters available for the model. We wish to carry out inference for the state space and the parameters of the model simultaneously. This framework implements the Particle Marginal Metropolis Hastings (PMMH) Algorithm (see [Doucet et al. 2009](http://www.stats.ox.ac.uk/~doucet/andrieu_doucet_holenstein_PMCMC.pdf)). The likelihood of the state space and parameters given the observations can be determined using a particle filter, then a standard Metropolis-Hastings update step is used to create a Markov Chain representing the full join posterior of the model given the observed real-world process.
 
 Now we can implement the PMMH algorithm for the simulated Bernoulli observations, and determine if the algorithm is able to recover the parameters.
 
@@ -150,13 +150,13 @@ ParticleMetropolis(mll, gaussianPerturb(0.2, 0.2)).
 
 Note that the algorithm has been initialised at the same parameter values we used to simulate the model, this kind of prior information is not typically known for real world processes, unless similar processes have been extensively studied. 
 
-Diagnostic output from the MCMC run is presented in the figure below, using (ggmcmc)[http://xavier-fim.net/packages/ggmcmc/].
+Diagnostic output from the MCMC run is presented in the figure below, using [ggmcmc](http://xavier-fim.net/packages/ggmcmc/).
 
 ![
 
 ## Online Monitoring of MCMC
 
-For large, complex models requiring many parameters the MCMC run may take a long time. It is of interest to monitor the MCMC chain to see if it is converging. The function keeps track of the acceptance ratio and the variance of the estimate of the marginal log-likelihood, which can be used to (tune the PMMH algorithm)[https://darrenjw.wordpress.com/2014/06/08/tuning-particle-mcmc-algorithms/]. As a rule of thumb, 30% acceptance ratio and marginal log-likelihood variance of 1 is ideal for convergence of the MCMC algorithm. In order to monitor the PMMH run for the bernoulli data, we need to modify it as such:
+For large, complex models requiring many parameters the MCMC run may take a long time. It is of interest to monitor the MCMC chain to see if it is converging. The function keeps track of the acceptance ratio and the variance of the estimate of the marginal log-likelihood, which can be used to [tune the PMMH algorithm](https://darrenjw.wordpress.com/2014/06/08/tuning-particle-mcmc-algorithms/). As a rule of thumb, 30% acceptance ratio and marginal log-likelihood variance of 1 is ideal for convergence of the MCMC algorithm. In order to monitor the PMMH run for the bernoulli data, we need to modify it as such:
 
 ```scala
 val iters = ParticleMetropolis(mll, gaussianPerturb(0.5, 0.1)).iters(p)
@@ -174,7 +174,7 @@ iters.
 
 ## Running Multiple Chains
 
-We have provided a convenience function to run multiple chains (in parallel) from the same initial starting position, with the same number of iterations and particles. However it can be easily adapted to run multiple chains with different starting parameters, or multiple chains with different number of particles and / or proposal distributions. The main work is done using the (Akka Streams)[http://akka.io/] library.
+We have provided a convenience function to run multiple chains (in parallel) from the same initial starting position, with the same number of iterations and particles. However it can be easily adapted to run multiple chains with different starting parameters, or multiple chains with different number of particles and / or proposal distributions. The main work is done using the [Akka Streams](http://akka.io/) library.
 
 
 ```scala
@@ -210,4 +210,4 @@ Source(1 to 4).
 
 This function above will run 4 chains, on four threads, and write them to individual files whilst printing convergence diagnostics every 1000th iteration. The convergence diagnostics can also be written to a file, using `runWith(FileIO.toFile)` as is done with the parameter iterations.
 
-For more usage examples see the (examples)[src/main/scala/examples] directory, for more in depth discussion and documentation, see the (wiki)[wiki]
+For more usage examples see the [examples](src/main/scala/examples) directory, for more in depth discussion and documentation, see the [wiki](wiki).
