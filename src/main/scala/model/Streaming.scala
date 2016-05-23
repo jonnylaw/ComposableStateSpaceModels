@@ -8,7 +8,6 @@ import akka.stream.scaladsl.Source
 import java.io.File
 import akka.stream.scaladsl._
 import akka.util.ByteString
-import akka.stream.io.Framing
 import model.Utilities._
 import breeze.stats.mean
 
@@ -21,18 +20,6 @@ object Streaming {
     Flow[A].
       map(a => ByteString(a + "\n")).
       to(FileIO.toFile(file))
-  }
-
-  /**
-    * Read data in as a Stream
-    * 
-    */
-  def readDataStream(file: File): Source[VehicleCount, Any] = {
-    FileIO.fromFile(file).
-      via(Framing.delimiter(ByteString(System.lineSeparator), maximumFrameLength = 7862, allowTruncation = true)).
-      map(_.utf8String).
-      map(l => l.split(",")).
-      map(r => VehicleCount(r.head.toInt, r(1).toInt, r(2).toInt))
   }
 
   /**

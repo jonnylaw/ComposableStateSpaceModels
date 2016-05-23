@@ -20,9 +20,6 @@ import akka.stream.scaladsl.Source
 import java.io.File
 import akka.stream.scaladsl._
 import akka.util.ByteString
-import akka.stream.io.Framing
-
-import Stream._
 
 object Filtering {
 
@@ -401,8 +398,6 @@ object Filtering {
           map{ case (i, p) => ByteString(s"$i, $p\n") }.
           runWith(FileIO.toFile(new File(s"$fileOut-$iterations-$particles-$chain.csv")))
   
-        // Write to file
-        // add broadcast in order
         iters.
           via(monitorStream(1000, chain)).
           runWith(Sink.ignore)
@@ -471,8 +466,6 @@ object Filtering {
         r <- gaussianPerturb(delta, logdelta)(rp)
       } yield BranchParameter(l, r)
   }
-
-  def mvnPerturb(covariance: DenseMatrix[Double]): Parameters => Rand[Parameters] = ???
 
   /**
     * A diagnostic function for the PMMH algorithm

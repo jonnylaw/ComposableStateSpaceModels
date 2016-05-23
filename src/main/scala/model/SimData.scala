@@ -4,8 +4,6 @@ import breeze.linalg.DenseVector
 import breeze.numerics.{exp, log}
 import breeze.stats.distributions.{Gaussian, Uniform, Exponential, Rand}
 import model.POMP._
-import scala.reflect.{ClassTag, classTag}
-import org.joda.time.DateTime
 import model.Utilities._
 import model.DataTypes._
 import model.State._
@@ -17,7 +15,6 @@ import akka.stream.scaladsl.Source
 import java.io.File
 import akka.stream.scaladsl._
 import akka.util.ByteString
-import akka.stream.io.Framing
 import Stream._
 
 
