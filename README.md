@@ -150,6 +150,10 @@ ParticleMetropolis(mll, gaussianPerturb(0.2, 0.2)).
 
 Note that the algorithm has been initialised at the same parameter values we used to simulate the model, this kind of prior information is not typically known for real world processes, unless similar processes have been extensively studied. 
 
+Diagnostic output from the MCMC run is presented in the figure below, using (ggmcmc)[http://xavier-fim.net/packages/ggmcmc/].
+
+![
+
 ## Online Monitoring of MCMC
 
 For large, complex models requiring many parameters the MCMC run may take a long time. It is of interest to monitor the MCMC chain to see if it is converging. The function keeps track of the acceptance ratio and the variance of the estimate of the marginal log-likelihood, which can be used to (tune the PMMH algorithm)[https://darrenjw.wordpress.com/2014/06/08/tuning-particle-mcmc-algorithms/]. As a rule of thumb, 30% acceptance ratio and marginal log-likelihood variance of 1 is ideal for convergence of the MCMC algorithm. In order to monitor the PMMH run for the bernoulli data, we need to modify it as such:
@@ -206,7 +210,4 @@ Source(1 to 4).
 
 This function above will run 4 chains, on four threads, and write them to individual files whilst printing convergence diagnostics every 1000th iteration. The convergence diagnostics can also be written to a file, using `runWith(FileIO.toFile)` as is done with the parameter iterations.
 
-## Predicting online using Determined Parameters
-
-If the process is stationary, then we can simply predict the parameters once and particle filter forward using the parameters to determine the state space going forward. However, if there are changes to the process which can be captured by a reparameterisation of the model, then it is of interest to predict new Parameters. 
-
+For more usage examples see the (examples)[src/main/scala/examples] directory, for more in depth discussion and documentation, see the (wiki)[wiki]
