@@ -71,9 +71,7 @@ object Filtering {
       val x1 = state map(x => mod.stepFunction(x, dt).draw)
 
       // Calculate the ll of the propagation of particles given the observation
-      val w1: Vector[LogLikelihood] = x1 map (a =>
-        mod.dataLikelihood(
-          mod.stepTwo(mod.link(mod.f(a, y.t)), a, dt), y.observation))
+      val w1: Vector[LogLikelihood] = x1 map (a => mod.dataLikelihood(mod.link(mod.f(a, y.t)), y.observation))
 
       val max = w1.max // log-sum-exp trick
       val w = w1 map { a => exp(a - max) }
@@ -104,7 +102,7 @@ object Filtering {
       case y +: ys => 
         val x1 = x0 map (x => mod.stepFunction(x, deltas.head).draw)
 
-        val likelihoodState = x1 map (x => mod.stepTwo(mod.link(mod.f(x, y.t)), x, deltas.head))
+        val likelihoodState = x1 map (x => mod.link(mod.f(x, y.t)))
 
         val w1 = likelihoodState map (l => mod.dataLikelihood(l, y.observation))
 
@@ -144,9 +142,7 @@ object Filtering {
       val x1 = state map(x => mod.stepFunction(x, dt).draw)
 
       // Calculate the ll of the propagation of particles given the observation
-      val w1 = x1 map (a =>
-        mod.dataLikelihood(
-          mod.stepTwo(mod.link(mod.f(a, y.t)), a, dt), y.observation))
+      val w1 = x1 map (a => mod.dataLikelihood(mod.link(mod.f(a, y.t)), y.observation))
 
       val max = w1.max // log-sum-exp trick
       val w = w1 map { a => exp(a - max) }
@@ -185,14 +181,10 @@ object Filtering {
       takeWhile(a => a.time <= t)
 
     // add deterministic transformation
-    val transformedState = x.map(a => mod.f(a.state, a.time))
+    val transformedState = x map (a => mod.f(a.state, a.time))
 
-    // initialise transformed State
-    val initState = mod.initState
-
-    // step transformed State using fold Left
-    val likelihoodState = transformedState.foldLeft(initState)((state, lambdat) =>
-      mod.stepTwo(lambdat, state, dt))
+    // sum the transformed state to calculate the cumulative hazard and return the value of the state at time t
+    val likelihoodState = Vector(transformedState.last, transformedState.map(x => exp(x) * dt).sum)
 
     val likelihood = mod.dataLikelihood(likelihoodState, y)
 
@@ -200,9 +192,6 @@ object Filtering {
     (likelihood, x.map(_.state))
   }
 
-  /**
-    * Optimised function to get the mll of a path
-    */
   def pfLGCPmll(
     data: Vector[Data],
     unparamMod: Parameters => Model,
@@ -250,9 +239,10 @@ object Filtering {
     * This does work generically
     */
   def pfLGCP(
+    n: Int,
     data: Vector[Data],
     unparamMod: Parameters => Model,
-    precision: Int)(n: Int): Parameters => Vector[PfOut] = p => {
+    precision: Int): Parameters => Vector[PfOut] = p => {
 
     val mod = unparamMod(p)
     val particles = Vector.fill(n)(mod.x0.draw)
@@ -316,16 +306,12 @@ object Filtering {
       case IndexedSeq() => acc.reverse
       case y +: ys =>
         val x1 = x0 map(x => mod.stepFunction(x, deltas.head).draw)
-        // println("Time: " + y.t + " State: " + x1 + " Observation: " + y.observation)
 
         // Calculate the transformed state: seasonality etc
-        val transformedState = x1 map (a =>
-          mod.stepTwo(mod.link(mod.f(a, y.t)), a, deltas.head))
+        val transformedState = x1 map (a => mod.link(mod.f(a, y.t)))
 
         // Calculate the ll of the propagation of particles given the observation
-        val w1: Vector[LogLikelihood] = transformedState map (a =>
-          mod.dataLikelihood(a, y.observation))
-        // println("LogLikelihood: " + w1)
+        val w1: Vector[LogLikelihood] = transformedState map (a => mod.dataLikelihood(a, y.observation))
 
         val max = w1.max // log sum exp
         val w = w1 map { a => exp(a - max) }

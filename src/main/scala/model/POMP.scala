@@ -7,7 +7,7 @@ import scala.language.implicitConversions
 import java.io.Serializable
 
 object POMP {
-  type Eta = Double
+  type Eta = Vector[Double]
   type Gamma = Double
   type Observation = Double
   type Time = Double
@@ -28,7 +28,7 @@ object POMP {
       new Rand[Observation] { 
         def draw = p match {
           case LeafParameter(_,v,_) => v match {
-            case Some(noisesd) => Gaussian(x, noisesd).draw
+            case Some(noisesd) => Gaussian(x.head, noisesd).draw
           }
         }
       }
@@ -70,7 +70,7 @@ object POMP {
       def draw = {
         p match {
           case LeafParameter(_,v,_  @unchecked) => 
-            v.map(Gaussian(x, _).draw).get
+            v.map(Gaussian(x.head, _).draw).get
         }
       }
     }
@@ -91,16 +91,16 @@ object POMP {
 
     def dataLikelihood = (s, y) => p match {
       case LeafParameter(_,v,_) => v match {
-        case Some(noisesd  @unchecked) => Gaussian(s.head, noisesd).logPdf(y)
+        case Some(noisesd @unchecked) => Gaussian(s.head, noisesd).logPdf(y)
       }
     }
   }
 
   def PoissonModel(stepFun: (SdeParameter) => (State, TimeIncrement) => Rand[State]): Parameters => Model = p => new Model with Serializable {
 
-    def observation = lambda => new Rand[Observation] { def draw = Poisson(lambda).draw }
+    def observation = lambda => new Rand[Observation] { def draw = Poisson(lambda.head).draw }
 
-    override def link(x: Double) = exp(x)
+    override def link(x: Double) = Vector(exp(x))
 
     def f(s: State, t: Time) = s.head
 
@@ -124,12 +124,12 @@ object POMP {
 
     def observation = p => new Rand[Observation] {
       def draw = {
-        val bern = new Bernoulli(p)
+        val bern = new Bernoulli(p.head)
         bern.draw
       }
     }
 
-    override def link(x: Gamma) = 1.0/(1 + exp(-x))
+    override def link(x: Gamma) = Vector(1.0/(1 + exp(-x)))
 
     def f(s: State, t: Time) = s.head
 
@@ -155,20 +155,11 @@ object POMP {
   /**
     * The Log-Gaussian Cox-Process is used to model time to event data with 
     * log-gaussian varying hazard rate
-    * ie, the log of the hazard varies stochastically
     */
   def LogGaussianCox(
     stepFun: (SdeParameter) => (State, TimeIncrement) => Rand[State]): Parameters => Model = p => new Model {
 
     def observation = ???
-
-    // update the cumulative hazard
-    override def stepTwo = (x, s, dt) => s match {
-      case LeafState(theta @unchecked) =>
-        LeafState(Vector(x, theta(1) + exp(x) * dt))
-    }
-
-    override def initState = LeafState(Vector(0.0, exp(0.0)))
 
     def f(s: State, t: Time) = s.head
 
@@ -187,9 +178,6 @@ object POMP {
      /**
       * The data likelihood requires two parameters, the hazard and cumulative hazard
       */
-    def dataLikelihood = (s, y) => s match {
-      case LeafState(x) =>
-        x.head - x(1)
-    }
+    def dataLikelihood = (s, y) => s.head - s(1)
   }
 }

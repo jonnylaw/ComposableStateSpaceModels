@@ -45,9 +45,7 @@ object SimData {
   }
 
   /**
-    * We have a specialist function for simulating the log-Gaussian Cox-Process using thinning
-    * Can we move some of the logic into the (empty) observation function in the POMP class?
-    * No, because we need to be aware of a prior upper bound on the SDE
+    * Specialist function for simulating the log-Gaussian Cox-Process using thinning
     */
   def simLGCP(
     start: Time,

@@ -10,7 +10,7 @@ import akka.util.ByteString
 import model._
 import model.Model._
 import model.Filtering._
-import model.POMP.{PoissonModel, SeasonalModel, LinearModel, LogGaussianCox, BernoulliModel}
+import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel}
 import model.DataTypes._
 import model.{State, Model}
 import model.SimData._
@@ -21,22 +21,6 @@ import model.StateSpace._
 import java.io.{PrintWriter, File}
 import breeze.stats.distributions.Gaussian
 import breeze.linalg.{DenseVector, diag}
-
-object SimulateLGCP extends App {
-  /** Define the model **/
-  val params = LeafParameter(
-    GaussianParameter(0.0, 1.0),
-    None,
-    BrownianParameter(0.0, 1.0))
-
-  val mod = LogGaussianCox(stepBrownian)
-
-  val sims = simLGCP(0.0, 3.0, mod(params), 2)
-
-  val pw = new PrintWriter("lgcpsims.csv")
-  pw.write(sims.mkString("\n"))
-  pw.close()
-}
 
 object SimulateBernoulli extends App {
   val p = LeafParameter(

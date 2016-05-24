@@ -27,7 +27,7 @@ object DataTypes {
 
     override def toString = {
       if (!sdeState.isEmpty) {
-        s"$t, $observation, ${eta.get}, ${gamma.get}, " + sdeState.get.flatten.mkString(", ")
+        s"$t, $observation, ${eta.get.head}, ${gamma.get}, " + sdeState.get.flatten.mkString(", ")
       } else {
         t + ", " + observation
       }

@@ -9,13 +9,8 @@ import breeze.stats.distributions.{Rand, Density}
 trait Model extends Serializable {
   // The observation model
   def observation: Eta => Rand[Observation]
-  // initialise the "transformed" state to go into step two
-  def initState: State = LeafState(Vector())
-  // transforms the parameters into a suitable state for the dataLikelihood and observation model
-  def stepTwo: (Eta, State, TimeIncrement) => State =
-    (x, s, dt) => LeafState(Vector(x))
   // the link function
-  def link(x: Gamma): Eta = x
+  def link(x: Gamma): Eta = Vector(x)
   // deterministic transformation, such as seasonality
   def f(s: State, t: Time): Gamma
   // initialise the SDE state
@@ -23,7 +18,7 @@ trait Model extends Serializable {
   // Step the SDE
   def stepFunction: (State, TimeIncrement) => Rand[State]
   // calculate the likelihood of the observation given the state
-  def dataLikelihood: (State, Observation) => LogLikelihood
+  def dataLikelihood: (Eta, Observation) => LogLikelihood
 
   // def |+|(that: Model): Model = {
   //   op(this, that)
@@ -38,12 +33,7 @@ object Model {
       case param: LeafParameter => mod1(param).observation(x)
     }
 
-    override def link(x: Double): Double = mod1(p).link(x)
-
-    // StepTwo outputs a single state
-    override def stepTwo = mod1(p).stepTwo
-
-    override def initState = mod1(p).initState
+    override def link(x: Double) = mod1(p).link(x)
 
     def f(s: State, t: Time) = s match {
       case BranchState(ls, rs) =>
@@ -83,7 +73,7 @@ object Model {
   }
 
   def zeroModel(stepFun: SdeParameter => (State, TimeIncrement) => Rand[State]): Parameters => Model = p => new Model {
-    def observation = x => new Rand[Observation] { def draw = x }
+    def observation = x => new Rand[Observation] { def draw = x.head }
     def f(s: State, t: Time) = s.head
     def x0 = new Rand[State] { def draw = LeafState(Vector[Double]()) }
     def stepFunction = p match {
