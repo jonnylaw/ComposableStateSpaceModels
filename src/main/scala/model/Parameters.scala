@@ -3,24 +3,21 @@ package model
 import breeze.linalg.{DenseMatrix, DenseVector, diag}
 
 sealed trait Parameters {
-  import Parameters._
-
-  override def toString = flatten(this).mkString(", ")
-
-  /**
-    * Simple function for adding parameters
-    * @param that Another set of parameters
-    * @return A set of nested (from the left) combined parameters
-    */
+  override def toString = Parameters.flatten(this).mkString(", ")
   def |+|(that: Parameters): Parameters =
-    op(this, that)
+    Parameters.combine(this, that)
+  def length: Int = Parameters.length(this)
+  def map(f: Double => Double): Parameters = Parameters.map(this)(f)
 }
 
 case class LeafParameter(initParams: StateParameter, scale: Option[Double], sdeParam: SdeParameter) extends Parameters
 case class BranchParameter(left: Parameters, right: Parameters) extends Parameters
 
 object Parameters {
-  def op(lp: Parameters, rp: Parameters): Parameters =
+  import StateParameter._
+  import SdeParameter._
+
+  def combine(lp: Parameters, rp: Parameters): Parameters =
     BranchParameter(lp, rp)
 
   def flattenSde(p: SdeParameter): Vector[Double] = p match {
@@ -33,6 +30,11 @@ object Parameters {
     case GaussianParameter(m, s) => (m.data ++ diag(s).toArray).toVector
   }
 
+  def map(p: Parameters)(f: Double => Double): Parameters = p match {
+    case LeafParameter(init, v, sde) => LeafParameter(init map f, v map f, sde map f)
+    case BranchParameter(lp, rp) => BranchParameter(map(lp)(f), map(rp)(f)) 
+  }
+
   /**
     * Flattens parameters into a Vector of parameters
     * useful for printing
@@ -43,6 +45,10 @@ object Parameters {
       case None => flattenInit(init) ++ flattenSde(sde)
     }
     case BranchParameter(lp, rp) => flatten(lp) ++ flatten(rp)
+  }
+
+  def length(p: Parameters): Int = {
+    flatten(p).length
   }
 
   def getSdeParameterNames(p: SdeParameter): IndexedSeq[String] = p match {
@@ -86,7 +92,10 @@ object Parameters {
   }
 }
 
-sealed trait StateParameter
+sealed trait StateParameter {
+  def length: Int = StateParameter.length(this)
+  def map(f: Double => Double): StateParameter = StateParameter.map(this)(f)
+}
 case class GaussianParameter(m0: DenseVector[Double], c0: DenseMatrix[Double]) extends StateParameter
 
 object GaussianParameter {
@@ -95,10 +104,26 @@ object GaussianParameter {
   }
 }
 
-sealed trait SdeParameter
+object StateParameter {
+  def flattenInit(p: StateParameter): Vector[Double] = p match {
+    case GaussianParameter(m, s) => (m.data ++ diag(s).toArray).toVector
+  }
+
+  def length(p: StateParameter): Int = flattenInit(p).length
+
+  def map(p: StateParameter)(f: Double => Double): StateParameter = p match {
+    case GaussianParameter(m, s) => GaussianParameter(m map f, diag(diag(s) map f))
+  }
+}
+
+sealed trait SdeParameter {
+  def length: Int = SdeParameter.length(this)
+  def map(f: Double => Double) = SdeParameter.map(this)(f)
+}
 case class BrownianParameter(mu: Vector[Double], sigma: Vector[Double]) extends SdeParameter {
   def toList(p: BrownianParameter) = List(p.mu, p.sigma)
 }
+
 object BrownianParameter {
   def apply(mu: Double, sigma: Double): BrownianParameter = {
     new BrownianParameter(Vector(mu), Vector(sigma))
@@ -112,3 +137,19 @@ object OrnsteinParameter {
 }
 case class StepConstantParameter(a: Vector[Double]) extends SdeParameter
 
+object SdeParameter {
+  def flattenSde(p: SdeParameter): Vector[Double] = p match {
+    case BrownianParameter(m, s) => m ++ s
+    case OrnsteinParameter(theta, alpha, sigma) => theta ++ alpha ++ sigma
+    case StepConstantParameter(a) => a
+ }
+
+  def length(p: SdeParameter): Int = flattenSde(p).length
+
+
+  def map(p: SdeParameter)(f: Double => Double): SdeParameter = p match {
+    case BrownianParameter(m, s) => BrownianParameter(m map f, s map f)
+    case OrnsteinParameter(theta, alpha, sigma) => OrnsteinParameter(theta map f, alpha map f, sigma map f)
+    case StepConstantParameter(a) => StepConstantParameter(a map f)
+  }
+}

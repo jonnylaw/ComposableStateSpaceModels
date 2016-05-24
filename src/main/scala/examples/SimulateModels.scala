@@ -21,7 +21,6 @@ import model.StateSpace._
 import java.io.{PrintWriter, File}
 import breeze.stats.distributions.Gaussian
 import breeze.linalg.{DenseVector, diag}
-import breeze.stats.variance
 
 object SimulateLGCP extends App {
   /** Define the model **/
@@ -122,14 +121,14 @@ object DetermineBernoulliParameters extends App {
   val mod = BernoulliModel(stepOrnstein)
 
   // the marginal log-likelihood
-  val mll = pfMll(data, mod)(200)
+  val mll = pfMllFold(data, mod)(200)
 
   val iterations = 10000
 
   // the PMMH algorithm is defined as an Akka stream,
   // this means we can write the iterations to a file as they are generated
   // therefore we use constant time memory even for large MCMC runs
-  val iters = ParticleMetropolis(mll, gaussianPerturb(1.0, 0.3)).iters(p)
+  val iters = ParticleMetropolis(mll, gaussianPerturb(0.1, 0.05)).iters(p)
 
   iters.
     via(monitorStream(1000, 1)).
@@ -144,17 +143,17 @@ object DetermineBernoulliParameters extends App {
 
 object SimulateSeasonalPoisson extends App {
   val poissonParams = LeafParameter(
-    GaussianParameter(0.0, 1.0),
+    GaussianParameter(0.3, 0.5),
     None,
-    BrownianParameter(0.0, 1.0))
+    OrnsteinParameter(0.3, 0.5, 0.1))
   val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector(Array.fill(6)(0.0)),
-      diag(DenseVector(Array.fill(6)(1.0)))),
+    GaussianParameter(DenseVector(Array.fill(6)(0.3)),
+      diag(DenseVector(Array.fill(6)(0.5)))),
     None,
-    BrownianParameter(Vector.fill(6)(0.0), Vector.fill(6)(1.0)))
+    OrnsteinParameter(Vector.fill(6)(0.3), Vector.fill(6)(0.5), Vector.fill(6)(0.1)))
 
   val params = poissonParams |+| seasonalParams
-  val mod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepBrownian))
+  val mod = Model.op(PoissonModel(stepOrnstein), SeasonalModel(24, 3, stepOrnstein))
 
   val times = (1 to 100).map(_.toDouble).toList
   val sims = simData(times, mod(params))

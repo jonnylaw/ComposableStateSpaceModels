@@ -18,7 +18,7 @@ Partially observed Markov processes are a type of [State Space Model](https://en
 
 ![POMP DAG](Figures/PompDag.png)
 
-The distribution, p, represents the Markov transition kernel of the state space. The distribution pi, represents the observation distribution, parameterised by the state space. The function f is a linear deterministic function, which can be used to add cyclic seasonal components to the state space. The function g is the linking-function from a [generalised linear model](https://en.wikipedia.org/wiki/Generalized_linear_model), which transforms the state space into the parameter space of the observation model.
+The distribution, p, represents the Markov transition kernel of the state space. The distribution pi, represents the observation distribution, parameterised by the state space. The function f is a linear deterministic function, which can be used to add cyclic seasonal components to the state space. The function g is the linking-function from a [generalised linear model](https://en.wikipedia.org/wiki/Generalized_linear_model), which transforms the state space into the parameter space of the observation model. Define gamma = f(t, x) and eta = g(gamma).
 
 ## Simulating the State Space
 
@@ -62,6 +62,8 @@ val sims = simData(times, mod(params))
 ```
 
 ![Bernoulli Model](Figures/BernoulliSims.png)
+
+The figure shows, the state space, which varies along the whole real line and the transformed state space, Eta, which varies on (0, 1). The linking function, g, is the [logistic function](https://en.wikipedia.org/wiki/Logistic_function).
 
 ## Composing Multiple Models
 
@@ -121,7 +123,7 @@ The figure below shows the actual simulated state, plotted next to the estimate 
 
 ## Inference for the Full Joint Posterior Distribution
 
-Say we have observed a time depending process in the real world, and don't have the parameters available for the model. We wish to carry out inference for the state space and the parameters of the model simultaneously. This framework implements the Particle Marginal Metropolis Hastings (PMMH) Algorithm (see [Doucet et al. 2009](http://www.stats.ox.ac.uk/~doucet/andrieu_doucet_holenstein_PMCMC.pdf)). The likelihood of the state space and parameters given the observations can be determined using a particle filter, then a standard Metropolis-Hastings update step is used to create a Markov Chain representing the full join posterior of the model given the observed real-world process.
+Say we have observed a time depending process in the real world, and don't have the parameters available for the model. We wish to carry out inference for the state space and the parameters of the model simultaneously. This framework implements the Particle Marginal Metropolis Hastings (PMMH) Algorithm (see [Doucet et al. 2010](http://www.stats.ox.ac.uk/~doucet/andrieu_doucet_holenstein_PMCMC.pdf)). The likelihood of the state space and parameters given the observations can be determined using a particle filter, then a standard Metropolis-Hastings update step is used to create a Markov Chain representing the full join posterior of the model given the observed real-world process.
 
 Now we can implement the PMMH algorithm for the simulated Bernoulli observations, and determine if the algorithm is able to recover the parameters.
 
@@ -183,14 +185,17 @@ import scala.concurrent.ExecutionContext.Implicits.global
 implicit val system = ActorSystem("MultipleChains")
 implicit val materializer = ActorMaterializer()
 
+// specify the number of iterations, particles and filename prefix
+val iterations = 10000
+val particles = 200
+val fileOut = "TestMCMC"
+
 // Source defines a new stream, this stream is a range from 1 to 4
 // if we want to define multiple starting points, we can provide a vector of Parameters to Source
 // then map over them in the mapAsync call
 Source(1 to 4).
   mapAsync(parallelism = 4){ chain =>
-    val iters = ParticleMetropolis(mll(particles), perturb).iters(initParams)
-
-    println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
+    val iters = ParticleMetropolis(mll(particles), gaussianPerturb(0.1, 0.1)).iters(initParams)
 
     iters.
       zip(Source(Stream.from(1))).
@@ -210,4 +215,4 @@ Source(1 to 4).
 
 This function above will run 4 chains, on four threads, and write them to individual files whilst printing convergence diagnostics every 1000th iteration. The convergence diagnostics can also be written to a file, using `runWith(FileIO.toFile)` as is done with the parameter iterations.
 
-For more usage examples see the [examples](src/main/scala/examples) directory, for more in depth discussion and documentation, see the [wiki](wiki).
+For more usage examples see the [examples](src/main/scala/examples) directory, for more in depth discussion and documentation, see the [wiki](https://github.com/jonnylaw/ComposableStateSpaceModels/wiki).

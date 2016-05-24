@@ -15,20 +15,36 @@ sealed trait State {
   def head: Double = State.head(this)
   def flatten: Vector[Double] = State.flattenState(this)
   def |+|(that: State): State = {
-    combineState(this, that)
+    combine(this, that)
   }
+  def isEmpty: Boolean = State.isEmpty(this)
   override def toString: String = this.flatten.mkString(", ")
 }
-case class LeafState(x: Vector[Double]) extends State with Serializable {
-  def isEmpty: Boolean = this.x.isEmpty
-}
+case class LeafState(x: Vector[Double]) extends State with Serializable
 case class BranchState(left: State, right: State) extends State with Serializable
 
 object State {
-  def combineState(state1: State, state2: State): State = {
-    BranchState(state1, state2)
+  def combine(state1: State, state2: State): State = {
+    if (state1.isEmpty) {
+      state2
+    } else if (state2.isEmpty) {
+      state1
+    } else {
+      BranchState(state1, state2)
+    }
   }
 
+  def zero: State = {
+    LeafState(Vector())
+  }
+
+  /**
+    * Determines if a state contains 
+    */
+  def isEmpty(state: State): Boolean = state match {
+    case LeafState(x) => x.isEmpty
+    case BranchState(lp, rp) => isEmpty(lp) && isEmpty(rp)
+  }
 
   /** Returns the value of the head of the leftmost state */
   def head(s: State): Double = s match {

@@ -1,7 +1,7 @@
 package model
 
 import breeze.numerics.{exp, log}
-import breeze.stats.distributions.{Gaussian, Uniform, Exponential, Rand, ContinuousDistr, Gamma, Multinomial}
+import breeze.stats.distributions.{Gaussian, Uniform, Exponential, Rand, ContinuousDistr, Gamma, Multinomial, MultivariateGaussian}
 import breeze.linalg.{linspace, DenseVector, DenseMatrix, diag}
 import breeze.stats.{mean, variance}
 import scala.collection.parallel.immutable.ParVector
@@ -466,6 +466,14 @@ object Filtering {
         r <- gaussianPerturb(delta, logdelta)(rp)
       } yield BranchParameter(l, r)
   }
+
+  /**
+    * A random walk draw from a multivariate gaussian distribution
+    */
+  def mvnPropose(covariance: DenseMatrix[Double]): Parameters => Rand[Parameters] = ???
+
+  //   val noise = MultivariateGaussian(DenseVector.zeros[Double](covariance.rows), covariance).draw
+  // }
 
   /**
     * A diagnostic function for the PMMH algorithm

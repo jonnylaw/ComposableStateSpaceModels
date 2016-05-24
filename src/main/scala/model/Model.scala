@@ -35,6 +35,7 @@ object Model {
 
     def observation = x => p match {
       case BranchParameter(lp,_) => mod1(lp).observation(x)
+      case param: LeafParameter => mod1(param).observation(x)
     }
 
     override def link(x: Double): Double = mod1(p).link(x)
@@ -51,29 +52,18 @@ object Model {
         mod1(p).f(x, t)
     }
 
-    def x0 = new Rand[State] {
-      def draw = {
-        p match {
-          case BranchParameter(lp, rp) =>
-            val (l, r) = (mod1(lp).x0.draw, mod2(rp).x0.draw)
-              (l, r) match {
-              case (x: LeafState, y: LeafState) if x.isEmpty => y
-              case (x: LeafState, y: LeafState) if y.isEmpty => x
-              case (x: LeafState, y: LeafState) => BranchState(x, y)
-              case (x: BranchState, y: LeafState) => BranchState(x, y)
-              case (x: LeafState, y: BranchState) => BranchState(x, y)
-            }
-          case param: LeafParameter =>
-            val (l, r) = (mod1(param).x0, mod2(param).x0)
-              (l, r) match {
-              case (x: LeafState, y: LeafState) if x.isEmpty => y
-              case (x: LeafState, y: LeafState) if y.isEmpty => x
-              case (x: LeafState, y: LeafState) => BranchState(x, y)
-              case (x: BranchState, y: LeafState) => BranchState(x, y)
-              case (x: LeafState, y: BranchState) => BranchState(x, y)
-            }
-        }
-      }
+    def x0 = p match {
+      case BranchParameter(lp, rp) =>
+        for {
+          l <- mod1(lp).x0
+          r <- mod2(rp).x0
+        } yield l |+| r
+      case param: LeafParameter =>
+        for {
+          l <- mod1(param).x0
+          r <- mod2(param).x0
+        } yield l |+| r
+
     }
 
     def stepFunction = (s, dt) => (s, p) match {
