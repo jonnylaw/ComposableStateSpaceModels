@@ -2,7 +2,8 @@ package model
 
 import model.POMP._
 import model.DataTypes._
-import breeze.stats.distributions.{Rand, Gaussian}
+import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}
+import breeze.linalg.{diag, DenseVector}
 import breeze.numerics.{exp, sqrt}
 
 object StateSpace {
@@ -25,10 +26,7 @@ object StateSpace {
       case (BrownianParameter(mu, sigma), LeafState(x)) => 
         new Rand[State] {
           def draw = {
-            LeafState(
-              (x, mu, sigma).zipped map { case (a, m, sd) =>
-                Gaussian(a + m * dt, Math.sqrt(sd * sd * dt)).draw
-              })
+            LeafState(MultivariateGaussian(x + mu * dt, sigma * dt).draw)
           }
         }
     }
@@ -42,12 +40,8 @@ object StateSpace {
     */
   def stepConstant(p: SdeParameter): (State, TimeIncrement) => Rand[State] = {
     (s, dt) => (s, p) match {
-      case (LeafState(state), StepConstantParameter(a)) => 
-          new Rand[State] {
-            def draw = {
-              LeafState((state, a).zipped map { case (x, a) => x + a*dt })
-            }
-          }
+      case (LeafState(state), StepConstantParameter(a)) =>
+        new Rand[State] { def draw = LeafState(state + (a * dt)) }
     }
   }
 
@@ -58,19 +52,19 @@ object StateSpace {
     */
   def stepOrnstein(p: SdeParameter): (State, TimeIncrement) => Rand[State] = {
     (s, dt) => (p, s) match {
-      case (OrnsteinParameter(theta, alpha, sigma), LeafState(x)) => // determine we have received the correct parameters and state
+      case (OrnsteinParameter(theta, alpha, sigma), LeafState(x)) => 
             new Rand[State] {
               def draw = {
                 // calculate the mean of the solution
-                val mean = x.zip(alpha) map { case (a, b) => a * exp(- b * dt) }
+                val mean = x.data.zip(alpha) map { case (a, b) => a * exp(- b * dt) }
                 // calculate the variance of the solution
                 val variance = sigma.zip(alpha) map { case (s, a) => (s*s/2*a)*(1-exp(-2*a*dt)) }
-                LeafState(mean.zip(variance) map { case (a, v) => Gaussian(a, sqrt(v)).draw() })
+                val sol = MultivariateGaussian(DenseVector(mean), diag(DenseVector(variance.toArray)))
+                LeafState(sol.draw)
               }
             }
       }
     }
 
   def stepCIR(p: SdeParameter): (State, TimeIncrement) => Rand[State] = ???
-
 }

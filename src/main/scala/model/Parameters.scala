@@ -1,39 +1,61 @@
 package model
 
 import breeze.linalg.{DenseMatrix, DenseVector, diag}
+import breeze.stats.distributions.{Rand, Gaussian}
+import breeze.numerics.exp
 
 sealed trait Parameters {
   override def toString = Parameters.flatten(this).mkString(", ")
   def |+|(that: Parameters): Parameters =
     Parameters.combine(this, that)
   def length: Int = Parameters.length(this)
-  def map(f: Double => Double): Parameters = Parameters.map(this)(f)
+  def isEmpty: Boolean = Parameters.isEmpty(this)
+  def perturb(delta: Double): Rand[Parameters] =
+    Parameters.perturb(delta)(this)
 }
 
 case class LeafParameter(initParams: StateParameter, scale: Option[Double], sdeParam: SdeParameter) extends Parameters
 case class BranchParameter(left: Parameters, right: Parameters) extends Parameters
 
+object LeafParameter {
+  def apply(): LeafParameter = {
+    LeafParameter(EmptyParameter, None, EmptyStepParameter)
+  }
+}
+
 object Parameters {
-  import StateParameter._
-  import SdeParameter._
-
   def combine(lp: Parameters, rp: Parameters): Parameters =
-    BranchParameter(lp, rp)
+    if (lp.isEmpty) {
+      rp
+    } else if (rp.isEmpty) {
+      lp
+    } else {
+      BranchParameter(lp, rp)
+    }
 
-  def flattenSde(p: SdeParameter): Vector[Double] = p match {
-    case BrownianParameter(m, s) => m ++ s
-    case OrnsteinParameter(theta, alpha, sigma) => theta ++ alpha ++ sigma
-    case StepConstantParameter(a) => a
+  def zero: Parameters = LeafParameter()
+
+  def isEmpty(p: Parameters): Boolean = p match {
+    case LeafParameter(p, v, s) => (p, v, s) match {
+      case (EmptyParameter, None, EmptyStepParameter) => true
+      case _ => false
+    }
+    case BranchParameter(lp, rp) => isEmpty(lp) && isEmpty(rp)
   }
 
-  def flattenInit(p: StateParameter): Vector[Double] = p match {
-    case GaussianParameter(m, s) => (m.data ++ diag(s).toArray).toVector
+  def perturb(delta: Double): Parameters => Rand[Parameters] = p => p match {
+    case LeafParameter(initParams, v, sdeParams) =>
+      for {
+        init <- initParams.perturb(delta)
+        sde <- sdeParams.perturb(delta)
+      } yield LeafParameter(init, v map (x => x * exp(Gaussian(0, delta).draw)), sde)
+    case BranchParameter(lp, rp) =>
+      for {
+        l <- perturb(delta)(lp)
+        r <- perturb(delta)(rp)
+      } yield BranchParameter(l, r)
   }
 
-  def map(p: Parameters)(f: Double => Double): Parameters = p match {
-    case LeafParameter(init, v, sde) => LeafParameter(init map f, v map f, sde map f)
-    case BranchParameter(lp, rp) => BranchParameter(map(lp)(f), map(rp)(f)) 
-  }
 
   /**
     * Flattens parameters into a Vector of parameters
@@ -41,8 +63,8 @@ object Parameters {
     */
   def flatten(p: Parameters): Vector[Double] = p match {
     case LeafParameter(init, noise, sde) => noise match {
-      case Some(v) => flattenInit(init) ++ Vector(v) ++ flattenSde(sde)
-      case None => flattenInit(init) ++ flattenSde(sde)
+      case Some(v) => init.flatten ++ Vector(v) ++ sde.flatten
+      case None => init.flatten ++ sde.flatten
     }
     case BranchParameter(lp, rp) => flatten(lp) ++ flatten(rp)
   }
@@ -94,9 +116,23 @@ object Parameters {
 
 sealed trait StateParameter {
   def length: Int = StateParameter.length(this)
-  def map(f: Double => Double): StateParameter = StateParameter.map(this)(f)
+  def flatten: Vector[Double] = StateParameter.flatten(this)
+  def perturb(delta: Double): Rand[StateParameter]
 }
-case class GaussianParameter(m0: DenseVector[Double], c0: DenseMatrix[Double]) extends StateParameter
+case class GaussianParameter(m0: DenseVector[Double], c0: DenseMatrix[Double]) extends StateParameter {
+  def perturb(delta: Double): Rand[GaussianParameter] = {
+    new Rand[GaussianParameter] {
+      def draw = {
+        GaussianParameter(
+          m0 map (Gaussian(_, delta).draw),
+          diag(diag(c0) map (x => x * exp(Gaussian(0, delta).draw))))
+      }
+    }
+  }
+}
+case object EmptyParameter extends StateParameter {
+   def perturb(delta: Double): Rand[StateParameter] = new Rand[StateParameter] { def draw = ??? }
+}
 
 object GaussianParameter {
   def apply(m0: Double, c0: Double): GaussianParameter = {
@@ -105,51 +141,75 @@ object GaussianParameter {
 }
 
 object StateParameter {
-  def flattenInit(p: StateParameter): Vector[Double] = p match {
+  def flatten(p: StateParameter): Vector[Double] = p match {
     case GaussianParameter(m, s) => (m.data ++ diag(s).toArray).toVector
   }
-
-  def length(p: StateParameter): Int = flattenInit(p).length
-
-  def map(p: StateParameter)(f: Double => Double): StateParameter = p match {
-    case GaussianParameter(m, s) => GaussianParameter(m map f, diag(diag(s) map f))
-  }
+  def length(p: StateParameter): Int = flatten(p).length
 }
 
 sealed trait SdeParameter {
   def length: Int = SdeParameter.length(this)
-  def map(f: Double => Double) = SdeParameter.map(this)(f)
+  def flatten: Vector[Double] = SdeParameter.flatten(this)
+  def perturb(delta: Double): Rand[SdeParameter]
 }
-case class BrownianParameter(mu: Vector[Double], sigma: Vector[Double]) extends SdeParameter {
-  def toList(p: BrownianParameter) = List(p.mu, p.sigma)
+
+object SdeParameter {
+  def flatten(p: SdeParameter): Vector[Double] = p match {
+    case BrownianParameter(m, s) => m.data.toVector ++ diag(s).data.toVector
+    case OrnsteinParameter(theta, alpha, sigma) => theta ++ alpha ++ sigma
+    case StepConstantParameter(a) => a.data.toVector
+ }
+
+  def length(p: SdeParameter): Int = flatten(p).length  
+}
+
+case class BrownianParameter(mu: DenseVector[Double], sigma: DenseMatrix[Double]) extends SdeParameter {
+  def perturb(delta: Double): Rand[BrownianParameter] = {
+    new Rand[BrownianParameter] {
+      def draw = {
+        BrownianParameter(
+          mu map (Gaussian(_, delta).draw),
+          diag(diag(sigma) map (x => x * exp(Gaussian(0, delta).draw))))
+      }
+    }
+  }
 }
 
 object BrownianParameter {
   def apply(mu: Double, sigma: Double): BrownianParameter = {
-    new BrownianParameter(Vector(mu), Vector(sigma))
-  } 
+    new BrownianParameter(DenseVector(mu), DenseMatrix(sigma))
+  }
 }
-case class OrnsteinParameter(theta: Vector[Double], alpha: Vector[Double], sigma: Vector[Double]) extends SdeParameter
+case class OrnsteinParameter(theta: Vector[Double], alpha: Vector[Double], sigma: Vector[Double]) extends SdeParameter {
+
+  def perturb(delta: Double): Rand[OrnsteinParameter] = {
+    new Rand[OrnsteinParameter] {
+      def draw = {
+        // alpha and sigme are non-negative, propose on log-scale
+        OrnsteinParameter(
+          theta map (Gaussian(_, delta).draw),
+          alpha map (x => x * exp(Gaussian(0, delta).draw)),
+          sigma map (x => x * exp(Gaussian(0, delta).draw)))
+      }
+    }
+  }
+}
+
 object OrnsteinParameter {
   def apply(theta: Double, alpha: Double, sigma: Double): OrnsteinParameter = {
     new OrnsteinParameter(Vector(theta), Vector(alpha), Vector(sigma))
   }
 }
-case class StepConstantParameter(a: Vector[Double]) extends SdeParameter
 
-object SdeParameter {
-  def flattenSde(p: SdeParameter): Vector[Double] = p match {
-    case BrownianParameter(m, s) => m ++ s
-    case OrnsteinParameter(theta, alpha, sigma) => theta ++ alpha ++ sigma
-    case StepConstantParameter(a) => a
- }
-
-  def length(p: SdeParameter): Int = flattenSde(p).length
-
-
-  def map(p: SdeParameter)(f: Double => Double): SdeParameter = p match {
-    case BrownianParameter(m, s) => BrownianParameter(m map f, s map f)
-    case OrnsteinParameter(theta, alpha, sigma) => OrnsteinParameter(theta map f, alpha map f, sigma map f)
-    case StepConstantParameter(a) => StepConstantParameter(a map f)
+case class StepConstantParameter(a: DenseVector[Double]) extends SdeParameter {
+  def perturb(delta: Double): Rand[StepConstantParameter] = {
+    new Rand[StepConstantParameter] {
+      def draw = StepConstantParameter(
+        a map (Gaussian(_, delta).draw))
+    }
   }
+}
+
+case object EmptyStepParameter extends SdeParameter {
+   def perturb(delta: Double): Rand[SdeParameter] = new Rand[SdeParameter] { def draw = ??? }
 }

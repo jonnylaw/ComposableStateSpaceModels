@@ -42,12 +42,12 @@ object MultipleObservations {
       GaussianParameter(DenseVector(Array.fill(6)(0.0)),
       diag(DenseVector(Array.fill(6)(1.0)))),
       None,
-      BrownianParameter(Vector.fill(6)(0.0), Vector.fill(6)(1.0)))
+      BrownianParameter(DenseVector(Array.fill(6)(0.1)), diag(DenseVector(Array.fill(6)(0.4)))))
     val seasonalParamWeekly = LeafParameter(
       GaussianParameter(DenseVector(Array.fill(6)(0.0)),
       diag(DenseVector(Array.fill(6)(1.0)))),
       None,
-      BrownianParameter(Vector.fill(6)(0.0), Vector.fill(6)(1.0)))
+      BrownianParameter(DenseVector(Array.fill(6)(0.1)), diag(DenseVector(Array.fill(6)(0.4)))))
 
     // compose the parameters and models together
     // note the models must be composed in the same order as the parameters
@@ -84,7 +84,7 @@ object MultipleObservations {
 
        // PMMH is an Akka stream of iterations, meaning we can write asynchronously to a file
        // without holding all iterations in memory
-       ParticleMetropolis(mll, gaussianPerturb(0.1, 0.05)).iters(p).
+       ParticleMetropolis(mll, 0.1).iters(p).
          map(x => x.params).
          take(10000).
          map(a => ByteString(a + "\n")).

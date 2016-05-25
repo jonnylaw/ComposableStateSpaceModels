@@ -5,6 +5,7 @@ import java.io.Serializable
 import model.POMP._
 import model.Model._
 import breeze.stats.distributions.{Rand, Density}
+import breeze.linalg.DenseVector
 
 trait Model extends Serializable {
   // The observation model
@@ -19,10 +20,10 @@ trait Model extends Serializable {
   def stepFunction: (State, TimeIncrement) => Rand[State]
   // calculate the likelihood of the observation given the state
   def dataLikelihood: (Eta, Observation) => LogLikelihood
+}
 
-  // def |+|(that: Model): Model = {
-  //   op(this, that)
-  // }
+trait UnparamModel extends (Parameters => Model) {
+  def |+|(that: UnparamModel): UnparamModel = ???
 }
 
 object Model {
@@ -53,7 +54,6 @@ object Model {
           l <- mod1(param).x0
           r <- mod2(param).x0
         } yield l |+| r
-
     }
 
     def stepFunction = (s, dt) => (s, p) match {
@@ -75,7 +75,7 @@ object Model {
   def zeroModel(stepFun: SdeParameter => (State, TimeIncrement) => Rand[State]): Parameters => Model = p => new Model {
     def observation = x => new Rand[Observation] { def draw = x.head }
     def f(s: State, t: Time) = s.head
-    def x0 = new Rand[State] { def draw = LeafState(Vector[Double]()) }
+    def x0 = new Rand[State] { def draw = LeafState(DenseVector[Double]()) }
     def stepFunction = p match {
       case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)
     }

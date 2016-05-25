@@ -1,7 +1,7 @@
 package model
 
 import breeze.numerics.{cos, sin, sqrt, exp, log}
-import breeze.stats.distributions.{Bernoulli, Poisson, Gaussian, Rand, MultivariateGaussian, ContinuousDistr}
+import breeze.stats.distributions.{Bernoulli, Poisson, Gaussian, Rand, MultivariateGaussian}
 import breeze.linalg.{DenseMatrix, DenseVector}
 import scala.language.implicitConversions
 import java.io.Serializable
@@ -14,10 +14,8 @@ object POMP {
   type TimeIncrement = Double
   type LogLikelihood = Double
 
-  // these
   implicit def bool2obs(b: Boolean): Observation = if (b) 1.0 else 0.0
   implicit def obs2bool(o: Observation): Boolean = if (o == 0.0) false else true
-  implicit def denseVector2Vector(dv: DenseVector[Double]): Vector[Double] = dv.toArray.toVector
 
   def SeasonalModel(
     period: Int,

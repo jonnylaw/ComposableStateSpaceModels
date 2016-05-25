@@ -39,11 +39,11 @@ trait MetropolisHastings {
 
 case class ParticleMetropolis(
   mll: Parameters => LogLikelihood,
-  propParams: Parameters => Rand[Parameters]) extends MetropolisHastings{
+  delta: Double) extends MetropolisHastings{
 
   def marginalLogLikelihood: Parameters => LogLikelihood = mll
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = 0.0
-  def proposal: Parameters => Rand[Parameters] = propParams
+  def proposal: Parameters => Rand[Parameters] = p => p.perturb(delta)
 }
 
 case class ParticleMetropolisHastings(

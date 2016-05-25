@@ -365,7 +365,7 @@ object Filtering {
   def runPmmhToFile(
     fileOut: String, chains: Int,
     initParams: Parameters, mll: Int => Parameters => LogLikelihood,
-    perturb: Parameters => Rand[Parameters], particles: Int, iterations: Int): Unit = {
+    delta: Double, particles: Int, iterations: Int): Unit = {
 
     import scala.concurrent.ExecutionContext.Implicits.global
     implicit val system = ActorSystem("StreamingPMMH")
@@ -373,7 +373,7 @@ object Filtering {
 
     Source(1 to chains).
       mapAsync(parallelism = 4){ chain =>
-        val iters = ParticleMetropolis(mll(particles), perturb).iters(initParams)
+        val iters = ParticleMetropolis(mll(particles), delta).iters(initParams)
 
         println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
 
@@ -393,65 +393,65 @@ object Filtering {
       })
   }
 
-  /**
-    * Perturbs the parameters of a Stochastic Differential Equation
-    */
-  def sdePerturb(delta: Double, logdelta: Double): SdeParameter => Rand[SdeParameter] = p => p match {
-    case BrownianParameter(m, s) => new Rand[SdeParameter] {
-      def draw = {
-        // s is non-negative, propose on log scale
-        BrownianParameter(
-          m map(_ + Gaussian(0, delta).draw),
-          s map (x => x * exp(Gaussian(0, logdelta).draw)))
-      }
-    }
-    case OrnsteinParameter(theta, alpha, sigma) => new Rand[SdeParameter] {
-      def draw = {
-        // alpha and sigme are non-negative, propose on log-scale
-        OrnsteinParameter(
-          theta map (Gaussian(_, delta).draw),
-          alpha map (x => x * exp(Gaussian(0, logdelta).draw)),
-          sigma map (x => x * exp(Gaussian(0, logdelta).draw)))
-      }
-    }
-    case StepConstantParameter(a) =>
-      new Rand[SdeParameter] {
-        def draw = StepConstantParameter(
-          a map (Gaussian(_, delta).draw))
-      }
-  }
+  // /**
+  //   * Perturbs the parameters of a Stochastic Differential Equation
+  //   */
+  // def sdePerturb(delta: Double, logdelta: Double): SdeParameter => Rand[SdeParameter] = p => p match {
+  //   case BrownianParameter(m, s) => new Rand[SdeParameter] {
+  //     def draw = {
+  //       // s is non-negative, propose on log scale
+  //       BrownianParameter(
+  //         m map(_ + Gaussian(0, delta).draw),
+  //         s map (x => x * exp(Gaussian(0, logdelta).draw)))
+  //     }
+  //   }
+  //   case OrnsteinParameter(theta, alpha, sigma) => new Rand[SdeParameter] {
+  //     def draw = {
+  //       // alpha and sigme are non-negative, propose on log-scale
+  //       OrnsteinParameter(
+  //         theta map (Gaussian(_, delta).draw),
+  //         alpha map (x => x * exp(Gaussian(0, logdelta).draw)),
+  //         sigma map (x => x * exp(Gaussian(0, logdelta).draw)))
+  //     }
+  //   }
+  //   case StepConstantParameter(a) =>
+  //     new Rand[SdeParameter] {
+  //       def draw = StepConstantParameter(
+  //         a map (Gaussian(_, delta).draw))
+  //     }
+  // }
 
-  /**
-    * Perturbs the initial parameters of the state space
-    */
-  def initParamPerturb(delta: Double, logDelta: Double): StateParameter => Rand[StateParameter] = p => p match {
-    case GaussianParameter(m, s) => new Rand[StateParameter] {
-      def draw = {
-        GaussianParameter(
-          m map (Gaussian(_, delta).draw),
-          diag(diag(s) map (x => x * exp(Gaussian(0, logDelta).draw))))
-      }
-    }
-  }
+  // /**
+  //   * Perturbs the initial parameters of the state space
+  //   */
+  // def initParamPerturb(delta: Double, logDelta: Double): StateParameter => Rand[StateParameter] = p => p match {
+  //   case GaussianParameter(m, s) => new Rand[StateParameter] {
+  //     def draw = {
+  //       GaussianParameter(
+  //         m map (Gaussian(_, delta).draw),
+  //         diag(diag(s) map (x => x * exp(Gaussian(0, logDelta).draw))))
+  //     }
+  //   }
+  // }
 
-  /**
-    * Takes a tree of parameters, changes the value at the leaves of all of them a small amount,
-    * then returns a parameter tree with the same structure
-    * @return a parameter tree with the same structure, but different values
-    */
-  def gaussianPerturb(delta: Double, logdelta: Double): (Parameters) => Rand[Parameters] = p => p match {
-    case LeafParameter(initParams, v, sde) => 
-      for {
-        init <- initParamPerturb(delta, logdelta)(initParams)
-        sde <- sdePerturb(delta, logdelta)(sde)
-      } yield LeafParameter(init, v map (x => x * exp(Gaussian(0, logdelta).draw)), sde)
+  // /**
+  //   * Takes a tree of parameters, changes the value at the leaves of all of them a small amount,
+  //   * then returns a parameter tree with the same structure
+  //   * @return a parameter tree with the same structure, but different values
+  //   */
+  // def gaussianPerturb(delta: Double, logdelta: Double): (Parameters) => Rand[Parameters] = p => p match {
+  //   case LeafParameter(initParams, v, sde) => 
+  //     for {
+  //       init <- initParamPerturb(delta, logdelta)(initParams)
+  //       sde <- sdePerturb(delta, logdelta)(sde)
+  //     } yield LeafParameter(init, v map (x => x * exp(Gaussian(0, logdelta).draw)), sde)
       
-    case BranchParameter(lp, rp) =>
-      for {
-        l <- gaussianPerturb(delta, logdelta)(lp)
-        r <- gaussianPerturb(delta, logdelta)(rp)
-      } yield BranchParameter(l, r)
-  }
+  //   case BranchParameter(lp, rp) =>
+  //     for {
+  //       l <- gaussianPerturb(delta, logdelta)(lp)
+  //       r <- gaussianPerturb(delta, logdelta)(rp)
+  //     } yield BranchParameter(l, r)
+  // }
 
   /**
     * A random walk draw from a multivariate gaussian distribution
@@ -476,7 +476,7 @@ object Filtering {
     */
   def credibleIntervals(s: Vector[State], n: Int, interval: Double): IndexedSeq[CredibleInterval] = {
     val state: Vector[LeafState] = s map (State.getState(_, n)) // Gets the nth state vector
-    val stateVec = state.head.x.indices map (i => state.map(a => a.x(i)))
+    val stateVec = state.head.data.data.toVector.indices map (i => state.map(a => a.data(i)))
     stateVec map (a => {
       val index = Math.floor(interval * a.length).toInt
       val stateSorted = a.sorted

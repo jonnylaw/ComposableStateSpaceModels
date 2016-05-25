@@ -60,7 +60,7 @@ object DataTypes {
     * @param intervals the credible intervals of the filtering distribution
     */
   case class PfOut(time: Time, observation: Option[Observation], state: State, intervals: IndexedSeq[CredibleInterval]) {
-    override def toString = s"$time, $observation, ${State.flattenState(state).mkString(", ")}, ${intervals.mkString(", ")}"
+    override def toString = s"$time, $observation, ${state.flatten.mkString(", ")}, ${intervals.mkString(", ")}"
   }
 
   /**

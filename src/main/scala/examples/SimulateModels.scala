@@ -46,7 +46,7 @@ object SeasonalBernoulli extends App {
     GaussianParameter(DenseVector(Array.fill(6)(0.0)),
       diag(DenseVector(Array.fill(6)(1.0)))),
     None,
-    BrownianParameter(Vector.fill(6)(0.1), Vector.fill(6)(0.4)))
+    BrownianParameter(DenseVector(Array.fill(6)(0.1)), diag(DenseVector(Array.fill(6)(0.4)))))
 
   val params = bernoulliParams |+| seasonalParams
   val mod = Model.op(BernoulliModel(stepBrownian), SeasonalModel(24, 3, stepBrownian))
@@ -112,7 +112,7 @@ object DetermineBernoulliParameters extends App {
   // the PMMH algorithm is defined as an Akka stream,
   // this means we can write the iterations to a file as they are generated
   // therefore we use constant time memory even for large MCMC runs
-  val iters = ParticleMetropolis(mll, gaussianPerturb(0.1, 0.05)).iters(p)
+  val iters = ParticleMetropolis(mll, 0.5).iters(p)
 
   iters.
     via(monitorStream(1000, 1)).
@@ -150,7 +150,7 @@ object SimulateSeasonalPoisson extends App {
 object SimulateOrnstein {
   def main(args: Array[String]) = {
     val p = OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0)
-    val initialState = LeafState(Vector(Gaussian(6.0, 1.0).draw))
+    val initialState = LeafState(DenseVector(Gaussian(6.0, 1.0).draw))
 
     val sims = simSdeStream(initialState, 0.0, 300.0, 1, stepOrnstein(p)).toVector
 

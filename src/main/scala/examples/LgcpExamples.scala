@@ -70,12 +70,13 @@ object GetLgcpParams extends App {
     map(rs => Data(rs.head.toDouble, rs(1).toDouble, None, None, None)).
     toVector
 
-  val params = LeafParameter(
-    GaussianParameter(0.0, 1.0),
-    None,
-    BrownianParameter(0.0, 1.0))
 
-  val mod = LogGaussianCox(stepBrownian)
+  val params = LeafParameter(
+    GaussianParameter(1.0, 1.0),
+    None,
+    OrnsteinParameter(1.0, 0.1, 0.4))
+
+  val mod = LogGaussianCox(stepOrnstein)
 
   val mll = pfLGCPmll(data.sortBy(_.t), mod, 2)(200)
 
@@ -84,7 +85,7 @@ object GetLgcpParams extends App {
     // the PMMH algorithm is defined as an Akka stream,
   // this means we can write the iterations to a file as they are generated
   // therefore we use constant time memory even for large MCMC runs
-  val iters = ParticleMetropolis(mll, gaussianPerturb(0.1, 0.05)).iters(params)
+  val iters = ParticleMetropolis(mll, 0.1).iters(params)
 
   iters.
     via(monitorStream(1000, 1)).

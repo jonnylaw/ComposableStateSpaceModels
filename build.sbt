@@ -13,5 +13,6 @@ resolvers ++= Seq(
 libraryDependencies  ++= Seq(
   "com.typesafe.akka" %% "akka-stream" % "2.4.6",
   "org.scalanlp" %% "breeze" % "0.10",
-  "org.scalatest" %% "scalatest" % "2.2.4" % "test"
+  "org.scalatest" %% "scalatest" % "2.2.4" % "test",
+  "org.typelevel" %% "cats" % "0.6.0"
 )
