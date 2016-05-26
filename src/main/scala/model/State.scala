@@ -107,10 +107,6 @@ object State {
       case (x: LeafState, y: LeafState) if y.isEmpty => x
       case (LeafState(x), LeafState(x1)) => LeafState(x + x1)
       case (BranchState(l, r), BranchState(l1, r1)) => BranchState(addStates(l, l1), addStates(r, r1))
-
-      // These two scenarios should not occur
-      case (x: LeafState, BranchState(ls, rs)) => addStates(x, addStates(ls, rs))
-      case (BranchState(ls, rs), x: LeafState) => addStates(addStates(ls, rs), x)
     }
 
   def flatten(s: State): Vector[Double] =

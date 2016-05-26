@@ -21,6 +21,8 @@ import model.StateSpace._
 import java.io.{PrintWriter, File}
 import breeze.stats.distributions.Gaussian
 import breeze.linalg.{DenseVector, diag}
+import breeze.numerics.exp
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object SimulateBernoulli extends App {
   val p = LeafParameter(
@@ -82,7 +84,7 @@ object FilterBernoulli extends App {
 }
 
 object DetermineBernoulliParameters extends App {
-  import scala.concurrent.ExecutionContext.Implicits.global
+
   implicit val system = ActorSystem("SimBernoulliParameters")
   implicit val materializer = ActorMaterializer()
 
@@ -125,26 +127,58 @@ object DetermineBernoulliParameters extends App {
     runWith(FileIO.toFile(new File("BernoulliMCMC.csv")))
 }
 
-object SimulateSeasonalPoisson extends App {
-  val poissonParams = LeafParameter(
-    GaussianParameter(0.3, 0.5),
+/**
+  * An example showing real time filtering of observations arriving as a stream
+  */
+object FilterBernoulliOnline extends App {
+  implicit val system = ActorSystem("FilterBernoulliOnline")
+  implicit val materializer = ActorMaterializer()
+
+  val p = LeafParameter(
+    GaussianParameter(6.0, 1.0),
     None,
-    OrnsteinParameter(0.3, 0.5, 0.1))
-  val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector(Array.fill(6)(0.3)),
-      diag(DenseVector(Array.fill(6)(0.5)))),
-    None,
-    OrnsteinParameter(Vector.fill(6)(0.3), Vector.fill(6)(0.5), Vector.fill(6)(0.1)))
+    OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0))
+  
+  val mod = BernoulliModel(stepOrnstein)(p)
 
-  val params = poissonParams |+| seasonalParams
-  val mod = Model.op(PoissonModel(stepOrnstein), SeasonalModel(24, 3, stepOrnstein))
+  // specify the initial observation and time increment
+  val initialObservation = simStep(mod.x0.draw, 0.0, 1.0, mod)
+  val dt = 1.0
 
-  val times = (1 to 100).map(_.toDouble).toList
-  val sims = simData(times, mod(params))
+  // use unfold and simstep to get simulated observations as a stream
+  val observations = Source.unfold(initialObservation){d =>
+    Some((simStep(d.sdeState.get, d.t + dt, dt, mod), d))
+  }.
+    take(100)
+    // zip(Source.tick(1 second, 1 second, Unit)). // throttle the stream so we only see one element a second
+    //    map{ case (a, _) => a }
 
-  val pw = new PrintWriter("seasonalPoissonSims.csv")
-  pw.write(sims.mkString("\n"))
-  pw.close()
+  // write the observations to a file
+  observations.
+    map(a => ByteString(s"$a\n")).
+    runWith(FileIO.toFile(new File("OnlineBern.csv")))
+
+  // particles and initial state for particle filter,
+  val n = 1000
+  val t0 = 0.0 // replace with first time point
+  val particleCloud = Vector.fill(n)(mod.x0.draw)
+  val initState = Vector(PfState(t0, None, particleCloud, State.zero, IndexedSeq[CredibleInterval]()))
+
+  // use fold to filter a stream
+  // fold will only output once the stream has terminated
+  // but we can print, or write to a file inside the fold
+  observations.
+    fold(initState)((d, y) => filterStep(y, d, mod, 200)).
+    map(d => d.reverse).
+    mapConcat(identity). // from Stream(Vector(...)) -> Stream(...)
+    map(s => PfOut(s.t0, s.observation, s.meanState, s.intervals)).
+    drop(1). // drop the initial state, with no corresponding observation
+    map(a => ByteString(s"$a\n")).
+    runWith(FileIO.toFile(new File("filteredBernoulliOnline.csv")))
+
+  Thread.sleep(10000) // sleep for 10 seconds
+
+  system.shutdown
 }
 
 object SimulateOrnstein {

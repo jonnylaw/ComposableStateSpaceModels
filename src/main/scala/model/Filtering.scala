@@ -22,7 +22,6 @@ import akka.stream.scaladsl._
 import akka.util.ByteString
 
 object Filtering {
-
   /**
     * Return a vector of lag 1 time differences
     * @param x a list of times
@@ -58,14 +57,14 @@ object Filtering {
 
     val mod = unparamMod(p)
     val times = data.map(_.t)
-    val deltas = diff(times.head +: times).iterator
+    val deltas = diff(times.head +: times)
     val x0 = Vector.fill(n)(mod.x0.draw)
 
-    data.foldLeft((x0, 0.0))((a, y) => {
-      val (state, ll) = a
+    data.foldLeft((x0, 0.0, deltas))((a, y) => {
+      val (state, ll, dts) = a
 
-      // take the next time difference
-      val dt = deltas.next
+      // get the next time increment
+      val dt = dts.head
 
       // advance state particles
       val x1 = state map(x => mod.stepFunction(x, dt).draw)
@@ -79,7 +78,7 @@ object Filtering {
       val xInd = sample(n, DenseVector(w.toArray)) // Multinomial resampling
       val x2 = xInd map ( x1(_) )
 
-      (x2, ll + max + log(breeze.stats.mean(w)))
+      (x2, ll + max + log(breeze.stats.mean(w)), deltas.tail)
     })._2
   }
 
@@ -277,6 +276,46 @@ object Filtering {
     }
     // initialise with a draw from the model x0 and time 0
     loop(particles, 0, data, Vector())
+  }
+
+  case class PfState(
+    t0: Time,
+    observation: Option[Observation],
+    particles: Vector[State],
+    meanState: State,
+    intervals: IndexedSeq[CredibleInterval])
+
+
+  /**
+    * Perform one step of a particle filter
+    * @param y a single observation
+    * @param d state for the particle filter
+    * @param mod a POMP model
+    * @param n the number of particles
+    * @return updated state for the particle filter
+    */
+  def filterStep(y: Data, ds: Vector[PfState], mod: Model, n: Int): Vector[PfState] = {
+
+    val d = ds.head
+
+    val dt = y.t - d.t0 // calculate time between observations
+
+    val advancedState = d.particles map (x => if (dt == 0) x else mod.stepFunction(x, dt).draw) // advance particle cloud
+
+    val transState = advancedState map (a => mod.link(mod.f(a, y.t)))
+
+    val w1 = transState map (a => mod.dataLikelihood(a, y.observation)) // calculate particle likelihoods
+
+    val max = w1.max // log sum exp
+    val w = w1 map { a => exp(a - max) }
+
+    val xInd = sample(n, DenseVector(w.toArray)) // Multinomial resampling
+    val resampledState = xInd map ( advancedState(_) )
+
+    val meanState = weightedMean(resampledState, w)
+    val intervals = getAllCredibleIntervals(resampledState, 0.99)
+
+    PfState(y.t, Some(y.observation), resampledState, meanState, intervals) +: ds
   }
 
   /**

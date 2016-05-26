@@ -59,7 +59,12 @@ object DataTypes {
     * @param state the mean of the empirical filtering distribution at time 'time'
     * @param intervals the credible intervals of the filtering distribution
     */
-  case class PfOut(time: Time, observation: Option[Observation], state: State, intervals: IndexedSeq[CredibleInterval]) {
+  case class PfOut(
+    time: Time,
+    observation: Option[Observation],
+    state: State,
+    intervals: IndexedSeq[CredibleInterval]) {
+
     override def toString = s"$time, $observation, ${state.flatten.mkString(", ")}, ${intervals.mkString(", ")}"
   }
 
