@@ -115,7 +115,7 @@ dev.off()
 ##############################
 
 bernOnline = read.csv("~/Desktop/ComposableModels/OnlineBern.csv", header = F,
-                      col.names = c("Time", "Observation", "Eta", "Gamma", "State"))
+                      col.names = c("Time", "Value", "Eta", "Gamma", "State"))
 bernOnlineFiltered = read.csv("~/Desktop/ComposableModels/filteredBernoulliOnline.csv")
 colnames(bernOnlineFiltered) <- c("Time", "Value", "PredState", "Lower", "Upper")
 

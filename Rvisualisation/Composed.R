@@ -32,3 +32,13 @@ p3 = seasPois %>%
 
 grid.arrange(p1, p2, p3, heights = c(1,2,1))
 dev.off()
+
+#####################
+# Online Simulation #
+#####################
+
+seasPois = read.csv("~/Desktop/ComposableModels/OnlineModel.csv", header = F,
+                    col.names = c("Time", "Value", "Eta", "Gamma", sapply(1:7, function(i) paste("State", i, sep = ""))))
+
+seasPois %>%
+  ggplot(aes(x = Time, y = Value)) + geom_step()

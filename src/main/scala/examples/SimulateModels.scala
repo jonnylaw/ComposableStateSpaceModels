@@ -19,7 +19,7 @@ import model.State._
 import model.Parameters._
 import model.StateSpace._
 import java.io.{PrintWriter, File}
-import breeze.stats.distributions.Gaussian
+import breeze.stats.distributions.{Gaussian, MultivariateGaussian}
 import breeze.linalg.{DenseVector, diag}
 import breeze.numerics.exp
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -28,7 +28,7 @@ object SimulateBernoulli extends App {
   val p = LeafParameter(
     GaussianParameter(6.0, 1.0),
     None,
-    OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0))
+    OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0))
   val mod = BernoulliModel(stepOrnstein)
 
   val times = (1 to 100).map(_.toDouble).toList
@@ -39,16 +39,31 @@ object SimulateBernoulli extends App {
   pw.close()
 }
 
+object SimulateBrownian extends App {
+
+  implicit val system = ActorSystem("SimBrownian")
+  implicit val materializer = ActorMaterializer()
+
+  val p = BrownianParameter(DenseVector(0.1, 0.1), diag(DenseVector(0.1, 0.5)))
+  val x0: State = LeafState(MultivariateGaussian(DenseVector(1.0, 1.0), diag(DenseVector(5.0, 5.0))).draw)
+  val dt = 0.1
+
+  Source.unfold(x0)(x => Some((stepBrownian(p)(x, dt).draw, x))).
+    zip(Source.tick(1 second, 1 second, Unit)).
+    map{ case (a, _) => a }.
+    runForeach(println)
+}
+
 object SeasonalBernoulli extends App {
   val bernoulliParams = LeafParameter(
     GaussianParameter(0.0, 1.0),
     None,
-    BrownianParameter(0.1, 0.3))
+    BrownianParameter(0.1, 1.0))
   val seasonalParams = LeafParameter(
     GaussianParameter(DenseVector(Array.fill(6)(0.0)),
       diag(DenseVector(Array.fill(6)(1.0)))),
     None,
-    BrownianParameter(DenseVector(Array.fill(6)(0.1)), diag(DenseVector(Array.fill(6)(0.4)))))
+    BrownianParameter(DenseVector.fill(6)(0.1), diag(DenseVector.fill(6)(1.0))))
 
   val params = bernoulliParams |+| seasonalParams
   val mod = Model.op(BernoulliModel(stepBrownian), SeasonalModel(24, 3, stepBrownian))
@@ -72,7 +87,7 @@ object FilterBernoulli extends App {
   val p = LeafParameter(
     GaussianParameter(6.0, 1.0),
     None,
-    OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0))
+    OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0))
   
   val mod = BernoulliModel(stepOrnstein)
 
@@ -99,10 +114,10 @@ object DetermineBernoulliParameters extends App {
   // in the real world, we would not have a good starting point for the parameters
   // so the MCMC algorithm wouldn't immediately start efficiently exploring the posterior
   // iterations are removed from the MCMC output to counteract this, in a period called burnin
-  val p = LeafParameter(
+   val p = LeafParameter(
     GaussianParameter(6.0, 1.0),
     None,
-    OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0))
+    OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0))
   
   val mod = BernoulliModel(stepOrnstein)
 
@@ -114,7 +129,8 @@ object DetermineBernoulliParameters extends App {
   // the PMMH algorithm is defined as an Akka stream,
   // this means we can write the iterations to a file as they are generated
   // therefore we use constant time memory even for large MCMC runs
-  val iters = ParticleMetropolis(mll, 0.5).iters(p)
+  val delta = Vector(0.05, 0.5, 0.1, 0.05, 0.1)
+  val iters = ParticleMetropolis(mll, p, Parameters.perturbIndep(delta)).iters
 
   iters.
     via(monitorStream(1000, 1)).

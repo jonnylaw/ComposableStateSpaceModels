@@ -45,6 +45,6 @@ object MultipleChains {
     // "linearModel", the chain number, total iterations and particles
     // the method of proposing new parameters is gaussianPerturb, a random walk about the parameter space
     // with positive parameters proposed on a log scale
-    runPmmhToFile("linearModel", 4, p, mll, 0.1, particles, iterations)
+    runPmmhToFile("linearModel", 4, p, mll, perturb(0.1), particles, iterations)
   }
 }

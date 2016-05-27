@@ -5,7 +5,7 @@ import breeze.stats.distributions.{Gaussian, Uniform, Exponential, Rand, Continu
 import breeze.linalg.{linspace, DenseVector, DenseMatrix, diag}
 import breeze.stats.{mean, variance}
 import scala.collection.parallel.immutable.ParVector
-
+import scala.concurrent.ExecutionContext.Implicits.global
 import model.POMP._
 import model.Utilities._
 import model.DataTypes._
@@ -128,14 +128,14 @@ object Filtering {
 
     val mod = unparamMod(p)
     val times = data.map(_.t)
-    val deltas = diff(times.head +: times).iterator
+    val deltas = diff(times.head +: times)
     val x0: ParVector[State] = Vector.fill(n)(mod.x0.draw).par
 
-    data.foldLeft((x0, 0.0))((a, y) => {
-      val (state, ll) = a
+    data.foldLeft((x0, 0.0, deltas))((a, y) => {
+      val (state, ll, dts) = a
 
       // Choose next time
-      val dt = deltas.next
+      val dt = dts.head
 
       // advance state particles
       val x1 = state map(x => mod.stepFunction(x, dt).draw)
@@ -149,7 +149,7 @@ object Filtering {
       val xInd = sample(n, DenseVector(w.toArray)).par // Multinomial resampling
       val x2 = xInd map ( x1(_) )
 
-      (x2, ll + max + log(mean(w)))
+      (x2, ll + max + log(mean(w)), dts.tail)
     })._2
   }
 
@@ -404,15 +404,15 @@ object Filtering {
   def runPmmhToFile(
     fileOut: String, chains: Int,
     initParams: Parameters, mll: Int => Parameters => LogLikelihood,
-    delta: Double, particles: Int, iterations: Int): Unit = {
+    perturb: Parameters => Rand[Parameters], particles: Int, iterations: Int): Unit = {
 
-    import scala.concurrent.ExecutionContext.Implicits.global
-    implicit val system = ActorSystem("StreamingPMMH")
+    implicit val system = ActorSystem("StreamingPmmh")
     implicit val materializer = ActorMaterializer()
+
 
     Source(1 to chains).
       mapAsync(parallelism = 4){ chain =>
-        val iters = ParticleMetropolis(mll(particles), delta).iters(initParams)
+        val iters = ParticleMetropolis(mll(particles), initParams, perturb).iters
 
         println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
 

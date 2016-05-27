@@ -34,10 +34,10 @@ object SimulateSeasonalPoisson extends App {
     None,
     BrownianParameter(0.1, 1.0))
   val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector(Array.fill(6)(0.3)),
-      diag(DenseVector(Array.fill(6)(0.5)))),
+    GaussianParameter(DenseVector.fill(6)(0.3),
+      diag(DenseVector.fill(6)(0.5))),
     None,
-    OrnsteinParameter(Vector.fill(6)(0.3), Vector.fill(6)(0.5), Vector.fill(6)(0.1)))
+    OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
 
   val params = poissonParams |+| seasonalParams
   val mod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
@@ -57,10 +57,10 @@ object FilteringSeasonalPoisson extends App {
     None,
     BrownianParameter(0.1, 1.0))
   val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector(Array.fill(6)(0.3)),
-      diag(DenseVector(Array.fill(6)(0.5)))),
+    GaussianParameter(DenseVector.fill(6)(0.3),
+      diag(DenseVector.fill(6)(0.5))),
     None,
-    OrnsteinParameter(Vector.fill(6)(0.3), Vector.fill(6)(0.5), Vector.fill(6)(0.1)))
+    OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
 
   val params = poissonParams |+| seasonalParams
   val mod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
@@ -77,7 +77,7 @@ object FilteringSeasonalPoisson extends App {
   pw.close()
 }
 
-object DetermineParams extends App {
+object DetermineComposedParams extends App {
   implicit val system = ActorSystem("DeterminePoissonParams")
   implicit val materializer = ActorMaterializer()
 
@@ -86,10 +86,10 @@ object DetermineParams extends App {
     None,
     BrownianParameter(0.1, 1.0))
   val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector(Array.fill(6)(0.3)),
-      diag(DenseVector(Array.fill(6)(0.5)))),
+    GaussianParameter(DenseVector.fill(6)(0.3),
+      diag(DenseVector.fill(6)(0.5))),
     None,
-    OrnsteinParameter(Vector.fill(6)(0.3), Vector.fill(6)(0.5), Vector.fill(6)(0.1)))
+    OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
 
   val params = poissonParams |+| seasonalParams
   val mod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
@@ -101,7 +101,7 @@ object DetermineParams extends App {
 
   val mll = pfMllFold(data, mod) _
 
-  runPmmhToFile("poisson", 2, params, mll, 0.1, 200, 10000)
+  runPmmhToFile("poisson", 2, params, mll, Parameters.perturb(0.1), 200, 10000)
 }
 
 object FilterOnline extends App {
@@ -112,12 +112,12 @@ object FilterOnline extends App {
   val poissonParams = LeafParameter(
     GaussianParameter(0.3, 0.5),
     None,
-    OrnsteinParameter(2.0, 0.1, ))
+    OrnsteinParameter(2.0, 0.1, 0.2))
   val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector(Array.fill(6)(0.3)),
-      diag(DenseVector(Array.fill(6)(0.5)))),
+    GaussianParameter(DenseVector.fill(6)(0.3),
+      diag(DenseVector.fill(6)(0.5))),
     None,
-    BrowninaParameter(DenseVector(Array.fill(6)(0.1)), diag(DenseVector(Array.fill(6)(0.5))))
+    BrownianParameter(DenseVector.fill(6)(0.1), diag(DenseVector.fill(6)(0.5))))
 
   val params = poissonParams |+| seasonalParams
   val unparamMod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
@@ -147,6 +147,8 @@ object FilterOnline extends App {
     // perform a side effect and print or write each filtered observation
   observations.
     fold(initState)((d, y) => filterStep(y, d, mod, 200)).
+    drop(1).
+    map(a => ByteString(s"$a\n")).
     runWith(FileIO.toFile(new File("OnlineComposedModelFiltered.csv")))
 
   Thread.sleep(25000) // sleep for 25 seconds
