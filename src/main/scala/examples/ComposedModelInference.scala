@@ -109,15 +109,15 @@ object FilterOnline extends App {
   implicit val materializer = ActorMaterializer()
 
   // define the model
-  val poissonParams = LeafParameter(
+    val poissonParams = LeafParameter(
     GaussianParameter(0.3, 0.5),
     None,
-    OrnsteinParameter(2.0, 0.1, 0.2))
+    BrownianParameter(0.1, 1.0))
   val seasonalParams = LeafParameter(
     GaussianParameter(DenseVector.fill(6)(0.3),
       diag(DenseVector.fill(6)(0.5))),
     None,
-    BrownianParameter(DenseVector.fill(6)(0.1), diag(DenseVector.fill(6)(0.5))))
+    OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
 
   val params = poissonParams |+| seasonalParams
   val unparamMod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
@@ -156,3 +156,51 @@ object FilterOnline extends App {
   system.shutdown
 }
 
+object cars extends App {
+  implicit val system = ActorSystem("FitCars")
+  implicit val materializer = ActorMaterializer()
+
+  val data = scala.io.Source.fromFile("cars.csv").getLines.toVector.
+    map(a => a.split(",")).
+    map(rs => Data(rs(1).toDouble, rs(2).toDouble, None, None, None))
+
+  // define the model
+    val poissonParams = LeafParameter(
+    GaussianParameter(0.3, 0.5),
+    None,
+    BrownianParameter(0.1, 1.0))
+  val seasonalParams = LeafParameter(
+    GaussianParameter(DenseVector.fill(6)(0.3),
+      diag(DenseVector.fill(6)(0.5))),
+    None,
+    OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
+
+  val initParams = poissonParams |+| seasonalParams
+  val unparamMod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
+
+  val iterations = 10000
+  val particles = Vector(100, 200, 500, 1000)
+
+  val mll = pfMll(data.sortBy(_.t), unparamMod) _
+
+  Source(particles.zip(1 to 4)).
+    mapAsync(parallelism = 4){ case (n, chain) =>
+      val iters = ParticleMetropolis(mll(n), initParams, Parameters.perturb(0.1)).iters.draw
+
+      println(s"""Running chain $chain with $particles particles, $iterations iterations""")
+
+      iters.
+        zip(Source(Stream.from(1))).
+        map{ case (x, i) => (i, x.params) }.
+        take(iterations).
+        map{ case (i, p) => ByteString(s"$i, $p\n") }.
+        runWith(FileIO.toFile(new File(s"cars-$iterations-$particles.csv")))
+      
+      iters.
+        via(monitorStream(1000, chain)).
+        runWith(Sink.ignore)
+    }.
+    runWith(Sink.onComplete { _ =>
+      system.shutdown()
+    })
+}

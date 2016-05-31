@@ -36,7 +36,7 @@ object StateSpace {
   }
 
   /**
-    * Steps the leftmost state by the value of the parameter "a" 
+    * Steps the state by the value of the parameter "a" 
     * multiplied by the time increment "dt"
     * @param p a parameter Map
     * @return a function from (State, dt) => State, with the
