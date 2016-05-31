@@ -82,9 +82,10 @@ object MultipleObservations {
        // define the particle filter using 200 particles and the same poisson model we generated the data from
        val mll = pfMllFold(data.sortBy(_.t), poissonMod)(200)
 
-       // PMMH is an Akka stream of iterations, meaning we can write asynchronously to a file
+       // PMMH is a random Akka stream, this
+       // means we can write asynchronously to a file
        // without holding all iterations in memory
-       ParticleMetropolis(mll, p, Parameters.perturb(0.1)).iters.
+       ParticleMetropolis(mll, p, Parameters.perturb(0.1)).iters.draw.
          map(x => x.params).
          take(10000).
          map(a => ByteString(a + "\n")).

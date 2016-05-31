@@ -2,6 +2,7 @@ package model
 
 import breeze.numerics.{exp, log}
 import breeze.stats.distributions.{Gaussian, Uniform, Exponential, Rand, ContinuousDistr, Gamma, Multinomial, MultivariateGaussian}
+import breeze.stats.distributions.Rand._
 import breeze.linalg.{linspace, DenseVector, DenseMatrix, diag}
 import breeze.stats.{mean, variance}
 import scala.collection.parallel.immutable.ParVector
@@ -82,6 +83,74 @@ object Filtering {
     })._2
   }
 
+  case class PfStateRand(
+    t0: Time,
+    observation: Option[Observation],
+    particles: Vector[State],
+    ll: LogLikelihood,
+    meanState: State,
+    intervals: IndexedSeq[CredibleInterval])
+
+  def logSumExp(w: Vector[LogLikelihood]): (Vector[LogLikelihood], LogLikelihood) = {
+      val max = w.max
+      (w map {a => exp(a - max) }, max)
+  }
+
+  def pfStepRand(obs: Data, mod: Model, n: Int): PfStateRand => Rand[PfStateRand] = s => {
+    val dt = obs.t - s.t0
+
+    for {
+      x1: Seq[State] <- promote((s.particles map (mod.stepFunction(_, dt))))
+      w1: Vector[LogLikelihood] = x1.toVector map (a => mod.dataLikelihood(mod.link(mod.f(a, obs.t)), obs.observation))
+      (w: Vector[LogLikelihood], max: LogLikelihood) = logSumExp(w1)
+      xInd: Vector[Int] = sample(n, DenseVector(w.toArray))
+      x2: Vector[State] = xInd map ( x1(_) )
+      meanState: State = weightedMean(x2, w)
+      intervals: IndexedSeq[CredibleInterval] = getAllCredibleIntervals(x2, 0.99)
+    } yield
+      PfStateRand(obs.t, Some(obs.observation), x2,
+        s.ll + max + log(breeze.stats.mean(w)), meanState, intervals)
+  }
+
+  /**
+    * This particle filter returns a Distribution of LogLikelihood (Does this make sense?)
+    * My logic is that the LogLikelihood is random and changes each time 
+    * depending on the distribution of the particles, does it need to be in a Rand?
+    */
+  def pfMllRand(
+    data: Vector[Data],
+    unparamMod: Parameters => Model,
+    n: Int): Parameters => Rand[LogLikelihood] = p => {
+
+    val mod = unparamMod(p)
+    val times = data.map(_.t)
+    val x0 = promote(Vector.fill(n)(mod.x0))
+    val init: Rand[PfStateRand] =
+      x0 map (a => PfStateRand(0.0, None, a.toVector, 0.0, State.zero, IndexedSeq()))
+
+    data.foldLeft(init)((a, y) => a flatMap (b => pfStepRand(y, mod, n)(b)) ) map (_.ll)
+  }
+
+  def pfRand(
+    data: Vector[Data],
+    unparamMod: Parameters => Model,
+    n: Int): Parameters => Rand[PfStateRand] = p => {
+
+    val mod = unparamMod(p)
+    val times = data.map(_.t)
+    val x0 = promote(Vector.fill(n)(mod.x0))
+    val init: Rand[PfStateRand] =
+      x0 map (a => PfStateRand(0.0, None, a.toVector, 0.0, State.zero, IndexedSeq()))
+
+    data.foldLeft(init)((a, y) => a flatMap (b => pfStepRand(y, mod, n)(b)) )
+  }
+
+  /**
+    * Determines the marginal likelihood of a model given observed data
+    * @param data observed data
+    * @param unparamMod an unparameterised model represented as a function from parameters to model
+    * @param n the total number of particles to use in the particle filter
+    */
   def pfMll(
     data: Vector[Data],
     unparamMod: Parameters => Model)(
@@ -412,7 +481,7 @@ object Filtering {
 
     Source(1 to chains).
       mapAsync(parallelism = 4){ chain =>
-        val iters = ParticleMetropolis(mll(particles), initParams, perturb).iters
+        val iters = ParticleMetropolis(mll(particles), initParams, perturb).iters.draw
 
         println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
 
@@ -431,79 +500,6 @@ object Filtering {
         system.shutdown()
       })
   }
-
-  // /**
-  //   * Perturbs the parameters of a Stochastic Differential Equation
-  //   */
-  // def sdePerturb(delta: Double, logdelta: Double): SdeParameter => Rand[SdeParameter] = p => p match {
-  //   case BrownianParameter(m, s) => new Rand[SdeParameter] {
-  //     def draw = {
-  //       // s is non-negative, propose on log scale
-  //       BrownianParameter(
-  //         m map(_ + Gaussian(0, delta).draw),
-  //         s map (x => x * exp(Gaussian(0, logdelta).draw)))
-  //     }
-  //   }
-  //   case OrnsteinParameter(theta, alpha, sigma) => new Rand[SdeParameter] {
-  //     def draw = {
-  //       // alpha and sigme are non-negative, propose on log-scale
-  //       OrnsteinParameter(
-  //         theta map (Gaussian(_, delta).draw),
-  //         alpha map (x => x * exp(Gaussian(0, logdelta).draw)),
-  //         sigma map (x => x * exp(Gaussian(0, logdelta).draw)))
-  //     }
-  //   }
-  //   case StepConstantParameter(a) =>
-  //     new Rand[SdeParameter] {
-  //       def draw = StepConstantParameter(
-  //         a map (Gaussian(_, delta).draw))
-  //     }
-  // }
-
-  // /**
-  //   * Perturbs the initial parameters of the state space
-  //   */
-  // def initParamPerturb(delta: Double, logDelta: Double): StateParameter => Rand[StateParameter] = p => p match {
-  //   case GaussianParameter(m, s) => new Rand[StateParameter] {
-  //     def draw = {
-  //       GaussianParameter(
-  //         m map (Gaussian(_, delta).draw),
-  //         diag(diag(s) map (x => x * exp(Gaussian(0, logDelta).draw))))
-  //     }
-  //   }
-  // }
-
-  // /**
-  //   * Takes a tree of parameters, changes the value at the leaves of all of them a small amount,
-  //   * then returns a parameter tree with the same structure
-  //   * @return a parameter tree with the same structure, but different values
-  //   */
-  // def gaussianPerturb(delta: Double, logdelta: Double): (Parameters) => Rand[Parameters] = p => p match {
-  //   case LeafParameter(initParams, v, sde) => 
-  //     for {
-  //       init <- initParamPerturb(delta, logdelta)(initParams)
-  //       sde <- sdePerturb(delta, logdelta)(sde)
-  //     } yield LeafParameter(init, v map (x => x * exp(Gaussian(0, logdelta).draw)), sde)
-      
-  //   case BranchParameter(lp, rp) =>
-  //     for {
-  //       l <- gaussianPerturb(delta, logdelta)(lp)
-  //       r <- gaussianPerturb(delta, logdelta)(rp)
-  //     } yield BranchParameter(l, r)
-  // }
-
-  /**
-    * A random walk draw from a multivariate gaussian distribution
-    */
-  def mvnPropose(covariance: DenseMatrix[Double]): Parameters => Rand[Parameters] = ???
-
-  //   val noise = MultivariateGaussian(DenseVector.zeros[Double](covariance.rows), covariance).draw
-  // }
-
-  /**
-    * A diagnostic function for the PMMH algorithm
-    */
-  def noPerturb: Parameters => Rand[Parameters] = p => new Rand[Parameters] { def draw = p }
 
   /**
     * Get the credible intervals of the nth state vector

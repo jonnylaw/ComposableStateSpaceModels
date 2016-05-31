@@ -130,7 +130,7 @@ object DetermineBernoulliParameters extends App {
   // this means we can write the iterations to a file as they are generated
   // therefore we use constant time memory even for large MCMC runs
   val delta = Vector(0.25, 1.0, 0.2, 0.1, 0.2)
-  val iters = ParticleMetropolis(mll, p, Parameters.perturbIndep(delta)).iters
+  val iters = ParticleMetropolis(mll, p, Parameters.perturbIndep(delta)).iters.draw
 
   iters.
     via(monitorStream(1000, 1)).

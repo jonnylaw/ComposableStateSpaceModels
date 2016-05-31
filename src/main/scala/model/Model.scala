@@ -22,10 +22,6 @@ trait Model extends Serializable {
   def dataLikelihood: (Eta, Observation) => LogLikelihood
 }
 
-trait UnparamModel extends (Parameters => Model) {
-  def |+|(that: UnparamModel): UnparamModel = ???
-}
-
 object Model {
   def op(mod1: Parameters => Model, mod2: Parameters => Model): Parameters => Model = p => new Model {
 
