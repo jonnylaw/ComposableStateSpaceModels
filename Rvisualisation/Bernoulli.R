@@ -13,7 +13,7 @@ system("cd ~/Desktop/ComposableModels/ && sbt \"run-main SimulateOrnstein\"")
 orn = read.csv("~/Desktop/ComposableModels/OrnsteinSims.csv", header = F,
                col.names = c("Time", "Value"))
 
-png("~/Desktop/ComposableModels/Figures/OrsteinSims.png")
+png("~/Desktop/ComposableModels/Figures/OrnsteinSims.png")
 orn %>%
   ggplot(aes(x = Time, y = Value)) + geom_line()
 dev.off()
@@ -72,8 +72,8 @@ dev.off()
 ############################
 
 system("cd ~/Desktop/ComposableModels/ && sbt \"run-main FilterBernoulli\"")
-bernFiltered = read.csv("~/Desktop/ComposableModels/BernoulliFiltered.csv", header = F)
-colnames(bernFiltered) <- c("Time", "Value", "PredState", "Lower", "Upper")
+bernFiltered = read.csv("~/Desktop/ComposableModels/BernoulliFiltered.csv", header = F,
+                        col.names = c("Time", "Value", "PredState", "Lower", "Upper"))
 
 png("~/Desktop/ComposableModels/Figures/BernoulliFiltered.png")
 bern %>%
@@ -102,12 +102,12 @@ plotIters = function(iters, variable, burnin, thin) {
   grid.arrange(p1, p2, p3, p4)
 }
 
-## Actual Parameters m0 = 6.0, c0 = 1.0, theta = 6.0, alpha = 0.05, sigma = 1.0
+## Actual Parameters m0 = 6.0, c0 = 1.0, theta = 1.0, alpha = 0.05, sigma = 1.0
 
 summary(mcmc(bernMcmc))
 
 png("~/Desktop/ComposableModels/Figures/BernoulliMCMC.png")
-plotIters(bernMcmc, 1:2, 0, 10)
+plotIters(bernMcmc, 3:5, 0, 1)
 dev.off()
 
 ##############################

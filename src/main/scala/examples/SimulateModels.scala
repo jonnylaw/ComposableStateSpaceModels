@@ -129,7 +129,7 @@ object DetermineBernoulliParameters extends App {
   // the PMMH algorithm is defined as an Akka stream,
   // this means we can write the iterations to a file as they are generated
   // therefore we use constant time memory even for large MCMC runs
-  val delta = Vector(0.05, 0.5, 0.1, 0.05, 0.1)
+  val delta = Vector(0.25, 1.0, 0.2, 0.1, 0.2)
   val iters = ParticleMetropolis(mll, p, Parameters.perturbIndep(delta)).iters
 
   iters.
