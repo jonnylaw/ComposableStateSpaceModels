@@ -22,11 +22,13 @@ trait MetropolisHastings {
     */
   def logTransition(from: Parameters, to: Parameters): LogLikelihood
 
+
   /**
     * Initial parameters as a distribution to be drawn from
-    * This should feature in the acceptance ratio... Unless the prior is flat
     */
-  val initialParams: Rand[Parameters]
+  val initialParams: Parameters
+
+  val initialRandParams: Rand[Parameters] = new Rand[Parameters] { def draw = initialParams }
 
   /**
     * The likelihood function of the model, typically a pseudo-marginal likelihood for 
@@ -34,10 +36,27 @@ trait MetropolisHastings {
     */
   def logLikelihood: Parameters => LogLikelihood
 
+  def mhStep: MetropState => Option[(MetropState, MetropState)] = p => {
+    val propParams = proposal(p.params).draw
+    val propll = logLikelihood(propParams)
+    val a = propll - p.ll + logTransition(propParams, p.params) - logTransition(p.params, propParams)
+
+    if (math.log(Uniform(0, 1).draw)) {
+      Some((MetropState(propll, propParams, p.accepted + 1), p))
+    } else {
+      Some((p, p))
+    }
+  }
+
+  def iters: Source[MetropState, Any] = {
+    val initState = MetropState(logLikelihood(initialParams), initialParams, 0)
+    Source.unfold(initState)(mhStep)
+  }
+
   /**
     * A single step of the metropolis hastings algorithm
     */
-  def mhStep: MetropState => Rand[MetropState] = p => {
+  def mhStepRand: MetropState => Rand[MetropState] = p => {
     for {
       propParams <- proposal(p.params)
       propll = logLikelihood(propParams)
@@ -55,16 +74,16 @@ trait MetropolisHastings {
     */
   def baseIters: Rand[Stream[MetropState]] = {
     val init: Rand[MetropState] = for {
-      p <- initialParams
+      p <- initialRandParams
     } yield (MetropState(logLikelihood(p), p, 0))
-    promote(iterate(init)(x => x flatMap mhStep))
+    promote(iterate(init)(x => x flatMap mhStepRand))
   }
 
   /**
     * Generate an Akka stream of iterations from the MH algorithm with 
     * log likelihood, total accepted and parameters
     */
-  def iters: Rand[Source[MetropState, Any]] = {
+  def randIters: Rand[Source[MetropState, Any]] = {
     baseIters map (Source(_))
   }
 
@@ -72,13 +91,13 @@ trait MetropolisHastings {
     * Generate an Akka stream of Parameters
     */
   def params: Rand[Source[Parameters, Any]] = {
-    iters map (_.map(_.params))
+    randIters map (_.map(_.params))
   }
 }
 
 case class ParticleMetropolis(
   mll: Parameters => LogLikelihood,
-  initParams: Rand[Parameters],
+  initParams: Parameters,
   perturb: Parameters => Rand[Parameters]) extends MetropolisHastings{
 
   def logLikelihood: Parameters => LogLikelihood = mll
@@ -87,35 +106,14 @@ case class ParticleMetropolis(
   val initialParams = initParams
 }
 
-object ParticleMetropolis {
-  def apply(
-    mll: Parameters => LogLikelihood,
-    initParams: Parameters,
-    perturb: Parameters => Rand[Parameters]) = {
-
-    new ParticleMetropolis(mll, new Rand[Parameters] { def draw = initParams }, perturb)
-  }
-}
-
 case class ParticleMetropolisHastings(
   mll: Parameters => LogLikelihood,
   transitionProb: (Parameters, Parameters) => LogLikelihood,
   propParams: Parameters => Rand[Parameters],
-  initParams: Rand[Parameters]) extends MetropolisHastings {
+  initParams: Parameters) extends MetropolisHastings {
 
   def logLikelihood: Parameters => LogLikelihood = mll
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = transitionProb(from, to)
   def proposal: Parameters => Rand[Parameters] = propParams
   val initialParams = initParams
-}
-
-
-object ParticleMetropolisHastings {
-  def apply(
-    mll: Parameters => LogLikelihood,
-    transitionProb: (Parameters, Parameters) => LogLikelihood,
-    propParams: Parameters => Rand[Parameters],
-    initParams: Parameters): ParticleMetropolisHastings = {
-    new ParticleMetropolisHastings(mll, transitionProb, propParams, new Rand[Parameters] { def draw = initParams })
-  }
 }

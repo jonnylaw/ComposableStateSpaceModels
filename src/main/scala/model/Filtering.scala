@@ -481,7 +481,7 @@ object Filtering {
 
     Source(1 to chains).
       mapAsync(parallelism = 4){ chain =>
-        val iters = ParticleMetropolis(mll(particles), initParams, perturb).iters.draw
+        val iters = ParticleMetropolis(mll(particles), initParams, perturb).iters
 
         println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
 

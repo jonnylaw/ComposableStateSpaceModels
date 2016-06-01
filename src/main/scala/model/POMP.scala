@@ -1,7 +1,7 @@
 package model
 
 import breeze.numerics.{cos, sin, sqrt, exp, log}
-import breeze.stats.distributions.{Bernoulli, Poisson, Gaussian, Rand, MultivariateGaussian}
+import breeze.stats.distributions.{Bernoulli, Poisson, Gaussian, Rand, MultivariateGaussian, StudentsT}
 import breeze.linalg.{DenseMatrix, DenseVector}
 import scala.language.implicitConversions
 import java.io.Serializable
@@ -16,6 +16,39 @@ object POMP {
 
   implicit def bool2obs(b: Boolean): Observation = if (b) 1.0 else 0.0
   implicit def obs2bool(o: Observation): Boolean = if (o == 0.0) false else true
+
+  def studentTModel(stepFun: (SdeParameter) => (State, TimeIncrement) => Rand[State], df: Int): Parameters => Model = p => new Model {
+    def observation = x => {
+      new Rand[Observation] { 
+        def draw = p match {
+          case LeafParameter(_,v,_) => v match {
+            case Some(scale) => StudentsT(df).draw*scale + x.head 
+          }
+        }
+      }
+    }
+
+    def f(s: State, t: Time) = s.head
+
+    def x0 = p match {
+        case LeafParameter(stateParam, _, _) =>
+          stateParam match {
+            case GaussianParameter(m0, c0) =>
+              MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+          }
+    }
+
+    def stepFunction = (x, dt) => p match {
+      case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
+    }
+
+    def dataLikelihood = (s, y) =>
+        p match {
+          case LeafParameter(_,v,_  @unchecked) => v match {
+            case Some(scale  @unchecked) => 1/scale * StudentsT(df).logPdf((y - s.head) / scale)
+          }
+        }
+  }
 
   def SeasonalModel(
     period: Int,

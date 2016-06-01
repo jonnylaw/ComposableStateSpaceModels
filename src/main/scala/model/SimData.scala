@@ -45,6 +45,24 @@ object SimData {
   }
 
   /**
+    * Simulates an SDE at any specified times
+    */
+  def simSdeIrregular(
+    x0: State,
+    times: List[Time],
+    stepFun: (State, TimeIncrement) => Rand[State]): Vector[Sde] = {
+
+    val t0 = times.head
+
+    times.tail.foldLeft(Vector(Sde(t0, x0)))((a, t1) => {
+      val dt = t1 - a.head.time
+      val x1 = stepFun(a.head.state, dt).draw
+
+      Sde(t1, x1) +: a
+    }).reverse
+  }
+
+  /**
     * Specialist function for simulating the log-Gaussian Cox-Process using thinning
     */
   def simLGCP(

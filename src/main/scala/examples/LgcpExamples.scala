@@ -62,7 +62,7 @@ object FilterLgcp extends App {
 
 object GetLgcpParams extends App {
   import scala.concurrent.ExecutionContext.Implicits.global
-  implicit val system = ActorSystem("SimBernoulliParameters")
+  implicit val system = ActorSystem("GetLgcpParams")
   implicit val materializer = ActorMaterializer()
 
   val data = scala.io.Source.fromFile("lgcpsims.csv").getLines.
@@ -84,7 +84,7 @@ object GetLgcpParams extends App {
     // the PMMH algorithm is defined as an Akka stream,
   // this means we can write the iterations to a file as they are generated
   // therefore we use constant time memory even for large MCMC runs
-  val iters = ParticleMetropolis(mll, params, Parameters.perturb(0.1)).iters.draw
+  val iters = ParticleMetropolis(mll, params, Parameters.perturb(0.1)).iters
 
   iters.
     via(monitorStream(1000, 1)).

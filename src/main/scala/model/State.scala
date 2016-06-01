@@ -21,6 +21,12 @@ sealed trait State {
 case class LeafState(data: DenseVector[Double]) extends State with Serializable
 case class BranchState(left: State, right: State) extends State with Serializable
 
+object LeafState {
+  def apply(a: Double): LeafState = {
+    new LeafState(DenseVector(a))
+  }
+}
+
 object State {
   def combine(state1: State, state2: State): State = {
     if (state1.isEmpty) {
@@ -33,7 +39,7 @@ object State {
   }
 
   def zero: State = {
-    LeafState(DenseVector())
+    LeafState(DenseVector[Double]())
   }
 
   def head(s: State): Double = s match {

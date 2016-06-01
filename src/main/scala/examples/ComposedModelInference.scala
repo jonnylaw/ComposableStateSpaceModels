@@ -12,7 +12,7 @@ import akka.util.ByteString
 import model._
 import model.Model._
 import model.Filtering._
-import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel}
+import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel, studentTModel}
 import model.DataTypes._
 import model.{State, Model}
 import model.SimData._
@@ -156,11 +156,12 @@ object FilterOnline extends App {
   system.shutdown
 }
 
-object cars extends App {
+object Cars extends App {
   implicit val system = ActorSystem("FitCars")
   implicit val materializer = ActorMaterializer()
 
   val data = scala.io.Source.fromFile("cars.csv").getLines.toVector.
+    drop(1).
     map(a => a.split(",")).
     map(rs => Data(rs(1).toDouble, rs(2).toDouble, None, None, None))
 
@@ -168,7 +169,7 @@ object cars extends App {
     val poissonParams = LeafParameter(
     GaussianParameter(0.3, 0.5),
     None,
-    BrownianParameter(0.1, 1.0))
+    OrnsteinParameter(0.1, 0.5, 0.3))
   val seasonalParams = LeafParameter(
     GaussianParameter(DenseVector.fill(6)(0.3),
       diag(DenseVector.fill(6)(0.5))),
@@ -176,7 +177,7 @@ object cars extends App {
     OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
 
   val initParams = poissonParams |+| seasonalParams
-  val unparamMod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
+  val unparamMod = Model.op(PoissonModel(stepOrnstein), SeasonalModel(24, 3, stepOrnstein))
 
   val iterations = 10000
   val particles = Vector(100, 200, 500, 1000)
@@ -185,16 +186,16 @@ object cars extends App {
 
   Source(particles.zip(1 to 4)).
     mapAsync(parallelism = 4){ case (n, chain) =>
-      val iters = ParticleMetropolis(mll(n), initParams, Parameters.perturb(0.1)).iters.draw
+      val iters = ParticleMetropolis(mll(n), initParams, Parameters.perturb(0.5)).iters
 
-      println(s"""Running chain $chain with $particles particles, $iterations iterations""")
+      println(s"""Running chain $chain with $n particles, $iterations iterations""")
 
       iters.
         zip(Source(Stream.from(1))).
         map{ case (x, i) => (i, x.params) }.
         take(iterations).
         map{ case (i, p) => ByteString(s"$i, $p\n") }.
-        runWith(FileIO.toFile(new File(s"cars-$iterations-$particles.csv")))
+        runWith(FileIO.toFile(new File(s"cars-$iterations-$n.csv")))
       
       iters.
         via(monitorStream(1000, chain)).
@@ -203,4 +204,46 @@ object cars extends App {
     runWith(Sink.onComplete { _ =>
       system.shutdown()
     })
+}
+
+object StudentT extends App {
+
+  val p = LeafParameter(
+    GaussianParameter(0.0, 3.0),
+    Some(1.0),
+    BrownianParameter(0.3, 1.0))
+
+  val unparamMod = studentTModel(stepBrownian, 3)
+  val mod = unparamMod(p)
+
+  val times = (1 to 100).map(_.toDouble).toList
+  val sims = simData(times, mod)
+
+  val pw = new PrintWriter("tdistSims.csv")
+  pw.write(sims.mkString("\n"))
+  pw.close()
+
+}
+
+object SeasStudentT extends App {
+  val tparams = LeafParameter(
+    GaussianParameter(0.0, 3.0),
+    Some(0.3),
+    OrnsteinParameter(3.0, 1.0, 0.5))
+  val seasParams = LeafParameter(
+    GaussianParameter(DenseVector.fill(2)(0.0), diag(DenseVector.fill(2)(3.0))),
+    None,
+    OrnsteinParameter(DenseVector.fill(2)(2.0), DenseVector.fill(2)(0.5), DenseVector.fill(2)(0.3)))
+
+  val p = tparams |+| seasParams
+
+  val unparamMod = Model.op(studentTModel(stepOrnstein, 5), SeasonalModel(24, 1, stepOrnstein))
+  val mod = unparamMod(p)
+
+  val times = (1 to 7*24).map(_.toDouble).toList
+  val sims = simData(times, mod)
+
+  val pw = new PrintWriter("seastdistSims.csv")
+  pw.write(sims.mkString("\n"))
+  pw.close()
 }

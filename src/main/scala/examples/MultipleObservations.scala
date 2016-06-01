@@ -85,7 +85,7 @@ object MultipleObservations {
        // PMMH is a random Akka stream, this
        // means we can write asynchronously to a file
        // without holding all iterations in memory
-       ParticleMetropolis(mll, p, Parameters.perturb(0.1)).iters.draw.
+       ParticleMetropolis(mll, p, Parameters.perturb(0.1)).iters.
          map(x => x.params).
          take(10000).
          map(a => ByteString(a + "\n")).

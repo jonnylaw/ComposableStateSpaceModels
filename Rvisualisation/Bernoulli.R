@@ -9,11 +9,11 @@ theme_set(theme_minimal())
 #####################
 # Simulate Ornstein #
 #####################
-system("cd ~/Desktop/ComposableModels/ && sbt \"run-main SimulateOrnstein\"")
-orn = read.csv("~/Desktop/ComposableModels/OrnsteinSims.csv", header = F,
+system("sbt \"run-main SimulateOrnstein\"")
+orn = read.csv("OrnsteinSims.csv", header = F,
                col.names = c("Time", "Value"))
 
-png("~/Desktop/ComposableModels/Figures/OrnsteinSims.png")
+png("/Figures/OrnsteinSims.png")
 orn %>%
   ggplot(aes(x = Time, y = Value)) + geom_line()
 dev.off()
@@ -22,11 +22,11 @@ dev.off()
 # Simulate Binomial #
 #####################
 
-system("cd ~/Desktop/ComposableModels/ && sbt \"run-main SimulateBernoulli\"")
-bern = read.csv("~/Desktop/ComposableModels/BernoulliSims.csv", header = F,
+system("sbt \"run-main SimulateBernoulli\"")
+bern = read.csv("BernoulliSims.csv", header = F,
                 col.names = c("Time", "Value", "Eta", "Gamma", "State"))
 
-png("~/Desktop/ComposableModels/Figures/BernoulliSims.png")
+png("Figures/BernoulliSims.png")
 p1 = bern %>%
   ggplot(aes(x = Time, y = Value)) + geom_step() + 
   ggtitle("Bernoulli Observations")
@@ -44,11 +44,11 @@ dev.off()
 # Seasonal Binomial #
 #####################
 
-system("cd ~/Desktop/ComposableModels/ && sbt \"run-main SeasonalBernoulli\"")
-bernSeas = read.csv("~/Desktop/ComposableModels/seasonalBernoulliSims.csv", header = F,
+system("sbt \"run-main SeasonalBernoulli\"")
+bernSeas = read.csv("seasonalBernoulliSims.csv", header = F,
                     col.names = c("Time", "Value", "Eta", "Gamma", sapply(1:7, function(i) paste("State", i, sep = ""))))
 
-png("~/Desktop/ComposableModels/Figures/seasonalBernoulliSims.png")
+png("Figures/seasonalBernoulliSims.png")
 p1 = bernSeas %>%
   ggplot(aes(x = Time, y = Value)) + geom_step() + 
   ggtitle("Bernoulli Observations")
@@ -71,8 +71,8 @@ dev.off()
 # Filter Seasonal Binomial #
 ############################
 
-system("cd ~/Desktop/ComposableModels/ && sbt \"run-main FilterBernoulli\"")
-bernFiltered = read.csv("~/Desktop/ComposableModels/BernoulliFiltered.csv", header = F,
+system("sbt \"run-main FilterBernoulli\"")
+bernFiltered = read.csv("BernoulliFiltered.csv", header = F,
                         col.names = c("Time", "Value", "PredState", "Lower", "Upper"))
 
 png("~/Desktop/ComposableModels/Figures/BernoulliFiltered.png")
@@ -87,8 +87,8 @@ dev.off()
 # Determine Parameters #
 ########################
 
-system("cd ~/Desktop/ComposableModels/ &&  sbt \"run-main DetermineBernoulliParameters\"")
-bernMcmc = read.csv("~/Desktop/ComposableModels/BernoulliMCMC.csv", header = F)
+system("sbt \"run-main DetermineBernoulliParameters\"")
+bernMcmc = read.csv("BernoulliMCMC.csv", header = F)
 colnames(bernMcmc) <- c("m0", "c0", "theta", "alpha", "sigma")
 
 plotIters = function(iters, variable, burnin, thin) {
@@ -106,7 +106,7 @@ plotIters = function(iters, variable, burnin, thin) {
 
 summary(mcmc(bernMcmc))
 
-png("~/Desktop/ComposableModels/Figures/BernoulliMCMC.png")
+png("Figures/BernoulliMCMC.png")
 plotIters(bernMcmc, 3:5, 0, 1)
 dev.off()
 
