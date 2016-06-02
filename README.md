@@ -8,7 +8,7 @@ Usage
 To get started using this library add the following to `build.sbt`
 
 ```scala
-libraryDependencies += "com.github.jonnylaw" %% "composablestatespacemodels" % "1.0"
+libraryDependencies += "com.github.jonnylaw" %% "composablestatespacemodels" % "1.0.0"
 ```
 
 Introduction to Partially Observed Markov Process Models
