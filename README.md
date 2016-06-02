@@ -2,15 +2,6 @@
 
 This is a Scala library for continuous time partially observed Markov processes (POMP). Partially observed Markov processes can be used to model time series data, allowing interpolation and forecasting. 
 
-Usage
------
-
-To get started using this library add the following to `build.sbt`
-
-```scala
-libraryDependencies += "com.github.jonnylaw" %% "composablestatespacemodels" % "1.0.0"
-```
-
 Introduction to Partially Observed Markov Process Models
 --------------------------------------------------------
 
