@@ -70,8 +70,9 @@ object Filtering {
       // advance state particles
       val x1 = state map(x => mod.stepFunction(x, dt).draw)
 
-      // Calculate the ll of the propagation of particles given the observation
-      val w1: Vector[LogLikelihood] = x1 map (a => mod.dataLikelihood(mod.link(mod.f(a, y.t)), y.observation))
+      val likelihoodState = x1 map (x => mod.link(mod.f(x, y.t)))
+
+      val w1 = likelihoodState map (l => mod.dataLikelihood(l, y.observation))
 
       val max = w1.max // log-sum-exp trick
       val w = w1 map { a => exp(a - max) }

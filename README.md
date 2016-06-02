@@ -91,7 +91,7 @@ Models are represented as a function from `Parameters => Model`, this means mode
 
 ![Seasonal Bernoulli Model](Figures/seasonalBernoulliSims.png)
 
-## Inference Using a Fully Specified Model
+## Statistical Inference: The Particle Filter
 
 If we have a fully specified model, ie the posterior distributions of the parameters given the data so far are available to us, then we can use a bootstrap particle filter (see [Sequential Monte Carlo Methods in Practice](https://www.springer.com/us/book/9780387951461)) to determine the hidden state space of the observations. Consider the simulated Bernoulli model, the parameters are given by:
 
@@ -142,8 +142,8 @@ val mll = pfMll(data, mod)(200)
 
 val iterations = 10000
 
-ParticleMetropolis(mll, gaussianPerturb(0.2, 0.2)).
-  iters(p).
+ParticleMetropolis(mll, p, Parameters.perturb(0.1)).
+  iters.
   map(s => s.params).
   take(iterations).
   map( p => ByteString(s"$p\n")).
@@ -151,10 +151,6 @@ ParticleMetropolis(mll, gaussianPerturb(0.2, 0.2)).
 ```
 
 Note that the algorithm has been initialised at the same parameter values we used to simulate the model, this kind of prior information is not typically known for real world processes, unless similar processes have been extensively studied. 
-
-Diagnostic output from the MCMC run is presented in the figure below, using [ggmcmc](http://xavier-fim.net/packages/ggmcmc/).
-
-![
 
 ## Online Monitoring of MCMC
 

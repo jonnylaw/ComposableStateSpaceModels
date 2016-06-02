@@ -41,7 +41,7 @@ trait MetropolisHastings {
     val propll = logLikelihood(propParams)
     val a = propll - p.ll + logTransition(propParams, p.params) - logTransition(p.params, propParams)
 
-    if (math.log(Uniform(0, 1).draw)) {
+    if (math.log(Uniform(0, 1).draw) < a) {
       Some((MetropState(propll, propParams, p.accepted + 1), p))
     } else {
       Some((p, p))

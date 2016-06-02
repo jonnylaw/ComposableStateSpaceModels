@@ -162,6 +162,9 @@ object SimData {
     Data(t0, y1, Some(eta), Some(gamma), Some(x1))
   }
 
+  /**
+    * Simulate data from a list of times, allowing for irregular observations
+    */
   def simData(times: Seq[Time], mod: Model): Vector[Data] = {
 
     val x0 = mod.x0.draw
@@ -175,5 +178,19 @@ object SimData {
     }
 
     data.reverse
+  }
+
+  /**
+    * Simulate data as an Akka Stream, with regular time intervals
+    * @param mod The model to simulate from, can be composed or single
+    * @param precision Used to determine the step length, dt = 10^-precision
+    */
+  def simStream(mod: Model, precision: Int, t0: Time): Source[Data, Any] = {
+    val dt = math.pow(10, -precision)
+
+    val x0 = mod.x0.draw
+    val initialObservation = simStep(x0, t0, 0, mod)
+
+    Source.unfold(initialObservation){d => Some((simStep(d.sdeState.get, d.t + dt, dt, mod), d)) }
   }
 }

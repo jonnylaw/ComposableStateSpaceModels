@@ -28,9 +28,10 @@ object SimulateBernoulli extends App {
   val p = LeafParameter(
     GaussianParameter(6.0, 1.0),
     None,
-    OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0))
-  val mod = BernoulliModel(stepOrnstein)
-
+    BrownianParameter(mu = 0.1, sigma = 1.0))
+  
+  val mod = BernoulliModel(stepBrownian)
+  
   val times = (1 to 100).map(_.toDouble).toList
   val sims = simData(times, mod(p))
 
@@ -87,9 +88,9 @@ object FilterBernoulli extends App {
   val p = LeafParameter(
     GaussianParameter(6.0, 1.0),
     None,
-    OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0))
+    BrownianParameter(mu = 0.1, sigma = 1.0))
   
-  val mod = BernoulliModel(stepOrnstein)
+  val mod = BernoulliModel(stepBrownian)
 
   val filtered = bootstrapPf(1000, data, mod)(p)
 
@@ -100,7 +101,7 @@ object FilterBernoulli extends App {
 
 object DetermineBernoulliParameters extends App {
 
-  implicit val system = ActorSystem("SimBernoulliParameters")
+  implicit val system = ActorSystem("DetermineBernoulliParameters")
   implicit val materializer = ActorMaterializer()
 
   // read in the data from a csv file and parse it to a Data object
@@ -117,19 +118,19 @@ object DetermineBernoulliParameters extends App {
    val p = LeafParameter(
     GaussianParameter(6.0, 1.0),
     None,
-    OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0))
+    BrownianParameter(mu = 0.1, sigma = 1.0))
   
-  val mod = BernoulliModel(stepOrnstein)
+  val mod = BernoulliModel(stepBrownian)
 
   // the marginal log-likelihood
-  val mll = pfMllFold(data, mod)(200)
+  val mll = pfMll(data, mod)(200)
 
   val iterations = 10000
 
   // the PMMH algorithm is defined as an Akka stream,
   // this means we can write the iterations to a file as they are generated
   // therefore we use constant time memory even for large MCMC runs
-  val delta = Vector(0.25, 1.0, 0.2, 0.1, 0.2)
+  val delta = Vector(0.5, 0.05, 0.5, 0.2)
   val iters = ParticleMetropolis(mll, p, Parameters.perturbIndep(delta)).iters
 
   iters.
@@ -156,18 +157,7 @@ object FilterBernoulliOnline extends App {
     OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0))
   
   val mod = BernoulliModel(stepOrnstein)(p)
-
-  // specify the initial observation and time increment
-  val initialObservation = simStep(mod.x0.draw, 0.0, 1.0, mod)
-  val dt = 1.0
-
-  // use unfold and simstep to get simulated observations as a stream
-  val observations = Source.unfold(initialObservation){d =>
-    Some((simStep(d.sdeState.get, d.t + dt, dt, mod), d))
-  }.
-    take(100)
-    // zip(Source.tick(1 second, 1 second, Unit)). // throttle the stream so we only see one element a second
-    //    map{ case (a, _) => a }
+  val observations = simStream(mod, 0, t0 = 0.0)
 
   // write the observations to a file
   observations.
@@ -208,4 +198,34 @@ object SimulateOrnstein {
     pw.write(sims.mkString("\n"))
     pw.close()
   }
+}
+
+object Linear extends App {
+  implicit val system = ActorSystem("FilterBernoulliOnline")
+  implicit val materializer = ActorMaterializer()
+
+  val p = LeafParameter(GaussianParameter(3.0, 2.0), Some(1.0), BrownianParameter(0.1, 1.0))
+  val mod = LinearModel(stepBrownian)
+
+  val times = (0.0 to 50.0 by 0.5).toList
+  val sims = simData(times, mod(p))
+
+  val pw = new PrintWriter("LinearSims.csv")
+  pw.write(sims.mkString("\n"))
+  pw.close()
+
+  val n = 500
+  val mll = pfMll(sims, mod)(n)
+
+  val iters = ParticleMetropolis(mll, p, Parameters.perturb(0.1)).iters
+
+  iters.
+    via(monitorStream(1000, 1)).
+    runWith(Sink.ignore)
+
+  iters.
+    map(s => s.params).
+    take(10000).
+    map( p => ByteString(s"$p\n")).
+    runWith(FileIO.toFile(new File("LinearMCMC.csv")))
 }

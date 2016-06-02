@@ -7,6 +7,12 @@ import scala.language.implicitConversions
 import java.io.Serializable
 
 object POMP {
+  type Eta = Vector[Double]
+  type Gamma = Double
+  type Observation = Double
+  type Time = Double
+  type TimeIncrement = Double
+  type LogLikelihood = Double
 
   implicit def bool2obs(b: Boolean): Observation = if (b) 1.0 else 0.0
   implicit def obs2bool(o: Observation): Boolean = if (o == 0.0) false else true
@@ -154,7 +160,13 @@ object POMP {
       }
     }
 
-    override def link(x: Gamma) = Vector(1.0/(1 + exp(-x)))
+    override def link(x: Gamma) = if (x > 6) {
+      Vector(1.0)
+    } else if (x < -6) {
+      Vector(0.0)
+    } else {
+      Vector(1.0/(1 + exp(-x)))
+    }
 
     def f(s: State, t: Time) = s.head
 

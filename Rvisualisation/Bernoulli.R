@@ -106,9 +106,9 @@ plotIters = function(iters, variable, burnin, thin) {
 
 summary(mcmc(bernMcmc))
 
-png("Figures/BernoulliMCMC.png")
-plotIters(bernMcmc, 3:5, 0, 1)
-dev.off()
+# png("Figures/BernoulliMCMC.png")
+plotIters(bernMcmc, 3:5, 0, 10)
+# dev.off()
 
 ##############################
 # Visualise Online Filtering #
