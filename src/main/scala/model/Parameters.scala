@@ -298,6 +298,12 @@ case class StepConstantParameter(a: DenseVector[Double]) extends SdeParameter {
   }
 }
 
+object StepConstantParameter {
+  def apply(a: Double): StepConstantParameter = {
+    new StepConstantParameter(DenseVector(a))
+  }
+}
+
 case object EmptyStepParameter extends SdeParameter {
   def perturb(delta: Double): Rand[SdeParameter] = ???
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???

@@ -43,22 +43,22 @@ class AkkaStreamTest extends FlatSpec with Matchers {
     assert(result == Vector.fill(5)(3.0))
   }
 
-  "read parameter stream" should "read parameters from a file as a stream" in {
-    val params = (1 to 100) map (i => Vector.fill(5)(i.toDouble))
+  // "read parameter stream" should "read parameters from a file as a stream" in {
+  //   val params = (1 to 100) map (i => Vector.fill(5)(i.toDouble))
 
-    val f = new File("parameters.csv")
-    val pw = new PrintWriter(f)
-    pw.write(params.map(_.mkString(",")).mkString("\n"))
-    pw.close()
+  //   val f = new File("parameters.csv")
+  //   val pw = new PrintWriter(f)
+  //   pw.write(params.map(_.mkString(",")).mkString("\n"))
+  //   pw.close()
 
-    val future = readParameterStream(f).take(1).runWith(Sink.head)
-    val result = Await.result(future, 100.millis)
+  //   val future = readParameterStream(f).take(1).runWith(Sink.head)
+  //   val result = Await.result(future, 100.millis)
 
-    f.delete()
+  //   f.delete()
 
-    assert(result.head == 1.0)
-    assert(result == Array.fill(5)(1.0))
-  }
+  //   assert(result.head == 1.0)
+  //   assert(result == Array.fill(5)(1.0))
+  // }
 
   "Average parameters stream" should "read parameters from a file as a stream and calculate the average" in {
     val params = (1 to 100) map (i => Vector.fill(5)(i.toDouble))

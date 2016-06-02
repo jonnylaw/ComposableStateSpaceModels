@@ -7,12 +7,6 @@ import scala.language.implicitConversions
 import java.io.Serializable
 
 object POMP {
-  type Eta = Vector[Double]
-  type Gamma = Double
-  type Observation = Double
-  type Time = Double
-  type TimeIncrement = Double
-  type LogLikelihood = Double
 
   implicit def bool2obs(b: Boolean): Observation = if (b) 1.0 else 0.0
   implicit def obs2bool(o: Observation): Boolean = if (o == 0.0) false else true

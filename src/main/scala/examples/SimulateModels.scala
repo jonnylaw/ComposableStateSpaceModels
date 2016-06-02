@@ -199,7 +199,7 @@ object FilterBernoulliOnline extends App {
 
 object SimulateOrnstein {
   def main(args: Array[String]) = {
-    val p = OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0)
+    val p = OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0)
     val initialState = LeafState(DenseVector(Gaussian(6.0, 1.0).draw))
 
     val sims = simSdeStream(initialState, 0.0, 300.0, 1, stepOrnstein(p)).toVector
