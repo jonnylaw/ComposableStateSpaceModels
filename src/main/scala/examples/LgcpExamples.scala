@@ -1,3 +1,5 @@
+package examples
+
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Source
@@ -81,10 +83,11 @@ object GetLgcpParams extends App {
 
   val iterations = 10000
 
-    // the PMMH algorithm is defined as an Akka stream,
+  // the PMMH algorithm is defined as an Akka stream,
   // this means we can write the iterations to a file as they are generated
   // therefore we use constant time memory even for large MCMC runs
-  val iters = ParticleMetropolis(mll, params, Parameters.perturb(0.1)).iters
+  val delta = Vector(0.2, 0.05, 0.2, 0.05, 0.2)
+  val iters = ParticleMetropolis(mll, params, Parameters.perturbIndep(Vector.fill(5)(0.1))).iters
 
   iters.
     via(monitorStream(1000, 1)).

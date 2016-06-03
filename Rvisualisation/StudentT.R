@@ -22,7 +22,7 @@ data %>%
 
 system("sbt \"run-main examples.SeasStudentT\"")
 seas = read.csv("seastdistSims.csv", header = F,
-                col.names = c("Time", "Observation", "Eta", "Gamma", sapply(1:3, function(i) paste0("State", i))))
+                col.names = c("Time", "Observation", "Eta", "Gamma", sapply(1:7, function(i) paste0("State", i))))
 
 seas %>%
   gather(key = "key", value = "value", -Time) %>%
@@ -32,4 +32,19 @@ seas %>%
 # Filtering seasonal Student T #
 ################################
 
-system
+system("")
+
+
+###################################
+# Recovering Student T parameters #
+###################################
+
+system("sbt \"run-main examples.GetSeasTParams\"")
+iters = read.csv("seasTmcmc.csv", header = F, col.names = c("m0", "c0", "scale", "theta", "alpha", "sigma", 
+                                                            sapply(1:6, function(i) paste0("m0", i)), sapply(1:6, function(i) paste0("c0", i)),
+                                                            sapply(1:6, function(i) paste0("theta", i)), sapply(1:6, function(i) paste0("alpha", i)),
+                                                            sapply(1:6, function(i) paste0("sigma", i))))
+
+mcmc(iters) %>% summary()
+mcmc(iters) %>% plot()
+

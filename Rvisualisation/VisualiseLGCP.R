@@ -10,11 +10,11 @@ theme_set(theme_minimal())
 # Simulate Log-Gaussian Cox #
 #############################
 
-system("cd ~/Desktop/ComposableModels/ && sbt \"run-main SimulateLGCP\"")
-lgcp = read.csv("~/Desktop/ComposableModels/lgcpsims.csv", header = F,
+system("sbt \"run-main examples.SimulateLGCP\"")
+lgcp = read.csv("lgcpsims.csv", header = F,
                 col.names = c("Time", "Value", "Eta", "Gamma", "State"))
 
-png("~/Desktop/ComposableModels/Figures/LgcpSims.png")
+png("Figures/LgcpSims.png")
 p1 = lgcp %>%
   ggplot(aes(x = Time, y = Value)) + geom_point() + 
   ggtitle("Observed Event Times")
@@ -34,11 +34,11 @@ dev.off()
 # Filtering for LGCP #
 ######################
 
-system("cd ~/Desktop/ComposableModels/ && sbt \"run-main FilterLgcp\"")
-lgcpFiltered = read.csv("~/Desktop/ComposableModels/LgcpFiltered.csv", header = F)
+system("sbt \"run-main examples.FilterLgcp\"")
+lgcpFiltered = read.csv("LgcpFiltered.csv", header = F)
 colnames(lgcpFiltered) <- c("Time", "Value", "PredState", "Lower", "Upper")
 
-png("~/Desktop/ComposableModels/Figures/LgcpFiltered.png")
+png("Figures/LgcpFiltered.png")
 lgcpFiltered[,-2] %>%
   left_join(lgcp  %>% dplyr::select(-Gamma, -Eta, -Value), by = "Time") %>%
   gather(key = "key", value = "value", -Time) %>%
@@ -49,3 +49,10 @@ dev.off()
 # MCMC for the LGCP #
 #####################
 
+system("sbt \"run-main examples.GetLgcpParams\"")
+iters = read.csv("LgcpMCMC.csv", header = F, col.names = c("m0", "c0", "theta", "alpha", "sigma"))
+
+## Actual values m0 = 1.0, c0 = 1.0, theta = 1.0, alpha = 0.1, sigma = 0.4
+
+mcmc(iters) %>% summary()
+mcmc(iters) %>% plot()

@@ -231,13 +231,13 @@ object SeasStudentT extends App {
     Some(0.3),
     OrnsteinParameter(3.0, 1.0, 0.5))
   val seasParams = LeafParameter(
-    GaussianParameter(DenseVector.fill(2)(0.0), diag(DenseVector.fill(2)(3.0))),
+    GaussianParameter(DenseVector.fill(6)(0.0), diag(DenseVector.fill(6)(3.0))),
     None,
-    OrnsteinParameter(DenseVector.fill(2)(2.0), DenseVector.fill(2)(0.5), DenseVector.fill(2)(0.3)))
+    OrnsteinParameter(DenseVector.fill(6)(2.0), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.3)))
 
   val p = tparams |+| seasParams
 
-  val unparamMod = Model.op(studentTModel(stepOrnstein, 5), SeasonalModel(24, 1, stepOrnstein))
+  val unparamMod = Model.op(studentTModel(stepOrnstein, 5), SeasonalModel(24, 3, stepOrnstein))
   val mod = unparamMod(p)
 
   val times = (1 to 7*24).map(_.toDouble).toList
@@ -246,4 +246,31 @@ object SeasStudentT extends App {
   val pw = new PrintWriter("seastdistSims.csv")
   pw.write(sims.mkString("\n"))
   pw.close()
+}
+
+object GetSeasTParams extends App {
+  val tparams = LeafParameter(
+    GaussianParameter(0.0, 3.0),
+    Some(0.3),
+    OrnsteinParameter(3.0, 1.0, 0.5))
+  val seasParams = LeafParameter(
+    GaussianParameter(DenseVector.fill(6)(0.0), diag(DenseVector.fill(6)(3.0))),
+    None,
+    OrnsteinParameter(DenseVector.fill(6)(2.0), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.3)))
+
+  val p = tparams |+| seasParams
+
+  val unparamMod = Model.op(studentTModel(stepOrnstein, 5), SeasonalModel(24, 3, stepOrnstein))
+
+  /**
+    * Parse the timestamp and observations from the simulated data
+    */
+  val data = scala.io.Source.fromFile("seastdistSims.csv").getLines.
+    map(a => a.split(",")).
+    map(rs => rs map (_.toDouble)).
+    map(rs => Data(rs.head, rs(1), None, None, None))
+
+  val mll = pfMll(data.sortBy(_.t), unparamMod) _
+
+  runPmmhToFile("seasTmcmc", 4, p, mll, Parameters.perturb(0.1), 200, 10000)
 }
