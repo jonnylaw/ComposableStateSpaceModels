@@ -50,7 +50,7 @@ dev.off()
 #####################
 
 system("sbt \"run-main examples.GetLgcpParams\"")
-iters = read.csv("LgcpMCMC.csv", header = F, col.names = c("m0", "c0", "theta", "alpha", "sigma"))
+iters = read.csv("~/Desktop/LgcpMCMC.csv", header = F, col.names = c("m0", "c0", "theta", "alpha", "sigma"))
 
 ## Actual values m0 = 1.0, c0 = 1.0, theta = 1.0, alpha = 0.1, sigma = 0.4
 

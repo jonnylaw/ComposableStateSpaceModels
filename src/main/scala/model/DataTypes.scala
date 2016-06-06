@@ -65,7 +65,14 @@ object DataTypes {
     state: State,
     intervals: IndexedSeq[CredibleInterval]) {
 
-    override def toString = s"$time, $observation, ${state.flatten.mkString(", ")}, ${intervals.mkString(", ")}"
+    override def toString = {
+      observation match {
+        case Some(x) =>
+          s"$time, $x, ${state.flatten.mkString(", ")}, ${intervals.mkString(", ")}"
+        case None =>
+          s"$time, NA, ${state.flatten.mkString(", ")}, ${intervals.mkString(", ")}"
+      }
+    }
   }
 
   /**

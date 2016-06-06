@@ -348,6 +348,12 @@ object Filtering {
     loop(particles, 0, data, Vector())
   }
 
+  /**
+    * Representation of the state of the particle filter, at each step the previous observation time, t0, and 
+    * particle cloud, particles, is required to compute forward.
+    * The meanState and intervals are recorded in each step, so they can be outputted immediately without having
+    * to calculate these from the particle cloud after
+    */
   case class PfState(
     t0: Time,
     observation: Option[Observation],
@@ -355,11 +361,39 @@ object Filtering {
     meanState: State,
     intervals: IndexedSeq[CredibleInterval])
 
+  /**
+    * Perform one step of a particle filter, for use in scan
+    * @param y a single timestamped observation
+    * @param s the state of the particle filter at the time of the last observation
+    * @param mod the parameterised model to be fit to the process
+    * @param n the number of particles used in the filter, increasing means more accuracy but longer computational time
+    * @return the state of the particle filter after observation y
+    */
+  def filterStepScan(y: Data, s: PfState, mod: Model, n: Int): PfState = {
+    val dt = y.t - s.t0 // calculate time between observations
+
+    val advancedState = s.particles map (x => if (dt == 0) x else mod.stepFunction(x, dt).draw) // advance particle cloud
+
+    val transState = advancedState map (a => mod.link(mod.f(a, y.t)))
+
+    val w1 = transState map (a => mod.dataLikelihood(a, y.observation)) // calculate particle likelihoods
+
+    val max = w1.max // log sum exp
+    val w = w1 map { a => exp(a - max) }
+
+    val xInd = sample(n, DenseVector(w.toArray)) // Multinomial resampling
+    val resampledState = xInd map ( advancedState(_) )
+
+    val meanState = weightedMean(resampledState, w)
+    val intervals = getAllCredibleIntervals(resampledState, 0.99)
+
+    PfState(y.t, Some(y.observation), resampledState, meanState, intervals)
+  }
 
   /**
-    * Perform one step of a particle filter
+    * Perform one step of a particle filter, for use in fold
     * @param y a single observation
-    * @param d state for the particle filter
+    * @param ds state for the particle filter
     * @param mod a POMP model
     * @param n the number of particles
     * @return updated state for the particle filter

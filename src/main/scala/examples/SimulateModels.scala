@@ -152,15 +152,16 @@ object FilterBernoulliOnline extends App {
   implicit val materializer = ActorMaterializer()
 
   val p = LeafParameter(
-    GaussianParameter(6.0, 1.0),
+    GaussianParameter(10.0, 1.0),
     None,
-    OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0))
+    OrnsteinParameter(theta = 6.0, alpha = 0.5, sigma = 1.0))
   
   val mod = BernoulliModel(stepOrnstein)(p)
   val observations = simStream(mod, 0, t0 = 0.0)
 
   // write the observations to a file
   observations.
+    take(100).
     map(a => ByteString(s"$a\n")).
     runWith(FileIO.toFile(new File("OnlineBern.csv")))
 
@@ -168,15 +169,11 @@ object FilterBernoulliOnline extends App {
   val n = 1000
   val t0 = 0.0 // replace with first time point
   val particleCloud = Vector.fill(n)(mod.x0.draw)
-  val initState = Vector(PfState(t0, None, particleCloud, State.zero, IndexedSeq[CredibleInterval]()))
+  val initState = PfState(t0, None, particleCloud, State.zero, IndexedSeq[CredibleInterval]())
 
-  // use fold to filter a stream
-  // fold will only output once the stream has terminated
-  // but we can print, or write to a file inside the fold
+  // Use scan to filter a stream, which allows us to output the estimated state as the observations arrive
   observations.
-    fold(initState)((d, y) => filterStep(y, d, mod, 200)).
-    map(d => d.reverse).
-    mapConcat(identity). // from Stream(Vector(...)) -> Stream(...)
+    scan(initState)((d, y) => filterStepScan(y, d, mod, 200)).
     map(s => PfOut(s.t0, s.observation, s.meanState, s.intervals)).
     drop(1). // drop the initial state, with no corresponding observation
     map(a => ByteString(s"$a\n")).

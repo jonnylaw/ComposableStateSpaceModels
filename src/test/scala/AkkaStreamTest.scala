@@ -57,7 +57,7 @@ class AkkaStreamTest extends FlatSpec with Matchers {
   //   f.delete()
 
   //   assert(result.head == 1.0)
-  //   assert(result == Array.fill(5)(1.0))
+  //   assert(result.map(_.toDouble) == Array.fill(5)(1.0))
   // }
 
   "Average parameters stream" should "read parameters from a file as a stream and calculate the average" in {
@@ -69,7 +69,7 @@ class AkkaStreamTest extends FlatSpec with Matchers {
     pw.close()
 
     val future = cleanParameterFlow(f, 10, 1, 100).run
-    val result = Await.result(future, 100.millis)
+    val result = Await.result(future, 1000.millis)
 
     f.delete()
 

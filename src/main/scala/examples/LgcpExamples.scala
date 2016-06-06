@@ -62,40 +62,42 @@ object FilterLgcp extends App {
   pw.close()
 }
 
-object GetLgcpParams extends App {
-  import scala.concurrent.ExecutionContext.Implicits.global
-  implicit val system = ActorSystem("GetLgcpParams")
-  implicit val materializer = ActorMaterializer()
+object GetLgcpParams {
+  def main(args: Array[String]): Unit = {
+    import scala.concurrent.ExecutionContext.Implicits.global
+    implicit val system = ActorSystem("GetLgcpParams")
+    implicit val materializer = ActorMaterializer()
 
-  val data = scala.io.Source.fromFile("lgcpsims.csv").getLines.
-    map(a => a.split(",")).
-    map(rs => Data(rs.head.toDouble, rs(1).toDouble, None, None, None)).
-    toVector
+    val data = scala.io.Source.fromFile("lgcpsims.csv").getLines.
+      map(a => a.split(",")).
+      map(rs => Data(rs.head.toDouble, rs(1).toDouble, None, None, None)).
+      toVector
 
-  val params = LeafParameter(
-    GaussianParameter(1.0, 1.0),
-    None,
-    OrnsteinParameter(1.0, 0.1, 0.4))
+    val params = LeafParameter(
+      GaussianParameter(1.0, 1.0),
+      None,
+      OrnsteinParameter(1.0, 0.1, 0.4))
 
-  val mod = LogGaussianCox(stepOrnstein)
+    val mod = LogGaussianCox(stepOrnstein)
 
-  val mll = pfLGCPmll(data.sortBy(_.t), mod, 2)(200)
+    val mll = pfLGCPmll(data.sortBy(_.t), mod, 2)(250)
 
-  val iterations = 10000
+    val iterations = 10000
 
-  // the PMMH algorithm is defined as an Akka stream,
-  // this means we can write the iterations to a file as they are generated
-  // therefore we use constant time memory even for large MCMC runs
-  val delta = Vector(0.2, 0.05, 0.2, 0.05, 0.2)
-  val iters = ParticleMetropolis(mll, params, Parameters.perturbIndep(Vector.fill(5)(0.1))).iters
+    // the PMMH algorithm is defined as an Akka stream,
+    // this means we can write the iterations to a file as they are generated
+    // therefore we use constant time memory even for large MCMC runs
+    val delta = args.map(_.toDouble).toVector
+    val iters = ParticleMetropolis(mll, params, Parameters.perturbIndep(delta)).iters
 
-  iters.
-    via(monitorStream(1000, 1)).
-    runWith(Sink.ignore)
+    iters.
+      via(monitorStream(1000, 1)).
+      runWith(Sink.ignore)
 
-  iters.
-    map(s => s.params).
-    take(iterations).
-    map( p => ByteString(s"$p\n")).
-    runWith(FileIO.toFile(new File("LgcpMCMC.csv")))
+    iters.
+      map(s => s.params).
+      take(iterations).
+      map( p => ByteString(s"$p\n")).
+      runWith(FileIO.toFile(new File("LgcpMCMC.csv")))
+  }
 }

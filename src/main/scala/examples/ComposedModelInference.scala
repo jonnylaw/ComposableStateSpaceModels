@@ -140,13 +140,10 @@ object FilterOnline extends App {
 
   // particles and initial state for particle filter
   val n = 1000
-  val initState = Vector(PfState(0.0, None, Vector.fill(n)(mod.x0.draw), State.zero, IndexedSeq[CredibleInterval]()))
+  val initState = PfState(0.0, None, Vector.fill(n)(mod.x0.draw), State.zero, IndexedSeq[CredibleInterval]())
 
-    // use fold to filter a stream
-    // fold does not return immediately, but filterStep can be modified to
-    // perform a side effect and print or write each filtered observation
   observations.
-    fold(initState)((d, y) => filterStep(y, d, mod, 200)).
+    scan(initState)((d, y) => filterStepScan(y, d, mod, 200)).
     drop(1).
     map(a => ByteString(s"$a\n")).
     runWith(FileIO.toFile(new File("OnlineComposedModelFiltered.csv")))
@@ -156,54 +153,35 @@ object FilterOnline extends App {
   system.shutdown
 }
 
-object Cars extends App {
-  implicit val system = ActorSystem("FitCars")
-  implicit val materializer = ActorMaterializer()
+object Cars {
+  def main(args: Array[String]): Unit = {
+    implicit val system = ActorSystem("FitCars")
+    implicit val materializer = ActorMaterializer()
 
-  val data = scala.io.Source.fromFile("cars.csv").getLines.toVector.
-    drop(1).
-    map(a => a.split(",")).
-    map(rs => Data(rs(1).toDouble, rs(2).toDouble, None, None, None))
+    val data = scala.io.Source.fromFile("cars.csv").getLines.toVector.
+      drop(1).
+      map(a => a.split(",")).
+      map(rs => Data(rs(1).toDouble, rs(2).toDouble, None, None, None))
 
-  // define the model
+    // define the model
     val poissonParams = LeafParameter(
-    GaussianParameter(0.3, 0.5),
-    None,
-    OrnsteinParameter(0.1, 0.5, 0.3))
-  val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector.fill(6)(0.3),
-      diag(DenseVector.fill(6)(0.5))),
-    None,
-    OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
+      GaussianParameter(0.3, 0.5),
+      None,
+      BrownianParameter(0.1, 0.5))
+    val seasonalParams = LeafParameter(
+      GaussianParameter(DenseVector.fill(6)(0.3),
+        diag(DenseVector.fill(6)(0.5))),
+      None,
+      BrownianParameter(DenseVector.fill(6)(0.3), diag(DenseVector.fill(6)(0.5))))
 
-  val initParams = poissonParams |+| seasonalParams
-  val unparamMod = Model.op(PoissonModel(stepOrnstein), SeasonalModel(24, 3, stepOrnstein))
+    val initParams = poissonParams |+| seasonalParams
+    val unparamMod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepBrownian))
+    val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
-  val iterations = 10000
-  val particles = Vector(100, 200, 500, 1000)
+    val mll = pfMll(data.sortBy(_.t), unparamMod) _
 
-  val mll = pfMll(data.sortBy(_.t), unparamMod) _
-
-  Source(particles.zip(1 to 4)).
-    mapAsync(parallelism = 4){ case (n, chain) =>
-      val iters = ParticleMetropolis(mll(n), initParams, Parameters.perturb(0.5)).iters
-
-      println(s"""Running chain $chain with $n particles, $iterations iterations""")
-
-      iters.
-        zip(Source(Stream.from(1))).
-        map{ case (x, i) => (i, x.params) }.
-        take(iterations).
-        map{ case (i, p) => ByteString(s"$i, $p\n") }.
-        runWith(FileIO.toFile(new File(s"cars-$iterations-$n.csv")))
-      
-      iters.
-        via(monitorStream(1000, chain)).
-        runWith(Sink.ignore)
-    }.
-    runWith(Sink.onComplete { _ =>
-      system.shutdown()
-    })
+    runPmmhToFile("cars", chains = 4, initParams, mll, Parameters.perturb(delta), particles = particles, iterations = iters)
+  }
 }
 
 object StudentT extends App {
@@ -270,7 +248,7 @@ object GetSeasTParams extends App {
     map(rs => rs map (_.toDouble)).
     map(rs => Data(rs.head, rs(1), None, None, None))
 
-  val mll = pfMll(data.sortBy(_.t), unparamMod) _
+  val mll = pfMll(data.toVector.sortBy(_.t), unparamMod) _
 
   runPmmhToFile("seasTmcmc", 4, p, mll, Parameters.perturb(0.1), 200, 10000)
 }
