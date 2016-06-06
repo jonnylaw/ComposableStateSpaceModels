@@ -182,7 +182,7 @@ val fileOut = "TestMCMC"
 // then map over them in the mapAsync call
 Source(1 to 4).
   mapAsync(parallelism = 4){ chain =>
-    val iters = ParticleMetropolis(mll(particles), gaussianPerturb(0.1, 0.1)).iters(initParams)
+    val iters = ParticleMetropolis(mll(particles), initParams, Parameters.perturb(0.1)).iters
 
     iters.
       zip(Source(Stream.from(1))).
