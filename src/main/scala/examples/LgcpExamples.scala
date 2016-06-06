@@ -24,16 +24,20 @@ import java.io.{PrintWriter, File}
 import breeze.stats.distributions.Gaussian
 import breeze.linalg.{DenseVector, diag}
 
-object SimulateLGCP extends App {
+trait LgcpModel {
   /** Define the model **/
   val params = LeafParameter(
     GaussianParameter(1.0, 1.0),
     None,
     OrnsteinParameter(1.0, 0.1, 0.4))
 
-  val mod = LogGaussianCox(stepOrnstein)
+  val model = LogGaussianCox(stepOrnstein)
+}
 
-  val sims = simLGCP(0.0, 3.0, mod(params), 2)
+object SimulateLGCP extends App {
+  val mod = new LgcpModel {}
+
+  val sims = simLGCP(0.0, 3.0, mod.model(mod.params), 2)
 
   val pw = new PrintWriter("lgcpsims.csv")
   pw.write(sims.mkString("\n"))
@@ -47,15 +51,9 @@ object FilterLgcp extends App {
     filter(d => d.observation == 1).
     toVector
 
-  /** Define the model **/
-  val params = LeafParameter(
-    GaussianParameter(1.0, 1.0),
-    None,
-    OrnsteinParameter(1.0, 0.1, 0.4))
+  val mod = new LgcpModel {}
 
-  val mod = LogGaussianCox(stepOrnstein)
-
-  val filtered = pfLGCP(1000, data.sortBy(_.t), mod, 2)(params)
+  val filtered = pfLGCP(1000, data.sortBy(_.t), mod.model, 2)(mod.params)
 
   val pw = new PrintWriter("LgcpFiltered.csv")
   pw.write(filtered.mkString("\n"))
@@ -73,14 +71,9 @@ object GetLgcpParams {
       map(rs => Data(rs.head.toDouble, rs(1).toDouble, None, None, None)).
       toVector
 
-    val params = LeafParameter(
-      GaussianParameter(1.0, 1.0),
-      None,
-      OrnsteinParameter(1.0, 0.1, 0.4))
+    val mod = new LgcpModel {}
 
-    val mod = LogGaussianCox(stepOrnstein)
-
-    val mll = pfLGCPmll(data.sortBy(_.t), mod, 2)(250)
+    val mll = pfLGCPmll(data.sortBy(_.t), mod.model, 2)(250)
 
     val iterations = 10000
 
@@ -88,7 +81,7 @@ object GetLgcpParams {
     // this means we can write the iterations to a file as they are generated
     // therefore we use constant time memory even for large MCMC runs
     val delta = args.map(_.toDouble).toVector
-    val iters = ParticleMetropolis(mll, params, Parameters.perturbIndep(delta)).iters
+    val iters = ParticleMetropolis(mll, mod.params, Parameters.perturbIndep(delta)).iters
 
     iters.
       via(monitorStream(1000, 1)).

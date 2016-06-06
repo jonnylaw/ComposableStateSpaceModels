@@ -24,59 +24,36 @@ import breeze.linalg.{DenseVector, diag}
 import breeze.numerics.exp
 import scala.concurrent.ExecutionContext.Implicits.global
 
-object SimulateBernoulli extends App {
+/**
+  * A model to use for the examples in this class
+  */
+trait BernoulliModel {
   val p = LeafParameter(
     GaussianParameter(6.0, 1.0),
     None,
     BrownianParameter(mu = 0.1, sigma = 1.0))
   
-  val mod = BernoulliModel(stepBrownian)
+  val model = BernoulliModel(stepBrownian)
+}
+
+/**
+  * Simulate 100 observaitions from a simple bernoulli model
+  */
+object SimulateBernoulli extends App {
+
+  val mod = new BernoulliModel {}
   
   val times = (1 to 100).map(_.toDouble).toList
-  val sims = simData(times, mod(p))
+  val sims = simData(times, mod.model(mod.p))
 
   val pw = new PrintWriter("BernoulliSims.csv")
   pw.write(sims.mkString("\n"))
   pw.close()
 }
 
-object SimulateBrownian extends App {
-
-  implicit val system = ActorSystem("SimBrownian")
-  implicit val materializer = ActorMaterializer()
-
-  val p = BrownianParameter(DenseVector(0.1, 0.1), diag(DenseVector(0.1, 0.5)))
-  val x0: State = LeafState(MultivariateGaussian(DenseVector(1.0, 1.0), diag(DenseVector(5.0, 5.0))).draw)
-  val dt = 0.1
-
-  Source.unfold(x0)(x => Some((stepBrownian(p)(x, dt).draw, x))).
-    zip(Source.tick(1 second, 1 second, Unit)).
-    map{ case (a, _) => a }.
-    runForeach(println)
-}
-
-object SeasonalBernoulli extends App {
-  val bernoulliParams = LeafParameter(
-    GaussianParameter(0.0, 1.0),
-    None,
-    BrownianParameter(0.1, 1.0))
-  val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector(Array.fill(6)(0.0)),
-      diag(DenseVector(Array.fill(6)(1.0)))),
-    None,
-    BrownianParameter(DenseVector.fill(6)(0.1), diag(DenseVector.fill(6)(1.0))))
-
-  val params = bernoulliParams |+| seasonalParams
-  val mod = Model.op(BernoulliModel(stepBrownian), SeasonalModel(24, 3, stepBrownian))
-
-  val times = (1 to 100).map(_.toDouble).toList
-  val sims = simData(times, mod(params))
-
-  val pw = new PrintWriter("seasonalBernoulliSims.csv")
-  pw.write(sims.mkString("\n"))
-  pw.close()
-}
-
+/**
+  * Filter observations as a batch, return the state and credible intervals
+  */
 object FilterBernoulli extends App {
   // read in the data from a csv file and parse it to a Data object
   // without the state, eta and gamma
@@ -85,63 +62,13 @@ object FilterBernoulli extends App {
     map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None)).
     toVector
 
-  val p = LeafParameter(
-    GaussianParameter(6.0, 1.0),
-    None,
-    BrownianParameter(mu = 0.1, sigma = 1.0))
+  val mod = new BernoulliModel {}
   
-  val mod = BernoulliModel(stepBrownian)
-
-  val filtered = bootstrapPf(1000, data, mod)(p)
+  val filtered = bootstrapPf(1000, data, mod.model)(mod.p)
 
   val pw = new PrintWriter("BernoulliFiltered.csv")
   pw.write(filtered.mkString("\n"))
   pw.close()
-}
-
-object DetermineBernoulliParameters extends App {
-
-  implicit val system = ActorSystem("DetermineBernoulliParameters")
-  implicit val materializer = ActorMaterializer()
-
-  // read in the data from a csv file and parse it to a Data object
-  // without the state, eta and gamma
-  val data = scala.io.Source.fromFile("BernoulliSims.csv").getLines.
-    map(a => a.split(",")).
-    map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None)).
-    toVector
-
-  // specify the parameters and model we used to create the data
-  // in the real world, we would not have a good starting point for the parameters
-  // so the MCMC algorithm wouldn't immediately start efficiently exploring the posterior
-  // iterations are removed from the MCMC output to counteract this, in a period called burnin
-   val p = LeafParameter(
-    GaussianParameter(6.0, 1.0),
-    None,
-    BrownianParameter(mu = 0.1, sigma = 1.0))
-  
-  val mod = BernoulliModel(stepBrownian)
-
-  // the marginal log-likelihood
-  val mll = pfMll(data, mod)(200)
-
-  val iterations = 10000
-
-  // the PMMH algorithm is defined as an Akka stream,
-  // this means we can write the iterations to a file as they are generated
-  // therefore we use constant time memory even for large MCMC runs
-  val delta = Vector(0.5, 0.05, 0.5, 0.2)
-  val iters = ParticleMetropolis(mll, p, Parameters.perturbIndep(delta)).iters
-
-  iters.
-    via(monitorStream(1000, 1)).
-    runWith(Sink.ignore)
-
-  iters.
-    map(s => s.params).
-    take(iterations).
-    map( p => ByteString(s"$p\n")).
-    runWith(FileIO.toFile(new File("BernoulliMCMC.csv")))
 }
 
 /**
@@ -151,12 +78,8 @@ object FilterBernoulliOnline extends App {
   implicit val system = ActorSystem("FilterBernoulliOnline")
   implicit val materializer = ActorMaterializer()
 
-  val p = LeafParameter(
-    GaussianParameter(10.0, 1.0),
-    None,
-    OrnsteinParameter(theta = 6.0, alpha = 0.5, sigma = 1.0))
-  
-  val mod = BernoulliModel(stepOrnstein)(p)
+  val model = new BernoulliModel {}
+  val mod = model.model(model.p)
   val observations = simStream(mod, 0, t0 = 0.0)
 
   // write the observations to a file
@@ -184,6 +107,26 @@ object FilterBernoulliOnline extends App {
   system.shutdown
 }
 
+/**
+  * Simulate a brownian motion state space 
+  */
+object SimulateBrownian extends App {
+  implicit val system = ActorSystem("SimBrownian")
+  implicit val materializer = ActorMaterializer()
+
+  val p = BrownianParameter(DenseVector(0.1, 0.1), diag(DenseVector(0.1, 0.5)))
+  val x0: State = LeafState(MultivariateGaussian(DenseVector(1.0, 1.0), diag(DenseVector(5.0, 5.0))).draw)
+  val dt = 0.1
+
+  Source.unfold(x0)(x => Some((stepBrownian(p)(x, dt).draw, x))).
+    zip(Source.tick(1 second, 1 second, Unit)).
+    map{ case (a, _) => a }.
+    runForeach(println)
+}
+
+/**
+  * Simulate an Ornstein-Uhlenbeck state space
+  */
 object SimulateOrnstein {
   def main(args: Array[String]) = {
     val p = OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0)
@@ -197,32 +140,27 @@ object SimulateOrnstein {
   }
 }
 
-object Linear extends App {
-  implicit val system = ActorSystem("FilterBernoulliOnline")
-  implicit val materializer = ActorMaterializer()
+/**
+  * Simulate a simple composed model, a bernoulli model with seasonal probability
+  */
+object SeasonalBernoulli extends App {
+  val bernoulliParams = LeafParameter(
+    GaussianParameter(0.0, 1.0),
+    None,
+    BrownianParameter(0.1, 1.0))
+  val seasonalParams = LeafParameter(
+    GaussianParameter(DenseVector(Array.fill(6)(0.0)),
+      diag(DenseVector(Array.fill(6)(1.0)))),
+    None,
+    BrownianParameter(DenseVector.fill(6)(0.1), diag(DenseVector.fill(6)(1.0))))
 
-  val p = LeafParameter(GaussianParameter(3.0, 2.0), Some(1.0), BrownianParameter(0.1, 1.0))
-  val mod = LinearModel(stepBrownian)
+  val params = bernoulliParams |+| seasonalParams
+  val mod = Model.op(BernoulliModel(stepBrownian), SeasonalModel(24, 3, stepBrownian))
 
-  val times = (0.0 to 50.0 by 0.5).toList
-  val sims = simData(times, mod(p))
+  val times = (1 to 100).map(_.toDouble).toList
+  val sims = simData(times, mod(params))
 
-  val pw = new PrintWriter("LinearSims.csv")
+  val pw = new PrintWriter("seasonalBernoulliSims.csv")
   pw.write(sims.mkString("\n"))
   pw.close()
-
-  val n = 500
-  val mll = pfMll(sims, mod)(n)
-
-  val iters = ParticleMetropolis(mll, p, Parameters.perturb(0.1)).iters
-
-  iters.
-    via(monitorStream(1000, 1)).
-    runWith(Sink.ignore)
-
-  iters.
-    map(s => s.params).
-    take(10000).
-    map( p => ByteString(s"$p\n")).
-    runWith(FileIO.toFile(new File("LinearMCMC.csv")))
 }

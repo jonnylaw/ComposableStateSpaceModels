@@ -13,7 +13,7 @@ case class MetropState(ll: LogLikelihood, params: Parameters, accepted: Int)
 trait MetropolisHastings {
 
   /**
-    * 
+    * Proposal density, to propose new parameters for a model
     */
   def proposal: Parameters => Rand[Parameters]
 
@@ -36,6 +36,9 @@ trait MetropolisHastings {
     */
   def logLikelihood: Parameters => LogLikelihood
 
+  /**
+    * Metropolis-Hastings step, for use in the iters function
+    */
   def mhStep: MetropState => Option[(MetropState, MetropState)] = p => {
     val propParams = proposal(p.params).draw
     val propll = logLikelihood(propParams)
@@ -48,6 +51,9 @@ trait MetropolisHastings {
     }
   }
 
+  /**
+    * Generates an akka stream of metrop-state, which can be used to get a stream of parameters
+    */
   def iters: Source[MetropState, Any] = {
     val initState = MetropState(logLikelihood(initialParams), initialParams, 0)
     Source.unfold(initState)(mhStep)

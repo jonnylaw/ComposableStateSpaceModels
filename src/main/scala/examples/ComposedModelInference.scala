@@ -27,50 +27,50 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import breeze.numerics.exp
 
-
-object SimulateSeasonalPoisson extends App {
+/**
+  * Define a model to use throughout the examples in this file
+  */
+trait TestModel {
   val poissonParams = LeafParameter(
-    GaussianParameter(0.3, 0.5),
+    GaussianParameter(3.0, 0.5),
     None,
-    BrownianParameter(0.1, 1.0))
+    BrownianParameter(0.01, 0.3))
   val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector.fill(6)(0.3),
+    GaussianParameter(DenseVector.fill(6)(0.0),
       diag(DenseVector.fill(6)(0.5))),
     None,
-    OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
+    OrnsteinParameter(DenseVector.fill(6)(1.0), DenseVector.fill(6)(0.1), DenseVector.fill(6)(0.1)))
 
   val params = poissonParams |+| seasonalParams
-  val mod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
+  val model = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
+}
+
+/**
+  * Simulate a poisson model, with seasonal rate parameter
+  */
+object SimulateSeasonalPoisson extends App {
+  val mod = new TestModel {}
 
   val times = (1 to 100).map(_.toDouble).toList
-  val sims = simData(times, mod(params))
+  val sims = simData(times, mod.model(mod.params))
 
   val pw = new PrintWriter("seasonalPoissonSims.csv")
   pw.write(sims.mkString("\n"))
   pw.close()
 }
 
-
+/**
+  * Filter the simulated seasonal poisson data in a batch
+  */
 object FilteringSeasonalPoisson extends App {
-  val poissonParams = LeafParameter(
-    GaussianParameter(0.3, 0.5),
-    None,
-    BrownianParameter(0.1, 1.0))
-  val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector.fill(6)(0.3),
-      diag(DenseVector.fill(6)(0.5))),
-    None,
-    OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
-
-  val params = poissonParams |+| seasonalParams
-  val mod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
+  val mod = new TestModel {}
 
   val data = scala.io.Source.fromFile("seasonalPoissonSims.csv").getLines.
     map(a => a.split(",")).
     map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
     toVector
 
-  val filtered = bootstrapPf(1000, data, mod)(params)
+  val filtered = bootstrapPf(1000, data, mod.model)(mod.params)
 
   val pw = new PrintWriter("seasonalPoissonFiltered.csv")
   pw.write(filtered.mkString("\n"))
@@ -81,27 +81,16 @@ object DetermineComposedParams extends App {
   implicit val system = ActorSystem("DeterminePoissonParams")
   implicit val materializer = ActorMaterializer()
 
-  val poissonParams = LeafParameter(
-    GaussianParameter(0.3, 0.5),
-    None,
-    BrownianParameter(0.1, 1.0))
-  val seasonalParams = LeafParameter(
-    GaussianParameter(DenseVector.fill(6)(0.3),
-      diag(DenseVector.fill(6)(0.5))),
-    None,
-    OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
-
-  val params = poissonParams |+| seasonalParams
-  val mod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
+  val mod = new TestModel {}
 
   val data = scala.io.Source.fromFile("seasonalPoissonSims.csv").getLines.
     map(a => a.split(",")).
     map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
     toVector
 
-  val mll = pfMllFold(data, mod) _
+  val mll = pfMllFold(data, mod.model) _
 
-  runPmmhToFile("poisson", 2, params, mll, Parameters.perturb(0.1), 200, 10000)
+  runPmmhToFile("poisson", 2, mod.params, mll, Parameters.perturb(0.1), 200, 10000)
 }
 
 object FilterOnline extends App {
@@ -164,18 +153,24 @@ object Cars {
       map(rs => Data(rs(1).toDouble, rs(2).toDouble, None, None, None))
 
     // define the model
-    val poissonParams = LeafParameter(
-      GaussianParameter(0.3, 0.5),
+    val poissonParam = LeafParameter(
+      GaussianParameter(6.0, 0.1),
       None,
-      BrownianParameter(0.1, 0.5))
-    val seasonalParams = LeafParameter(
-      GaussianParameter(DenseVector.fill(6)(0.3),
-        diag(DenseVector.fill(6)(0.5))),
+      OrnsteinParameter(6.0, 0.1, 0.1))
+    val seasonalParamDaily = LeafParameter(
+      GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
       None,
-      BrownianParameter(DenseVector.fill(6)(0.3), diag(DenseVector.fill(6)(0.5))))
+      OrnsteinParameter(
+        theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7, -0.5, -0.7),
+        alpha = DenseVector.fill(6)(0.1),
+        sigma = DenseVector.fill(6)(0.2)))
 
-    val initParams = poissonParams |+| seasonalParams
-    val unparamMod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepBrownian))
+    val initParams = poissonParam |+| seasonalParamDaily
+
+    val poisson = PoissonModel(stepOrnstein)
+    val daily = SeasonalModel(24, 3, stepOrnstein)
+    val unparamMod = Model.op(poisson, daily)
+
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
     val mll = pfMll(data.sortBy(_.t), unparamMod) _
@@ -184,71 +179,32 @@ object Cars {
   }
 }
 
-object StudentT extends App {
-
-  val p = LeafParameter(
-    GaussianParameter(0.0, 3.0),
-    Some(1.0),
-    BrownianParameter(0.3, 1.0))
-
-  val unparamMod = studentTModel(stepBrownian, 3)
-  val mod = unparamMod(p)
-
-  val times = (1 to 100).map(_.toDouble).toList
-  val sims = simData(times, mod)
-
-  val pw = new PrintWriter("tdistSims.csv")
-  pw.write(sims.mkString("\n"))
-  pw.close()
-
-}
-
-object SeasStudentT extends App {
-  val tparams = LeafParameter(
-    GaussianParameter(0.0, 3.0),
-    Some(0.3),
-    OrnsteinParameter(3.0, 1.0, 0.5))
-  val seasParams = LeafParameter(
-    GaussianParameter(DenseVector.fill(6)(0.0), diag(DenseVector.fill(6)(3.0))),
+object SimCars extends App {
+  val poissonParam = LeafParameter(
+    GaussianParameter(6.0, 0.1),
     None,
-    OrnsteinParameter(DenseVector.fill(6)(2.0), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.3)))
-
-  val p = tparams |+| seasParams
-
-  val unparamMod = Model.op(studentTModel(stepOrnstein, 5), SeasonalModel(24, 3, stepOrnstein))
-  val mod = unparamMod(p)
-
-  val times = (1 to 7*24).map(_.toDouble).toList
-  val sims = simData(times, mod)
-
-  val pw = new PrintWriter("seastdistSims.csv")
-  pw.write(sims.mkString("\n"))
-  pw.close()
-}
-
-object GetSeasTParams extends App {
-  val tparams = LeafParameter(
-    GaussianParameter(0.0, 3.0),
-    Some(0.3),
-    OrnsteinParameter(3.0, 1.0, 0.5))
-  val seasParams = LeafParameter(
-    GaussianParameter(DenseVector.fill(6)(0.0), diag(DenseVector.fill(6)(3.0))),
+    OrnsteinParameter(6.0, 0.1, 0.1))
+  val seasonalParamDaily = LeafParameter(
+    GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
     None,
-    OrnsteinParameter(DenseVector.fill(6)(2.0), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.3)))
+    OrnsteinParameter(
+      theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7, -0.5, -0.7),
+      alpha = DenseVector.fill(6)(0.1),
+      sigma = DenseVector.fill(6)(0.2)))
 
-  val p = tparams |+| seasParams
+  val p = poissonParam |+| seasonalParamDaily
 
-  val unparamMod = Model.op(studentTModel(stepOrnstein, 5), SeasonalModel(24, 3, stepOrnstein))
+  val poisson = PoissonModel(stepOrnstein)
+  val daily = SeasonalModel(24, 3, stepOrnstein)
+  val poissonMod = Model.op(poisson, daily)
 
-  /**
-    * Parse the timestamp and observations from the simulated data
-    */
-  val data = scala.io.Source.fromFile("seastdistSims.csv").getLines.
-    map(a => a.split(",")).
-    map(rs => rs map (_.toDouble)).
-    map(rs => Data(rs.head, rs(1), None, None, None))
+  val times = (1 to 169).map(_.toDouble).toList
+  val sims = simData(times, poissonMod(p))
 
-  val mll = pfMll(data.toVector.sortBy(_.t), unparamMod) _
 
-  runPmmhToFile("seasTmcmc", 4, p, mll, Parameters.perturb(0.1), 200, 10000)
+  val pw = new PrintWriter("simCars.csv")
+  pw.write(sims.
+    map(data => s"${data.t}, ${data.observation}").
+    mkString("\n"))
+  pw.close()
 }

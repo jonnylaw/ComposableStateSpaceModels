@@ -10,11 +10,11 @@ theme_set(theme_minimal())
 # Simulate Seasonal Poisson #
 #############################
 
-system("cd ~/Desktop/ComposableModels/ && sbt \"run-main examples.SimulateSeasonalPoisson\"")
-seasPois = read.csv("~/Desktop/ComposableModels/seasonalPoissonSims.csv", header = F,
+system("sbt \"run-main examples.SimulateSeasonalPoisson\"")
+seasPois = read.csv("seasonalPoissonSims.csv", header = F,
                     col.names = c("Time", "Value", "Eta", "Gamma", sapply(1:7, function(i) paste("State", i, sep = ""))))
 
-png("~/Desktop/ComposableModels/Figures/SeasonalPoisson.png")
+# png("Figures/SeasonalPoisson.png")
 p1 = seasPois %>%
   ggplot(aes(x = Time, y = Value)) + geom_step() + 
   ggtitle("Poisson Observations")
@@ -31,17 +31,17 @@ p3 = seasPois %>%
   ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + theme(legend.position = "none")
 
 grid.arrange(p1, p2, p3, heights = c(1,2,1))
-dev.off()
+# dev.off()
 
 ##############################
 # Filtering Seasonal Poisson #
 ##############################
 
-system("cd ~/Desktop/ComposableModels/ && sbt \"run-main examples.FilteringSeasonalPoisson\"")
-filteredPoisson = read.csv("~/Desktop/ComposableModels/seasonalPoissonFiltered.csv", header = F)
+system("sbt \"run-main examples.FilteringSeasonalPoisson\"")
+filteredPoisson = read.csv("seasonalPoissonFiltered.csv", header = F)
 colnames(filteredPoisson) = c("Time", "Observation", sapply(1:7, function(i) paste0("PredictedState", i)), sapply(1:7, function(i) c(paste0("LowerState", i), paste0("UpperState", i))))
 
-pdf("~/Desktop/ComposableModels/Figures/FilteredPoisson.pdf")
+pdf("Figures/FilteredPoisson.pdf")
 
 p1 = filteredPoisson %>%  
   inner_join(seasPois, by = "Time") %>%
@@ -64,13 +64,7 @@ grid.arrange(p1, p2)
 
 dev.off()
 
+##########################
+# Determining Parameters #
+##########################
 
-#####################
-# Online Simulation #
-#####################
-
-seasPois = read.csv("~/Desktop/ComposableModels/OnlineModel.csv", header = F,
-                    col.names = c("Time", "Value", "Eta", "Gamma", sapply(1:7, function(i) paste("State", i, sep = ""))))
-
-seasPois %>%
-  ggplot(aes(x = Time, y = Value)) + geom_step()

@@ -160,13 +160,14 @@ object POMP {
       }
     }
 
-    override def link(x: Gamma) = if (x > 6) {
-      Vector(1.0)
-    } else if (x < -6) {
-      Vector(0.0)
-    } else {
-      Vector(1.0/(1 + exp(-x)))
-    }
+    override def link(x: Gamma) =
+      if (x > 6) {
+        Vector(1.0)
+      } else if (x < -6) {
+        Vector(0.0)
+      } else {
+        Vector(1.0/(1 + exp(-x)))
+      }
 
     def f(s: State, t: Time) = s.head
 
@@ -182,10 +183,16 @@ object POMP {
       case LeafParameter(_,_,sdeparam @unchecked) => stepFun(sdeparam)(x, dt)
     }
 
+    /**
+      * log(0) is undefined, so we just return a very small number for the log-likelihood when the probability is one
+      */
     def dataLikelihood = {
-      (s, y) =>
-        val bern = new Bernoulli(s.head)
-        bern.logProbabilityOf(y)
+      (p, y) =>
+      if (y) {
+        if (p.head == 0.0) -1e99 else log(p.head)
+      } else {
+        if ((1 - p.head) == 0.0) -1e99 else log(1-p.head)
+      }
     }
   }
 

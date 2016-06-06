@@ -174,6 +174,7 @@ object SimData {
       val deltat = t - acc.head.t
       val x0 = acc.head.sdeState.get
       val d = simStep(x0, t, deltat, mod)
+
       d +: acc
     }
 

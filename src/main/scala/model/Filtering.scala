@@ -1,7 +1,7 @@
 package model
 
 import breeze.numerics.{exp, log}
-import breeze.stats.distributions.{Gaussian, Uniform, Exponential, Rand, ContinuousDistr, Gamma, Multinomial, MultivariateGaussian}
+import breeze.stats.distributions.{Gaussian, Uniform, Exponential, Rand, ContinuousDistr, Multinomial, MultivariateGaussian}
 import breeze.stats.distributions.Rand._
 import breeze.linalg.{linspace, DenseVector, DenseMatrix, diag}
 import breeze.stats.{mean, variance}
