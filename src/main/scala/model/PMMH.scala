@@ -1,7 +1,8 @@
 package model
 
-import breeze.stats.distributions.{Uniform, Rand, MultivariateGaussian}
+import breeze.stats.distributions.{Uniform, Rand, MultivariateGaussian, Process, MarkovChain}
 import breeze.stats.distributions.Rand._
+import breeze.stats.distributions.MarkovChain._
 import breeze.linalg.DenseMatrix
 import model.POMP._
 import akka.stream.scaladsl.Source
@@ -19,16 +20,14 @@ trait MetropolisHastings {
 
   /**
     * Definition of the log-transition, used when calculating the acceptance ratio
+    * This is the probability of moving between parameters according to the proposal distribution
+    * Note: When using a symmetric proposal distribution (eg. Normal) this cancels in the acceptance ratio
+    * @param from the previous parameter value
+    * @param to the proposed parameter value
     */
   def logTransition(from: Parameters, to: Parameters): LogLikelihood
 
-
-  /**
-    * Initial parameters as a distribution to be drawn from
-    */
   val initialParams: Parameters
-
-  val initialRandParams: Rand[Parameters] = new Rand[Parameters] { def draw = initialParams }
 
   /**
     * The likelihood function of the model, typically a pseudo-marginal likelihood for 
@@ -37,7 +36,7 @@ trait MetropolisHastings {
   def logLikelihood: Parameters => LogLikelihood
 
   /**
-    * Metropolis-Hastings step, for use in the iters function
+    * Metropolis-Hastings step, for use in the iters function, to return an Akka stream of iterations
     */
   def mhStep: MetropState => Option[(MetropState, MetropState)] = p => {
     val propParams = proposal(p.params).draw
@@ -52,7 +51,8 @@ trait MetropolisHastings {
   }
 
   /**
-    * Generates an akka stream of metrop-state, which can be used to get a stream of parameters
+    * Generates an akka stream of MetropState, containing the current parameters, 
+    * count of accepted moves and the current pseudo marginal log-likelihood
     */
   def iters: Source[MetropState, Any] = {
     val initState = MetropState(logLikelihood(initialParams), initialParams, 0)
@@ -60,7 +60,16 @@ trait MetropolisHastings {
   }
 
   /**
-    * A single step of the metropolis hastings algorithm
+    * Return an akka stream of the parameters
+    */
+  def params: Source[Parameters, Any] = {
+    iters map (_.params)
+  }
+
+  /**
+    * A single step of the metropolis hastings algorithm to be used with breeze implementation of Markov Chain.
+    * This is a slight alteration to the implementation in breeze, here MetropState holds on to the previous 
+    * calculated pseudo marginal log-likelihood value so we don't need to re-run the particle filter each iteration
     */
   def mhStepRand: MetropState => Rand[MetropState] = p => {
     for {
@@ -76,28 +85,12 @@ trait MetropolisHastings {
   }
 
   /**
-    * Generate a stream of iterations from the MH algorithm
+    * Use the Breeze Markov Chain to generate a process of MetropState
+    * Process can be advanced by calling step
     */
-  def baseIters: Rand[Stream[MetropState]] = {
-    val init: Rand[MetropState] = for {
-      p <- initialRandParams
-    } yield (MetropState(logLikelihood(p), p, 0))
-    promote(iterate(init)(x => x flatMap mhStepRand))
-  }
-
-  /**
-    * Generate an Akka stream of iterations from the MH algorithm with 
-    * log likelihood, total accepted and parameters
-    */
-  def randIters: Rand[Source[MetropState, Any]] = {
-    baseIters map (Source(_))
-  }
-
-  /**
-    * Generate an Akka stream of Parameters
-    */
-  def params: Rand[Source[Parameters, Any]] = {
-    randIters map (_.map(_.params))
+  def breezeIters: Process[MetropState] = {
+    val initState = MetropState(logLikelihood(initialParams), initialParams, 0)
+    MarkovChain(initState)(mhStepRand)
   }
 }
 

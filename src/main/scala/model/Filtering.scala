@@ -33,7 +33,7 @@ object Filtering {
   }
 
   /**
-    * This samples integers from 1 to n with replacement according to their associated probabilities
+    * Sample integers from 1 to n with replacement according to their associated probabilities
     * @param n a number matching the number of probabilities
     * @param prob a vector of probabilities corresponding to the probability of sampling that integer
     * @return a vector containing the samples
@@ -44,110 +44,165 @@ object Filtering {
     Multinomial(prob).sample(n).toVector
   }
 
-  /**
-    * Returns a function closure from parameters to an estimate of the marginal log likelihood of a path
-    * @param n the number of particles
-    * @param data a vector of data
-    * @param mod a POMP model
-    * Can we test the speed difference between recursive and fold version
+/**
+    * Representation of the state of the particle filter, at each step the previous observation time, t0, and 
+    * particle cloud, particles, is required to compute forward.
+    * The meanState and intervals are recorded in each step, so they can be outputted immediately without having
+    * to calculate these from the particle cloud after
     */
-  def pfMllFold(
-    data: Vector[Data],
-    unparamMod: Parameters => Model)(
-    n: Int): Parameters => LogLikelihood = { p =>
-
-    val mod = unparamMod(p)
-    val times = data.map(_.t)
-    val deltas = diff(times.head +: times)
-    val x0 = Vector.fill(n)(mod.x0.draw)
-
-    data.foldLeft((x0, 0.0, deltas))((a, y) => {
-      val (state, ll, dts) = a
-
-      // get the next time increment
-      val dt = dts.head
-
-      // advance state particles
-      val x1 = state map(x => mod.stepFunction(x, dt).draw)
-
-      val likelihoodState = x1 map (x => mod.link(mod.f(x, y.t)))
-
-      val w1 = likelihoodState map (l => mod.dataLikelihood(l, y.observation))
-
-      val max = w1.max // log-sum-exp trick
-      val w = w1 map { a => exp(a - max) }
-
-      val xInd = sample(n, DenseVector(w.toArray)) // Multinomial resampling
-      val x2 = xInd map ( x1(_) )
-
-      (x2, ll + max + log(breeze.stats.mean(w)), deltas.tail)
-    })._2
-  }
-
-  case class PfStateRand(
-    t0: Time,
+  case class PfState(
+    t: Time,
     observation: Option[Observation],
     particles: Vector[State],
-    ll: LogLikelihood,
+    meanEta: Double,
+    intervalEta: CredibleInterval,
     meanState: State,
-    intervals: IndexedSeq[CredibleInterval])
+    stateIntervals: IndexedSeq[CredibleInterval],
+    ll: LogLikelihood) {
 
-  def logSumExp(w: Vector[LogLikelihood]): (Vector[LogLikelihood], LogLikelihood) = {
-      val max = w.max
-      (w map {a => exp(a - max) }, max)
-  }
-
-  def pfStepRand(obs: Data, mod: Model, n: Int): PfStateRand => Rand[PfStateRand] = s => {
-    val dt = obs.t - s.t0
-
-    for {
-      x1: Seq[State] <- promote((s.particles map (mod.stepFunction(_, dt))))
-      w1: Vector[LogLikelihood] = x1.toVector map (a => mod.dataLikelihood(mod.link(mod.f(a, obs.t)), obs.observation))
-      (w: Vector[LogLikelihood], max: LogLikelihood) = logSumExp(w1)
-      xInd: Vector[Int] = sample(n, DenseVector(w.toArray))
-      x2: Vector[State] = xInd map ( x1(_) )
-      meanState: State = weightedMean(x2, w)
-      intervals: IndexedSeq[CredibleInterval] = getAllCredibleIntervals(x2, 0.99)
-    } yield
-      PfStateRand(obs.t, Some(obs.observation), x2,
-        s.ll + max + log(breeze.stats.mean(w)), meanState, intervals)
+    override def toString = observation match {
+      case Some(y) => s"$t, $y, $meanEta, $intervalEta, ${meanState.flatten.mkString(", ")}, ${stateIntervals.mkString(", ")}"
+      case None => s"$t, $meanEta, $intervalEta, ${meanState.flatten.mkString(", ")}, ${stateIntervals.mkString(", ")}"
+    }
   }
 
   /**
-    * This particle filter returns a Distribution of LogLikelihood (Does this make sense?)
-    * My logic is that the LogLikelihood is random and changes each time 
-    * depending on the distribution of the particles, does it need to be in a Rand?
+    * Perform one step of a particle filter, for use in scan, this only holds on to the current value of PfState
+    * @param y a single timestamped observation
+    * @param s the state of the particle filter at the time of the last observation
+    * @param mod the parameterised model to be fit to the process
+    * @param n the number of particles used in the filter, increasing means more accuracy but longer computational time
+    * @return the state of the particle filter after observation y
     */
-  def pfMllRand(
-    data: Vector[Data],
-    unparamMod: Parameters => Model,
-    n: Int): Parameters => Rand[LogLikelihood] = p => {
+  def filterStepScan(y: Data, s: PfState, mod: Model, n: Int): PfState = {
+    val dt = y.t - s.t // calculate time between observations
 
-    val mod = unparamMod(p)
-    val times = data.map(_.t)
-    val x0 = promote(Vector.fill(n)(mod.x0))
-    val init: Rand[PfStateRand] =
-      x0 map (a => PfStateRand(0.0, None, a.toVector, 0.0, State.zero, IndexedSeq()))
+    val advancedState = s.particles map (x => if (dt == 0) x else mod.stepFunction(x, dt).draw) // advance particle cloud
 
-    data.foldLeft(init)((a, y) => a flatMap (b => pfStepRand(y, mod, n)(b)) ) map (_.ll)
-  }
+    val transState = advancedState map (a => mod.link(mod.f(a, y.t)))
 
-  def pfRand(
-    data: Vector[Data],
-    unparamMod: Parameters => Model,
-    n: Int): Parameters => Rand[PfStateRand] = p => {
+    val w1 = transState map (a => mod.dataLikelihood(a, y.observation)) // calculate particle likelihoods
 
-    val mod = unparamMod(p)
-    val times = data.map(_.t)
-    val x0 = promote(Vector.fill(n)(mod.x0))
-    val init: Rand[PfStateRand] =
-      x0 map (a => PfStateRand(0.0, None, a.toVector, 0.0, State.zero, IndexedSeq()))
+    val max = w1.max // log sum exp
+    val w = w1 map { a => exp(a - max) }
 
-    data.foldLeft(init)((a, y) => a flatMap (b => pfStepRand(y, mod, n)(b)) )
+    val xInd = sample(n, DenseVector(w.toArray)) // Multinomial resampling
+    val resampledState = xInd map ( advancedState(_) )
+
+    val meanState = weightedMean(resampledState, w)
+    val intervals = getAllCredibleIntervals(resampledState, 0.995)
+    val eta = mod.link(mod.f(meanState, y.t))
+    val etaIntervals = getOrderStatistic((resampledState map (a => mod.link(mod.f(a, y.t)))).map(_.head), 0.995)
+   
+    PfState(y.t, Some(y.observation), resampledState, eta.head, etaIntervals, meanState, intervals, s.ll + max + math.log(breeze.stats.mean(w)))
   }
 
   /**
-    * Determines the marginal likelihood of a model given observed data
+    * Perform one step of a particle filter, for use in fold
+    * @param y a single observation
+    * @param ds state for the particle filter
+    * @param mod a POMP model
+    * @param n the number of particles
+    * @return updated state for the particle filter
+    */
+  def filterStep(y: Data, ds: Vector[PfState], mod: Model): Vector[PfState] = {
+    val d = ds.head
+    val n = d.particles.length
+
+    val dt = y.t - d.t // calculate time between observations
+
+    val advancedState = d.particles map (x => if (dt == 0) x else mod.stepFunction(x, dt).draw) // advance particle cloud
+
+    val transState = advancedState map (a => mod.link(mod.f(a, y.t)))
+
+    val w1 = transState map (a => mod.dataLikelihood(a, y.observation)) // calculate particle likelihoods
+
+    val max = w1.max // log sum exp
+    val w = w1 map { a => exp(a - max) }
+
+    val xInd = sample(n, DenseVector(w.toArray)) // Multinomial resampling
+    val resampledState = xInd map ( advancedState(_) )
+
+    val meanState = weightedMean(resampledState, w)
+    val intervals = getAllCredibleIntervals(resampledState, 0.995)
+    val eta = mod.link(mod.f(meanState, y.t))
+    val etaIntervals = getOrderStatistic((resampledState map (a => mod.link(mod.f(a, y.t)))).map(_.head), 0.995)
+   
+    PfState(y.t, Some(y.observation), resampledState, eta.head, etaIntervals, meanState, intervals, ds.head.ll + max + math.log(breeze.stats.mean(w))) +: ds
+  }
+
+  /**
+    * Particle filter to estimate the filtering distribution, 
+    * returns a function closure from parameters to a vector of state
+    * @param n the number of particles
+    * @param data a vector of data
+    * @param unparamMod a POMP model
+    */
+  def pf(data: Vector[Data],
+    unparamMod: Parameters => Model)(n: Int): Parameters => Vector[PfState] = { p =>
+
+    // parameterise the model and initialise the state 
+    val mod = unparamMod(p)
+    val particleCloud = Vector.fill(n)(mod.x0.draw)
+    val t0 = data.map(_.t).sorted.head
+    val initState = Vector(PfState(t0, None, particleCloud, 0.0,
+      CredibleInterval(0.0, 0.0), State.zero, IndexedSeq[CredibleInterval](), 0.0))
+
+    // Run the particle filter
+    // drop the initial state from the final output
+    data.foldLeft(initState)((a, y) => filterStep(y, a, mod)).reverse.drop(1)
+  }
+
+  /**
+    * Describes the state of the particle filter for the pseudo-marginal likelihood
+    */
+  case class MllState(ll: LogLikelihood, t: Time, particles: Vector[State])
+
+  /**
+    * One step of a particle filter to calculate the pseudo-marginal likelihood
+    * @param y a single observation
+    * @param mod a POMP model
+    * @return a function from MllState => MllState containing the latest distribution of particles and updated marginal likelihood
+    */
+  def mllStep(y: Data, mod: Model): MllState => MllState = s => {
+    val dt = y.t - s.t // time between observations
+    val n = s.particles.length // the number of particles
+
+    val advancedState = s.particles map (x => if (dt == 0) x else mod.stepFunction(x, dt).draw) // advance particle cloud
+
+    val transState = advancedState map (a => mod.link(mod.f(a, y.t)))
+
+    val w1 = transState map (a => mod.dataLikelihood(a, y.observation)) // calculate particle likelihoods
+
+    val max = w1.max // log sum exp
+    val w = w1 map { a => exp(a - max) }
+
+    val xInd = sample(n, DenseVector(w.toArray)) // Multinomial resampling
+    val resampledState = xInd map ( advancedState(_) )
+
+    MllState(s.ll + max + log(breeze.stats.mean(w)), y.t, resampledState)
+  }
+
+  /**
+    * A function to calculate the pseudo-marginal likelihood using mllStep
+    * @param data a vector of observations
+    * @param unparamMod an unparameterised model
+    * @param n the number of particles to use in the filter
+    * @return a function from parameters to LogLikelihood
+    */
+  def pfMllFold(data: Vector[Data],
+    unparamMod: Parameters => Model)(n: Int): Parameters => LogLikelihood = p => {
+
+    val mod = unparamMod(p)
+    val particleCloud = Vector.fill(n)(mod.x0.draw)
+    val t0 = data.map(_.t).sorted.head
+    val initState = MllState(0.0, t0, particleCloud)
+
+    data.foldLeft(initState)((s, y) => mllStep(y, mod)(s)).ll
+  }
+
+  /**
+    * Determines the marginal likelihood of a model given observed data using a recursive function
     * @param data observed data
     * @param unparamMod an unparameterised model represented as a function from parameters to model
     * @param n the total number of particles to use in the particle filter
@@ -191,6 +246,13 @@ object Filtering {
     it.sum / it.size
   }
 
+  /**
+    * A parallel implementation of the particle filter to calculate pseudo marginal likelihood
+    * @param data a vector of observations
+    * @param unparamMod a function from parameters to model
+    * @param n the number of particles to use in the filter
+    * @return a function from parameters to pseudo marginal loglikelihood
+    */
   def pfMllPar(
     data: Vector[Data],
     unparamMod: Parameters => Model)(
@@ -340,8 +402,13 @@ object Filtering {
         val xInd = sample(n, DenseVector(w.toArray))
         val x2: Vector[Stream[State]] = xInd map ( x1(_) )
 
+        val meanState = weightedMean(x2.map(_.last), w)
+        val intervals = getAllCredibleIntervals(x2.map(_.last), 0.995)
+        val eta =  math.exp(mod.f(meanState, y.t))
+        val etaIntervals = getOrderStatistic(x2.map(_.last).map(a => math.exp(mod.f(a, y.t))), 0.995)
+
         loop(x2.map(_.last), y.t, ys,
-          PfOut(y.t, Some(1.0), weightedMean(x2.map(_.last), w), getAllCredibleIntervals(x2.map(_.last), 0.99)) +: acc)
+          PfOut(y.t, Some(1.0), eta, etaIntervals, meanState, intervals) +: acc)
 
     }
     // initialise with a draw from the model x0 and time 0
@@ -349,191 +416,16 @@ object Filtering {
   }
 
   /**
-    * Representation of the state of the particle filter, at each step the previous observation time, t0, and 
-    * particle cloud, particles, is required to compute forward.
-    * The meanState and intervals are recorded in each step, so they can be outputted immediately without having
-    * to calculate these from the particle cloud after
+    * Gets credible intervals for a vector of doubles
+    * @param samples a vector of samples from a distribution
+    * @param interval the upper interval of the required credible interval
+    * @return order statistics representing the credible interval of the samples vector
     */
-  case class PfState(
-    t0: Time,
-    observation: Option[Observation],
-    particles: Vector[State],
-    meanState: State,
-    intervals: IndexedSeq[CredibleInterval])
+  def getOrderStatistic(samples: Vector[Double], interval: Double): CredibleInterval = {
+    val index = math.floor(samples.length * interval).toInt
+    val ordered = samples.sorted
 
-  /**
-    * Perform one step of a particle filter, for use in scan
-    * @param y a single timestamped observation
-    * @param s the state of the particle filter at the time of the last observation
-    * @param mod the parameterised model to be fit to the process
-    * @param n the number of particles used in the filter, increasing means more accuracy but longer computational time
-    * @return the state of the particle filter after observation y
-    */
-  def filterStepScan(y: Data, s: PfState, mod: Model, n: Int): PfState = {
-    val dt = y.t - s.t0 // calculate time between observations
-
-    val advancedState = s.particles map (x => if (dt == 0) x else mod.stepFunction(x, dt).draw) // advance particle cloud
-
-    val transState = advancedState map (a => mod.link(mod.f(a, y.t)))
-
-    val w1 = transState map (a => mod.dataLikelihood(a, y.observation)) // calculate particle likelihoods
-
-    val max = w1.max // log sum exp
-    val w = w1 map { a => exp(a - max) }
-
-    val xInd = sample(n, DenseVector(w.toArray)) // Multinomial resampling
-    val resampledState = xInd map ( advancedState(_) )
-
-    val meanState = weightedMean(resampledState, w)
-    val intervals = getAllCredibleIntervals(resampledState, 0.99)
-
-    PfState(y.t, Some(y.observation), resampledState, meanState, intervals)
-  }
-
-  /**
-    * Perform one step of a particle filter, for use in fold
-    * @param y a single observation
-    * @param ds state for the particle filter
-    * @param mod a POMP model
-    * @param n the number of particles
-    * @return updated state for the particle filter
-    */
-  def filterStep(y: Data, ds: Vector[PfState], mod: Model, n: Int): Vector[PfState] = {
-
-    val d = ds.head
-
-    val dt = y.t - d.t0 // calculate time between observations
-
-    val advancedState = d.particles map (x => if (dt == 0) x else mod.stepFunction(x, dt).draw) // advance particle cloud
-
-    val transState = advancedState map (a => mod.link(mod.f(a, y.t)))
-
-    val w1 = transState map (a => mod.dataLikelihood(a, y.observation)) // calculate particle likelihoods
-
-    val max = w1.max // log sum exp
-    val w = w1 map { a => exp(a - max) }
-
-    val xInd = sample(n, DenseVector(w.toArray)) // Multinomial resampling
-    val resampledState = xInd map ( advancedState(_) )
-
-    val meanState = weightedMean(resampledState, w)
-    val intervals = getAllCredibleIntervals(resampledState, 0.99)
-
-    PfState(y.t, Some(y.observation), resampledState, meanState, intervals) +: ds
-  }
-
-  /**
-    * The Bootstrap particle filter with credible intervals for each state
-    * @param n number of particles
-    * @param data observation data, with time
-    * @param mod a suitable model for the observed data
-    * @return the estimated state and credible intervals
-    */
-  def bootstrapPf(
-    n: Int,
-    data: Vector[Data],
-    unparamMod: Parameters => Model): Parameters => Vector[PfOut] = p => {
-
-    // parameterise the model, select times and initialise
-    val mod = unparamMod(p)
-    val times = data map (_.t)
-    val particles = Vector.fill(n)(mod.x0.draw)
-    val dts = diff(times.head +: times)
-
-    def loop(
-      x0: Vector[State],
-      yy: Vector[Data],
-      states: Vector[State],
-      acc: Vector[PfOut], deltas: Iterable[TimeIncrement]): Vector[PfOut] = yy match {
-
-      case IndexedSeq() => acc.reverse
-      case y +: ys =>
-        val x1 = x0 map(x => mod.stepFunction(x, deltas.head).draw)
-
-        // Calculate the transformed state: seasonality etc
-        val transformedState = x1 map (a => mod.link(mod.f(a, y.t)))
-
-        // Calculate the ll of the propagation of particles given the observation
-        val w1: Vector[LogLikelihood] = transformedState map (a => mod.dataLikelihood(a, y.observation))
-
-        val max = w1.max // log sum exp
-        val w = w1 map { a => exp(a - max) }
-
-        val xInd = sample(n, DenseVector(w.toArray)) // Multinomial resampling
-        val x2 = xInd map ( x1(_) )
-        
-        loop(x2, ys,
-          states :+ weightedMean(x2, w),
-          PfOut(y.t,
-            Some(y.observation),
-            weightedMean(x2, w),
-            getAllCredibleIntervals(x2, 0.99)) +: acc,
-          deltas.tail)
-    }
-
-    loop(particles, data, Vector(), Vector(), dts)
-  }
-
-  /**
-    * A class to monitor the state of ann MCMC chain
-    * @param i the number of iterations computed
-    * @param v the variance of the estimate of the marginal log-likelihood estimate
-    * @param a the proportion of accepted moves
-    */
-  case class MonitorState(i: Int, v: Double, a: Double)
-
-  /**
-    * A helper function to monitor the stream every 'every' iterations with a print statement
-    * @param every number of iterations to wait until a print statement informs of the iteration, mll variance and acceptance ratio
-    * @param chain, the chain number we are monitoring
-    */
-  def monitorStream(every: Int, chain: Int) = {
-    Flow[MetropState].
-          zip(Source(Stream.from(1))).
-          grouped(1000).
-          map( x => {
-            val iter = x map (_._2)
-            val ll = x map (_._1.ll)
-            MonitorState(
-              iter.last,
-              variance(ll),
-              (x.map(_._1.accepted.toDouble).last)/iter.last)}
-          ).
-          map(m => println(s"""chain: $chain, iteration: ${m.i}, mll Variance: ${m.v}, acceptance ratio: ${m.a}"""))
-  }
-
-  /**
-    * Run the PMMH algorithm, with multiple chains
-    */
-  def runPmmhToFile(
-    fileOut: String, chains: Int,
-    initParams: Parameters, mll: Int => Parameters => LogLikelihood,
-    perturb: Parameters => Rand[Parameters], particles: Int, iterations: Int): Unit = {
-
-    implicit val system = ActorSystem("StreamingPmmh")
-    implicit val materializer = ActorMaterializer()
-
-
-    Source(1 to chains).
-      mapAsync(parallelism = 4){ chain =>
-        val iters = ParticleMetropolis(mll(particles), initParams, perturb).iters
-
-        println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
-
-        iters.
-          zip(Source(Stream.from(1))).
-          map{ case (x, i) => (i, x.params) }.
-          take(iterations).
-          map{ case (i, p) => ByteString(s"$i, $p\n") }.
-          runWith(FileIO.toFile(new File(s"$fileOut-$iterations-$particles-$chain.csv")))
-  
-        iters.
-          via(monitorStream(1000, chain)).
-          runWith(Sink.ignore)
-      }.
-      runWith(Sink.onComplete { _ =>
-        system.shutdown()
-      })
+    CredibleInterval(ordered(samples.length - index), ordered(index))
   }
 
   /**

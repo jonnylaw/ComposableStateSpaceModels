@@ -12,6 +12,7 @@ import akka.util.ByteString
 import model._
 import model.Model._
 import model.Filtering._
+import model.Streaming._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel, studentTModel}
 import model.DataTypes._
 import model.{State, Model}
@@ -70,7 +71,7 @@ object FilteringSeasonalPoisson extends App {
     map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
     toVector
 
-  val filtered = bootstrapPf(1000, data, mod.model)(mod.params)
+  val filtered = pf(data, mod.model)(1000)(mod.params)
 
   val pw = new PrintWriter("seasonalPoissonFiltered.csv")
   pw.write(filtered.mkString("\n"))
@@ -123,13 +124,14 @@ object FilterOnline extends App {
     take(100)
 
   // write the observations to a file
-    observations.
-      map(a => ByteString(s"$a\m")).
-      runWith(FileIO.toFile(new File("OnlineComposedModel.csv")))
+  observations.
+    map(a => ByteString(s"$a\m")).
+    runWith(FileIO.toFile(new File("OnlineComposedModel.csv")))
 
   // particles and initial state for particle filter
   val n = 1000
-  val initState = PfState(0.0, None, Vector.fill(n)(mod.x0.draw), State.zero, IndexedSeq[CredibleInterval]())
+  val initState = PfState(0.0, None, Vector.fill(n)(mod.x0.draw), 0.0,
+    CredibleInterval(0.0, 0.0), State.zero, IndexedSeq[CredibleInterval](), 0.0)
 
   observations.
     scan(initState)((d, y) => filterStepScan(y, d, mod, 200)).

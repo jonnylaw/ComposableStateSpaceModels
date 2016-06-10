@@ -7,16 +7,6 @@ lapply(packages, require, character.only = T)
 theme_set(theme_minimal())
 
 ######################
-# Simulate Student T #
-######################
-
-data = read.csv("tdistSims.csv", header = F, 
-                col.names = c("Time", "Observation", "Eta", "Gamma", "State"))
-data %>%
-  gather(key = "key", value = "value", -Time) %>%
-  ggplot(aes(x = Time, y = value, colour = key)) + geom_line()
-
-######################
 # Seasonal Student T #
 ######################
 
@@ -27,24 +17,3 @@ seas = read.csv("seastdistSims.csv", header = F,
 seas %>%
   gather(key = "key", value = "value", -Time) %>%
   ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + facet_wrap(~key)
-
-################################
-# Filtering seasonal Student T #
-################################
-
-system("")
-
-
-###################################
-# Recovering Student T parameters #
-###################################
-
-system("sbt \"run-main examples.GetSeasTParams\"")
-iters = read.csv("seasTmcmc.csv", header = F, col.names = c("m0", "c0", "scale", "theta", "alpha", "sigma", 
-                                                            sapply(1:6, function(i) paste0("m0", i)), sapply(1:6, function(i) paste0("c0", i)),
-                                                            sapply(1:6, function(i) paste0("theta", i)), sapply(1:6, function(i) paste0("alpha", i)),
-                                                            sapply(1:6, function(i) paste0("sigma", i))))
-
-mcmc(iters) %>% summary()
-mcmc(iters) %>% plot()
-

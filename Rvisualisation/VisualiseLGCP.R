@@ -36,23 +36,33 @@ dev.off()
 
 system("sbt \"run-main examples.FilterLgcp\"")
 lgcpFiltered = read.csv("LgcpFiltered.csv", header = F)
-colnames(lgcpFiltered) <- c("Time", "Value", "PredState", "Lower", "Upper")
+colnames(lgcpFiltered) <- c("Time", "Value", "PredEta", "LowerEta", "UpperEta", "PredState", "Lower", "Upper")
 
 png("Figures/LgcpFiltered.png")
-lgcpFiltered[,-2] %>%
-  left_join(lgcp  %>% dplyr::select(-Gamma, -Eta, -Value), by = "Time") %>%
-  gather(key = "key", value = "value", -Time) %>%
-  ggplot(aes(x = Time, y = value, colour = key)) + geom_line()
+p1 = lgcpFiltered[,-2] %>% dplyr::select(-LowerEta, -UpperEta, -PredEta) %>%
+  left_join(lgcp %>% dplyr::select(-Gamma, -Eta, -Value), by = "Time") %>%
+  gather(key = "key", value = "value", -Time, -Lower, -Upper) %>%
+  ggplot(aes(x = Time, y = value, colour = key)) + geom_line() +
+  geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.2)
+
+p2 = lgcpFiltered[,-2] %>% dplyr::select(-Lower, -Upper, -PredState) %>%
+  left_join(lgcp  %>% dplyr::select(-Gamma, -State, -Value), by = "Time") %>%
+  gather(key = "key", value = "value", -Time, -LowerEta, -UpperEta) %>%
+  ggplot(aes(x = Time, y = value, colour = key)) + geom_line() +
+  geom_ribbon(aes(ymin = LowerEta, ymax = UpperEta), alpha = 0.2) +
+  scale_y_continuous()
+
+grid.arrange(p1, p2)
 dev.off()
 
 #####################
 # MCMC for the LGCP #
 #####################
 
-system("sbt \"run-main examples.GetLgcpParams\"")
-iters = read.csv("~/Desktop/LgcpMCMC.csv", header = F, col.names = c("m0", "c0", "theta", "alpha", "sigma"))
+# system("sbt \"run-main examples.GetLgcpParams\"")
+# iters = read.csv("~/Desktop/LgcpMCMC.csv", header = F, col.names = c("m0", "c0", "theta", "alpha", "sigma"))
 
 ## Actual values m0 = 1.0, c0 = 1.0, theta = 1.0, alpha = 0.1, sigma = 0.4
 
-mcmc(iters) %>% summary()
-mcmc(iters) %>% plot()
+# mcmc(iters) %>% summary()
+# mcmc(iters) %>% plot()

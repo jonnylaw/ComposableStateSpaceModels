@@ -12,6 +12,7 @@ import akka.util.ByteString
 import model._
 import model.Model._
 import model.Filtering._
+import model.Streaming._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, LogGaussianCox, BernoulliModel}
 import model.DataTypes._
 import model.{State, Model}
@@ -27,9 +28,9 @@ import breeze.linalg.{DenseVector, diag}
 trait LgcpModel {
   /** Define the model **/
   val params = LeafParameter(
-    GaussianParameter(1.0, 1.0),
+    GaussianParameter(0.0, 1.0),
     None,
-    OrnsteinParameter(1.0, 0.1, 0.4))
+    OrnsteinParameter(3.0, 0.5, 1.0))
 
   val model = LogGaussianCox(stepOrnstein)
 }
@@ -37,7 +38,7 @@ trait LgcpModel {
 object SimulateLGCP extends App {
   val mod = new LgcpModel {}
 
-  val sims = simLGCP(0.0, 3.0, mod.model(mod.params), 2)
+  val sims = simLGCP(0.0, 10.0, mod.model(mod.params), 2)
 
   val pw = new PrintWriter("lgcpsims.csv")
   pw.write(sims.mkString("\n"))

@@ -76,8 +76,8 @@ object State {
     * @return the state in the same structure only changed by the provided f
     */
   def map(s: State)(f: DenseVector[Double] => DenseVector[Double]): State = s match {
-    case BranchState(l, r) => BranchState(map(l)(f), map(r)(f))
     case LeafState(x) => LeafState(f(x))
+    case BranchState(l, r) => BranchState(map(l)(f), map(r)(f))
   }
 
   /**
