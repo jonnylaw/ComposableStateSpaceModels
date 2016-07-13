@@ -8,6 +8,7 @@ import model.Utilities._
 import model.DataTypes._
 import model.State._
 import breeze.linalg.linspace
+import breeze.stats.distributions.Rand._
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -42,6 +43,19 @@ object SimData {
       takeWhile (s => s.time <= t0 + totalIncrement)
 
     stream
+  }
+
+  def simSde(x0: State, t0: Time, dt: TimeIncrement, precision: Int, 
+    stepFun: (State, TimeIncrement) => Rand[State]): Stream[Rand[Sde]] = {
+
+    val delta = Math.pow(10, -precision)
+
+    Stream.iterate(always(Sde(t0, x0)))(p =>
+      for {
+        x <- p
+        x1 <- stepFun(x.state, delta)
+      } yield Sde(x.time + delta, x1)
+    )
   }
 
   /**
