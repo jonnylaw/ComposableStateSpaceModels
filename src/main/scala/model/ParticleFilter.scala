@@ -18,9 +18,7 @@ import akka.stream.scaladsl.Source
 import akka.stream.scaladsl._
 
 // TODO:
-// * Implement resampling methods efficiently (and more from "Parallel resampling in the particle filter", Lawrence M. Murray)
-// * Test Particle filtering algorithms
-// * Time resampling schemes? Is there a nice test dataset for this
+// * Implement a parallel particle filter (just use a par vec)
 
 /**
   * Representation of the state of the particle filter, at each step the previous observation time, t0, and 
@@ -44,7 +42,6 @@ case class PfState(
 
 trait ParticleFilter {
 
-  val particles: Int
   val unparamMod: Parameters => Model
   val t0: Time
 
@@ -75,7 +72,7 @@ trait ParticleFilter {
     PfState(y.t, Some(y.observation), x, w1, ll)
   }
 
-  def llFilter(data: Vector[Data])(p: Parameters): LogLikelihood = {
+  def llFilter(data: Vector[Data])(particles: Int)(p: Parameters): LogLikelihood = {
     val mod = unparamMod(p)
     val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
 
@@ -85,7 +82,7 @@ trait ParticleFilter {
   /**
     * Run a filter over a vector of data and return a vector of PfState
     */
-  def accFilter(data: Vector[Data])(p: Parameters): Vector[PfState] = {
+  def accFilter(data: Vector[Data])(particles: Int)(p: Parameters): Vector[PfState] = {
     val mod = unparamMod(p)
     val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
 
@@ -99,7 +96,15 @@ trait ParticleFilter {
   /**
     * Run a filter over a stream of data
     */
-  def filter(data: Source[Data, Any])(p: Parameters): Source[PfState, Any] = {
+  def filter(data: Source[Data, Any])(particles: Int)(p: Parameters): Source[PfState, Any] = {
+    val mod = unparamMod(p)
+    val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
+
+    data.
+      scan(initState)((s, y) => stepFilter(y, s)(p))
+  }
+
+  def parFilter(data: Source[Data, Any])(particles: Int)(p: Parameters): Source[PfState, Any] = {
     val mod = unparamMod(p)
     val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
 
@@ -248,9 +253,8 @@ object ParticleFilter {
   }
 }
 
-case class Filter(model: Parameters => Model, n: Int, resamplingScheme: Resample[State], t0: Time) extends ParticleFilter {
+case class Filter(model: Parameters => Model, resamplingScheme: Resample[State], t0: Time) extends ParticleFilter {
   
-  val particles = n
   val unparamMod = model
 
   def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)] = {
@@ -272,9 +276,8 @@ case class Filter(model: Parameters => Model, n: Int, resamplingScheme: Resample
 /**
   * In order to calculate Eta in the LGCP model, we need to merge the advance state and transform state functions
   */
-case class FilterLgcp(model: Parameters => Model, n: Int, resamplingScheme: Resample[State], precision: Int, t0: Time) extends ParticleFilter {
+case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[State], precision: Int, t0: Time) extends ParticleFilter {
 
-  val particles = n
   val unparamMod = model
 
   def calcWeight(x: State, dt: TimeIncrement, t: Time)(p: Parameters): (State, Eta) = {

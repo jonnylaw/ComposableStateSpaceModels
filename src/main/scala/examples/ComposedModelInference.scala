@@ -11,7 +11,6 @@ import akka.util.ByteString
 
 import model._
 import model.Model._
-import model.Filtering._
 import model.Streaming._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel, studentTModel}
 import model.DataTypes._
@@ -71,7 +70,7 @@ object FilteringSeasonalPoisson extends App {
     map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
     toVector
 
-  val filtered = pf(data, mod.model)(1000)(mod.params)
+  val filtered = Filter(mod.model, ParticleFilter.multinomialResampling, data.map(_.t).min).accFilter(data)(1000)(mod.params)
 
   val pw = new PrintWriter("seasonalPoissonFiltered.csv")
   pw.write(filtered.mkString("\n"))
@@ -89,7 +88,7 @@ object DetermineComposedParams extends App {
     map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
     toVector
 
-  val mll = pfMllFold(data, mod.model) _
+  val mll = Filter(mod.model, ParticleFilter.multinomialResampling, data.map(_.t).min).llFilter(data) _
 
   runPmmhToFile("poisson", 2, mod.params, mll, Parameters.perturb(0.1), 200, 10000)
 }
@@ -130,11 +129,9 @@ object FilterOnline extends App {
 
   // particles and initial state for particle filter
   val n = 1000
-  val initState = PfState(0.0, None, Vector.fill(n)(mod.x0.draw), 0.0,
-    CredibleInterval(0.0, 0.0), State.zero, IndexedSeq[CredibleInterval](), 0.0)
+  val mll = Filter(unparamMod, ParticleFilter.multinomialResampling, 0.0)
 
-  observations.
-    scan(initState)((d, y) => filterStepScan(y, d, mod, 200)).
+  mll.filter(observations)(n)(params).
     drop(1).
     map(a => ByteString(s"$a\n")).
     runWith(FileIO.toFile(new File("OnlineComposedModelFiltered.csv")))
@@ -142,71 +139,4 @@ object FilterOnline extends App {
   Thread.sleep(25000) // sleep for 25 seconds
 
   system.shutdown
-}
-
-object Cars {
-  def main(args: Array[String]): Unit = {
-    implicit val system = ActorSystem("FitCars")
-    implicit val materializer = ActorMaterializer()
-
-    val data = scala.io.Source.fromFile("cars.csv").getLines.toVector.
-      drop(1).
-      map(a => a.split(",")).
-      map(rs => Data(rs(1).toDouble, rs(2).toDouble, None, None, None))
-
-    // define the model
-    val poissonParam = LeafParameter(
-      GaussianParameter(6.0, 0.1),
-      None,
-      OrnsteinParameter(6.0, 0.1, 0.1))
-    val seasonalParamDaily = LeafParameter(
-      GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
-      None,
-      OrnsteinParameter(
-        theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7, -0.5, -0.7),
-        alpha = DenseVector.fill(6)(0.1),
-        sigma = DenseVector.fill(6)(0.2)))
-
-    val initParams = poissonParam |+| seasonalParamDaily
-
-    val poisson = PoissonModel(stepOrnstein)
-    val daily = SeasonalModel(24, 3, stepOrnstein)
-    val unparamMod = Model.op(poisson, daily)
-
-    val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
-
-    val mll = pfMll(data.sortBy(_.t), unparamMod) _
-
-    runPmmhToFile("cars", chains = 4, initParams, mll, Parameters.perturb(delta), particles = particles, iterations = iters)
-  }
-}
-
-object SimCars extends App {
-  val poissonParam = LeafParameter(
-    GaussianParameter(6.0, 0.1),
-    None,
-    OrnsteinParameter(6.0, 0.1, 0.1))
-  val seasonalParamDaily = LeafParameter(
-    GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
-    None,
-    OrnsteinParameter(
-      theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7, -0.5, -0.7),
-      alpha = DenseVector.fill(6)(0.1),
-      sigma = DenseVector.fill(6)(0.2)))
-
-  val p = poissonParam |+| seasonalParamDaily
-
-  val poisson = PoissonModel(stepOrnstein)
-  val daily = SeasonalModel(24, 3, stepOrnstein)
-  val poissonMod = Model.op(poisson, daily)
-
-  val times = (1 to 169).map(_.toDouble).toList
-  val sims = simData(times, poissonMod(p))
-
-
-  val pw = new PrintWriter("simCars.csv")
-  pw.write(sims.
-    map(data => s"${data.t}, ${data.observation}").
-    mkString("\n"))
-  pw.close()
 }
