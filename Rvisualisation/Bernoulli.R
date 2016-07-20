@@ -87,10 +87,6 @@ dev.off()
 # Determine Parameters #
 ########################
 
-system("sbt \"run-main DetermineBernoulliParameters\"")
-bernMcmc = read.csv("BernoulliMCMC.csv", header = F)
-colnames(bernMcmc) <- c("m0", "c0", "theta", "alpha", "sigma")
-
 plotIters = function(iters, variable, burnin, thin) {
   mcmcObject = mcmc(iters[seq(from = burnin, to = nrow(iters), by = thin), variable]) %>% ggs()
   
@@ -102,12 +98,16 @@ plotIters = function(iters, variable, burnin, thin) {
   grid.arrange(p1, p2, p3, p4)
 }
 
+system("sbt \"run-main DetermineBernoulliParameters\"")
+bernMcmc = read.csv("BernoulliMCMC.csv", header = F)
+colnames(bernMcmc) <- c("m0", "c0", "mu", "sigma")
+
 ## Actual Parameters m0 = 6.0, c0 = 1.0, theta = 1.0, alpha = 0.05, sigma = 1.0
 
 summary(mcmc(bernMcmc))
 
 # png("Figures/BernoulliMCMC.png")
-plotIters(bernMcmc, 3:5, 0, 10)
+plotIters(bernMcmc, 3:4, 0, 10)
 # dev.off()
 
 ##############################
