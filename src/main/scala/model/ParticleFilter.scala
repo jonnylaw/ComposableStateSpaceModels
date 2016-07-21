@@ -67,7 +67,7 @@ trait ParticleFilter {
     val max = w.max // log sum exp
     val w1 = w map { a => exp(a - max) }
     val x = resample(x1, w1)
-    val ll = s.ll + max + math.log(breeze.stats.mean(w))
+    val ll = s.ll + max + math.log(breeze.stats.mean(w1))
 
     PfState(y.t, Some(y.observation), x, w1, ll)
   }
