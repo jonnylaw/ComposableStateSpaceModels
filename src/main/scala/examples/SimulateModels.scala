@@ -9,7 +9,6 @@ import akka.util.ByteString
 
 import model._
 import model.Model._
-import model.Filtering._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel}
 import model.DataTypes._
 import model.{State, Model}
@@ -64,10 +63,10 @@ object FilterBernoulli extends App {
 
   val mod = new BernoulliModel {}
   
-  val filtered = pf(data, mod.model)(1000)(mod.p)
+  val filtered = Filter(mod.model, ParticleFilter.multinomialResampling, 0.0).accFilter(data)(1000)(mod.p)
 
   val pw = new PrintWriter("BernoulliFiltered.csv")
-  pw.write(filtered.mkString("\n"))
+  pw.write(filtered.draw.mkString("\n"))
   pw.close()
 }
 
@@ -92,11 +91,11 @@ object FilterBernoulliOnline extends App {
   val n = 1000
   val t0 = 0.0 // replace with first time point
   val particleCloud = Vector.fill(n)(mod.x0.draw)
-  val initState = PfState(t0, None, particleCloud, 0.0, CredibleInterval(0.0, 0.0), State.zero, IndexedSeq[CredibleInterval](), 0.0)
 
+  val pf = Filter(model.model, ParticleFilter.multinomialResampling, 0.0)
+  
   // Use scan to filter a stream, which allows us to output the estimated state as the observations arrive
-  observations.
-    scan(initState)((d, y) => filterStepScan(y, d, mod, 200)).
+  pf.filter(observations)(n)(model.p).
     drop(1). // drop the initial state, with no corresponding observation
     map(a => ByteString(s"$a\n")).
     runWith(FileIO.toFile(new File("filteredBernoulliOnline.csv")))

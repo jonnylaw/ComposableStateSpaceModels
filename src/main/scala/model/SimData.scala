@@ -182,6 +182,35 @@ object SimData {
     data.reverse
   }
 
+  def simStepRand(x0: State, t: Time, deltat: TimeIncrement, mod: Model): Rand[Data] = {
+    for {
+      x1 <- mod.stepFunction(x0, deltat)
+      gamma = mod.f(x1, t)
+      eta = mod.link(gamma)
+      y1 <- mod.observation(eta)
+      } yield Data(t, y1, Some(eta), Some(gamma), Some(x1))
+  }
+
+  // Should this be a Rand[Vector[Data]] or a Vector[Rand[Data]] ??
+  def simDataRand(times: Seq[Time], mod: Model): Vector[Rand[Data]] = {
+    val x0 = mod.x0.draw
+    val init = simStepRand(x0, times.head, 0, mod)
+
+    val data = times.tail.foldLeft(Vector[Rand[Data]](init)) { (acc, t) => 
+
+      val d = for {
+        d0 <- acc.head
+        deltat = t - d0.t
+        x0 = d0.sdeState.get
+        d1 <- simStepRand(x0, t, deltat, mod)
+      } yield d1
+
+      d +: acc
+    }
+
+    data.reverse
+  }
+
   /**
     * Simulate data as an Akka Stream, with regular time intervals
     * @param mod The model to simulate from, can be composed or single

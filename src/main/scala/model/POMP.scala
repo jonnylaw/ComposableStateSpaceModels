@@ -1,7 +1,7 @@
 package model
 
 import breeze.numerics.{cos, sin, sqrt, exp, log}
-import breeze.stats.distributions.{Bernoulli, Poisson, Gaussian, Rand, MultivariateGaussian, StudentsT}
+import breeze.stats.distributions.{Bernoulli, Poisson, Gaussian, Rand, MultivariateGaussian, StudentsT, NegativeBinomial, Density}
 import breeze.linalg.{DenseMatrix, DenseVector}
 import scala.language.implicitConversions
 import java.io.Serializable
@@ -18,14 +18,14 @@ object POMP {
   implicit def obs2bool(o: Observation): Boolean = if (o == 0.0) false else true
 
   def studentTModel(stepFun: (SdeParameter) => (State, TimeIncrement) => Rand[State], df: Int): Parameters => Model = p => new Model {
-    def observation = x => {
-      new Rand[Observation] { 
-        def draw = p match {
+
+    def observation = x => p match {
           case LeafParameter(_,v,_) => v match {
-            case Some(scale) => StudentsT(df).draw*scale + x.head 
+            case Some(scale) => new Rand[Observation] with Density[Observation] {
+              def draw = StudentsT(df).draw*scale + x.head
+              def apply(y: Observation) = 1/scale * StudentsT(df).logPdf((y - x.head) / scale)
+            }
           }
-        }
-      }
     }
 
     def f(s: State, t: Time) = s.head
@@ -40,6 +40,7 @@ object POMP {
 
     def stepFunction = (x, dt) => p match {
       case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
+      case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
     }
 
     def dataLikelihood = (s, y) =>
@@ -55,13 +56,9 @@ object POMP {
     harmonics: Int,
     stepFun: (SdeParameter) => (State, TimeIncrement) => Rand[State]): Parameters => Model = p => new Model {
 
-    def observation = x => {
-      new Rand[Observation] { 
-        def draw = p match {
-          case LeafParameter(_,v,_) => v match {
-            case Some(noisesd) => Gaussian(x.head, noisesd).draw
-          }
-        }
+    def observation = x => p match {
+      case LeafParameter(_,v,_) => v match {
+        case Some(noisesd) => Gaussian(x.head, noisesd)
       }
     }
 
@@ -85,6 +82,7 @@ object POMP {
 
     def stepFunction = (x, dt) => p match {
       case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
+      case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
     }
 
     def dataLikelihood = (s, y) =>
@@ -97,13 +95,9 @@ object POMP {
 
   def LinearModel(stepFun: (SdeParameter) => (State, TimeIncrement) => Rand[State]): Parameters => Model = p => new Model {
 
-    def observation = x => new Rand[Observation] {
-      def draw = {
-        p match {
+    def observation = x => p match {
           case LeafParameter(_,v,_  @unchecked) => 
-            v.map(Gaussian(x.head, _).draw).get
-        }
-      }
+            v.map(Gaussian(x.head, _)).get
     }
 
     def f(s: State, t: Time) = s.head
@@ -118,6 +112,7 @@ object POMP {
 
     def stepFunction = (x, dt) => p match {
       case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
+      case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
     }
 
     def dataLikelihood = (s, y) => p match {
@@ -127,9 +122,12 @@ object POMP {
     }
   }
 
-  def PoissonModel(stepFun: (SdeParameter) => (State, TimeIncrement) => Rand[State]): Parameters => Model = p => new Model with Serializable {
+  def PoissonModel(stepFun: (SdeParameter) => (State, TimeIncrement) => Rand[State]): Parameters => Model = p => new Model {
 
-    def observation = lambda => new Rand[Observation] { def draw = Poisson(lambda.head).draw }
+    def observation = lambda => new Rand[Observation] with Density[Observation] {
+      def draw = Poisson(lambda.head).draw
+      def apply(y: Observation) = Poisson(lambda.head).logProbabilityOf(y.toInt)
+    }
 
     override def link(x: Double) = Vector(exp(x))
 
@@ -145,6 +143,7 @@ object POMP {
 
     def stepFunction = (x, dt) => p match {
       case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
+      case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
     }
 
     def dataLikelihood = (s, y) =>
@@ -153,14 +152,20 @@ object POMP {
 
   def BernoulliModel(stepFun: (SdeParameter) => (State, TimeIncrement) => Rand[State]): Parameters => Model = params => new Model {
 
-    def observation = p => new Rand[Observation] {
+    def observation = p => new Rand[Observation] with Density[Observation] {
       def draw = {
-        val bern = new Bernoulli(p.head)
-        bern.draw
+        scala.util.Random.nextDouble < p.head
+      }
+      def apply(y: Observation) = {
+        if (y) {
+          if (p.head == 0.0) -1e99 else log(p.head)
+        } else {
+          if ((1 - p.head) == 0.0) -1e99 else log(1-p.head)
+        }
       }
     }
 
-    override def link(x: Gamma) =
+    override def link(x: Gamma) = {
       if (x > 6) {
         Vector(1.0)
       } else if (x < -6) {
@@ -168,6 +173,7 @@ object POMP {
       } else {
         Vector(1.0/(1 + exp(-x)))
       }
+    }
 
     def f(s: State, t: Time) = s.head
 
@@ -181,6 +187,7 @@ object POMP {
 
     def stepFunction = (x, dt) => params match {
       case LeafParameter(_,_,sdeparam @unchecked) => stepFun(sdeparam)(x, dt)
+      case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
     }
 
     /**
@@ -217,11 +224,51 @@ object POMP {
 
     def stepFunction = (x, dt) => p match {
       case LeafParameter(_,_,sdeparam @unchecked) => stepFun(sdeparam)(x, dt)
+      case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
     }
 
      /**
       * The data likelihood requires two parameters, the hazard and cumulative hazard
       */
     def dataLikelihood = (s, y) => s.head - s(1)
+  }
+
+  def negativeBinomial(stepFun: SdeParameter => (State, TimeIncrement) => Rand[State]): Parameters => Model = p => new Model {
+
+    def observation = mu => new Rand[Observation] with Density[Observation] {
+      def draw = {
+        p match {
+          case LeafParameter(_, scale, _) =>
+            scale.map(NegativeBinomial(mu.head, _).draw).get
+        }
+      }
+      def apply(y: Observation) =  p match {
+        case LeafParameter(_, scale, _) =>
+          NegativeBinomial(mu.head, scale.get).logProbabilityOf(y.toInt)
+        case _ => throw new Exception("Can't determine the likelihood using a branch parameter")
+      }
+    }
+
+    def f(s: State, t: Time) = s.head
+
+    def x0 = p match {
+      case LeafParameter(stateParam, _, _ @unchecked) =>
+        stateParam match {
+          case GaussianParameter(m0, c0) =>
+            MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+        }
+      case _ => throw new Exception("State of single model must receive a Leaf Parameter")
+    }
+
+    def stepFunction = (x, dt) => p match {
+      case LeafParameter(_,_,sdeparam @unchecked) => stepFun(sdeparam)(x, dt)
+      case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
+    }
+
+    def dataLikelihood = (s, y) => p match {
+      case LeafParameter(_, scale, _) =>
+        NegativeBinomial(s.head, scale.get).logProbabilityOf(y.toInt)
+      case _ => throw new Exception("Can't determine the likelihood using a branch parameter")
+    }
   }
 }

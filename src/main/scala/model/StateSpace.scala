@@ -32,6 +32,7 @@ object StateSpace {
               }))
           }
       }
+      case _ => throw new Exception("Incorrect parameters supplied to stepBrownian, expected BrownianParameter")
     }
   }
 
@@ -46,6 +47,7 @@ object StateSpace {
     (s, dt) => p match {
       case StepConstantParameter(a) =>
         new Rand[State] { def draw = s map (_ + (a :* dt)) }
+      case _ => throw new Exception("Incorrect Parameters supplied to stepConstant, expected StepConstantParameter")
     }
   }
 
@@ -64,7 +66,8 @@ object StateSpace {
             // calculate the variance of the solution
             val variance = (sigma.data, alpha.data).zipped map { case (s, a) => (s*s/2*a)*(1-exp(-2*a*dt)) }
             DenseVector(mean.zip(variance) map { case (a, v) => Gaussian(a, sqrt(v)).draw() })
-            }
+          }
+        case _ => throw new Exception("Incorrect parameters supplied to stepOrnstein, expected OrnsteinParameter")
       }
     }
   }

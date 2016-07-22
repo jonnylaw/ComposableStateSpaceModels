@@ -45,7 +45,7 @@ trait ParticleFilter {
   val unparamMod: Parameters => Model
   val t0: Time
 
-  def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)]
+  def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Rand[Vector[(State, Eta)]]
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood
   def resample: Resample[State]
 
@@ -55,61 +55,49 @@ trait ParticleFilter {
     * @param s the state of the particle filter at the time of the last observation
     * @return the state of the particle filter after observation y
     */
-  def stepFilter(y: Data, s: PfState)(p: Parameters): PfState = {
+  def stepFilter(y: Data, s: PfState)(p: Parameters): Rand[PfState] = {
     val dt = y.t - s.t // calculate time between observations
 
-    val (w, x1) =
-      (for {
-        (x1, eta) <- advanceState(s.particles, dt, y.t)(p)
-        w = calculateWeights(eta, y.observation)(p)
-      } yield (w, x1)).unzip
-
-    val max = w.max // log sum exp
-    val w1 = w map { a => exp(a - max) }
-    val x = resample(x1, w1)
-    val ll = s.ll + max + math.log(breeze.stats.mean(w))
-
-    PfState(y.t, Some(y.observation), x, w1, ll)
+    for {
+      x <- advanceState(s.particles, dt, y.t)(p)
+      (x1, eta) = x.unzip
+      w = eta map (a => calculateWeights(a, y.observation)(p))
+      max = w.max
+      w1 = w map { a => exp(a - max) }
+      x2 = resample(x1, w1)
+      ll = s.ll + max + math.log(breeze.stats.mean(w1))
+    } yield PfState(y.t, Some(y.observation), x2, w1, ll)
   }
 
-  def llFilter(data: Vector[Data])(particles: Int)(p: Parameters): LogLikelihood = {
+  def llFilter(data: Vector[Data])(particles: Int)(p: Parameters): Rand[LogLikelihood] = {
     val mod = unparamMod(p)
     val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
 
-    data.foldLeft(initState)((s, y) => stepFilter(y, s)(p)).ll
+    data.foldLeft(always(initState))((s, y) => s flatMap (x => stepFilter(y, x)(p))) map (_.ll)
   }
 
   /**
     * Run a filter over a vector of data and return a vector of PfState
     */
-  def accFilter(data: Vector[Data])(particles: Int)(p: Parameters): Vector[PfState] = {
+  def accFilter(data: Vector[Data])(particles: Int)(p: Parameters): Rand[Vector[PfState]] = {
     val mod = unparamMod(p)
     val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
 
     val x = data.
-      foldLeft(Vector(initState))(
-        (acc, y) => stepFilter(y, acc.head)(p) +: acc)
+      foldLeft(Vector(always(initState)))(
+        (acc, y) => (acc.head flatMap (x => stepFilter(y, x)(p))) +: acc)
 
-    x.reverse.tail
+    sequence(x.reverse.tail)
   }
 
   /**
     * Run a filter over a stream of data
     */
-  def filter(data: Source[Data, Any])(particles: Int)(p: Parameters): Source[PfState, Any] = {
+  def filter(data: Source[Data, Any])(particles: Int)(p: Parameters): Source[Rand[PfState], Any] = {
     val mod = unparamMod(p)
     val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
 
-    data.
-      scan(initState)((s, y) => stepFilter(y, s)(p))
-  }
-
-  def parFilter(data: Source[Data, Any])(particles: Int)(p: Parameters): Source[PfState, Any] = {
-    val mod = unparamMod(p)
-    val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
-
-    data.
-      scan(initState)((s, y) => stepFilter(y, s)(p))
+    data.scan(always(initState))((s, y) => s flatMap (x => stepFilter(y, x)(p)))
   }
 }
 
@@ -257,17 +245,23 @@ case class Filter(model: Parameters => Model, resamplingScheme: Resample[State],
   
   val unparamMod = model
 
-  def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)] = {
+  def advanceStateHelp(x: State, dt: TimeIncrement, t: Time)(p: Parameters): Rand[(State, Eta)] = {
     val mod = unparamMod(p)
-    val x1 = x map (p => mod.stepFunction(p, dt).draw)
-    val eta = x1 map ((s: State) => mod.link(mod.f(s, t)))
+    for {
+      x1 <- mod.stepFunction(x, dt)
+      eta = mod.link(mod.f(x1, t))
+    } yield (x1, eta)
+  }
 
-    x1.zip(eta)
+  def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Rand[Vector[(State, Eta)]] = {
+    val mod = unparamMod(p)
+
+    traverse(x)(advanceStateHelp(_, dt, t)(p))
   }
 
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood = {
     val mod = unparamMod(p)
-    mod.dataLikelihood(x, y)
+    mod.observation(x).logApply(y)
   }
 
   def resample: Resample[State] = resamplingScheme
@@ -280,21 +274,23 @@ case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[Sta
 
   val unparamMod = model
 
-  def calcWeight(x: State, dt: TimeIncrement, t: Time)(p: Parameters): (State, Eta) = {
-    val mod = unparamMod(p)
-    val x1 = simSdeStream(x, t - dt, dt, precision, mod.stepFunction)
-    val transformedState = x1 map (a => mod.f(a.state, a.time))
+  def calcWeight(x: State, dt: TimeIncrement, t: Time)(p: Parameters): Rand[(State, Eta)] = new Rand[(State, Eta)] {
+    def draw = {
+      val mod = unparamMod(p)
+      val x1 = simSdeStream(x, t - dt, dt, precision, mod.stepFunction)
+      val transformedState = x1 map (a => mod.f(a.state, a.time))
 
-    (x1.last.state, Vector(transformedState.last, transformedState.map(x => exp(x) * dt).sum))
+      (x1.last.state, Vector(transformedState.last, transformedState.map(x => exp(x) * dt).sum))
+    }
   }
 
-  def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)] = {
-    x map(calcWeight(_, dt, t)(p))
+  def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Rand[Vector[(State, Eta)]] = {
+    traverse(x)(calcWeight(_, dt, t)(p))
   }
 
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood = {
     val mod = unparamMod(p)
-    mod.dataLikelihood(x, y)
+    mod.observation(x).logApply(y)
   }
 
   def resample: Resample[State] = resamplingScheme

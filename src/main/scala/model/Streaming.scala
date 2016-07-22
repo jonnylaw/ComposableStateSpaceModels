@@ -47,7 +47,7 @@ object Streaming {
     */
   def runPmmhToFile(
     fileOut: String, chains: Int,
-    initParams: Parameters, mll: Int => Parameters => LogLikelihood,
+    initParams: Parameters, mll: Int => Parameters => Rand[LogLikelihood],
     perturb: Parameters => Rand[Parameters], particles: Int, iterations: Int): Unit = {
 
     implicit val system = ActorSystem("StreamingPmmh")
@@ -55,7 +55,7 @@ object Streaming {
 
     Source(1 to chains).
       mapAsync(parallelism = 4){ chain =>
-        val iters = ParticleMetropolis(mll(particles), initParams, perturb).iters
+        val iters = ParticleMetropolisRand(mll(particles), initParams, perturb).iters
 
         println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
 

@@ -1,6 +1,7 @@
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 
+import model._
 import model.Model._
 import model.Streaming._
 import model.Filtering._
@@ -35,7 +36,8 @@ object MultipleChains {
     
     // define the particle filter, which calculates an empirical estimate of the marginal log-likelihood
     // this is a partially applied function, from Int => Parameters => LogLikelihood
-    val mll = pfMll(data.toVector.sortBy(_.t), mod) _
+    val mll = Filter(mod, ParticleFilter.multinomialResampling, 1.0).
+      llFilter(data.toVector.sortBy(_.t)) _
 
     // specify the number of iterations for the MCMC
     // and number of particles for the particle filter

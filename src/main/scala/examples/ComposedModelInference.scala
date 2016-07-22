@@ -73,7 +73,7 @@ object FilteringSeasonalPoisson extends App {
   val filtered = Filter(mod.model, ParticleFilter.multinomialResampling, data.map(_.t).min).accFilter(data)(1000)(mod.params)
 
   val pw = new PrintWriter("seasonalPoissonFiltered.csv")
-  pw.write(filtered.mkString("\n"))
+  pw.write(filtered.draw.mkString("\n"))
   pw.close()
 }
 

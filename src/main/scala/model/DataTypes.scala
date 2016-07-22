@@ -1,6 +1,5 @@
 package model
 
-import model.POMP.Observation
 import model.Utilities._
 import java.io.Serializable
 import scala.util.parsing.json.JSONObject

@@ -7,9 +7,9 @@ import model.Model._
 import breeze.stats.distributions.{Rand, Density}
 import breeze.linalg.DenseVector
 
-trait Model extends Serializable {
+trait Model {
   // The observation model
-  def observation: Eta => Rand[Observation]
+  def observation: Eta => (Rand[Observation] with Density[Observation])
   // the link function
   def link(x: Gamma): Eta = Vector(x)
   // deterministic transformation, such as seasonality
@@ -60,6 +60,7 @@ object Model {
         } yield BranchState(l, r)
       case (x: LeafState, param: LeafParameter) => // Null model case, non-null must be on left
         mod1(param).stepFunction(x, dt)
+      case _ => throw new Exception("Incorrect Parameters or state supplied to composed model stepFunction")
     }
 
      def dataLikelihood = (s, y) => p match {
@@ -69,7 +70,10 @@ object Model {
   }
 
   def zeroModel(stepFun: SdeParameter => (State, TimeIncrement) => Rand[State]): Parameters => Model = p => new Model {
-    def observation = x => new Rand[Observation] { def draw = x.head }
+    def observation = x => new Rand[Observation] with Density[Observation] {
+      def draw = x.head
+      def apply(x: Observation) = 0.0
+    }
     def f(s: State, t: Time) = s.head
     def x0 = new Rand[State] { def draw = LeafState(DenseVector[Double]()) }
     def stepFunction = p match {
