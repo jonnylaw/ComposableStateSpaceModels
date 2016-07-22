@@ -8,6 +8,7 @@ import model.Utilities._
 import model.DataTypes._
 import model.State._
 import breeze.linalg.linspace
+import breeze.stats.distributions.Rand._
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -174,6 +175,7 @@ object SimData {
       val deltat = t - acc.head.t
       val x0 = acc.head.sdeState.get
       val d = simStep(x0, t, deltat, mod)
+
       d +: acc
     }
 

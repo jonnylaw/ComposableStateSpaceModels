@@ -9,6 +9,7 @@ import akka.util.ByteString
 
 import model._
 import model.Model._
+import model.Streaming._
 import model.Filtering._
 import model.POMP._
 import model.StateSpace._

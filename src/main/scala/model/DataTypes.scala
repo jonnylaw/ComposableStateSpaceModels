@@ -62,10 +62,19 @@ object DataTypes {
   case class PfOut(
     time: Time,
     observation: Option[Observation],
+    eta: Double,
+    etaIntervals: CredibleInterval,
     state: State,
-    intervals: IndexedSeq[CredibleInterval]) {
+    stateIntervals: IndexedSeq[CredibleInterval]) {
 
-    override def toString = s"$time, $observation, ${state.flatten.mkString(", ")}, ${intervals.mkString(", ")}"
+    override def toString = {
+      observation match {
+        case Some(x) =>
+          s"$time, $x, $eta, ${etaIntervals.toString}, ${state.flatten.mkString(", ")}, ${stateIntervals.mkString(", ")}"
+        case None =>
+          s"$time, NA, $eta, ${etaIntervals.toString}, ${state.flatten.mkString(", ")}, ${stateIntervals.mkString(", ")}"
+      }
+    }
   }
 
   /**

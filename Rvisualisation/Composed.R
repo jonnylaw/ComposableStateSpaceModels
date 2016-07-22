@@ -10,11 +10,11 @@ theme_set(theme_minimal())
 # Simulate Seasonal Poisson #
 #############################
 
-system("cd ~/Desktop/ComposableModels/ && sbt \"run-main examples.SimulateSeasonalPoisson\"")
-seasPois = read.csv("~/Desktop/ComposableModels/seasonalPoissonSims.csv", header = F,
+system("sbt \"run-main examples.SimulateSeasonalPoisson\"")
+seasPois = read.csv("seasonalPoissonSims.csv", header = F,
                     col.names = c("Time", "Value", "Eta", "Gamma", sapply(1:7, function(i) paste("State", i, sep = ""))))
 
-png("~/Desktop/ComposableModels/Figures/SeasonalPoisson.png")
+# png("Figures/SeasonalPoisson.png")
 p1 = seasPois %>%
   ggplot(aes(x = Time, y = Value)) + geom_step() + 
   ggtitle("Poisson Observations")
@@ -31,17 +31,17 @@ p3 = seasPois %>%
   ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + theme(legend.position = "none")
 
 grid.arrange(p1, p2, p3, heights = c(1,2,1))
-dev.off()
+# dev.off()
 
 ##############################
 # Filtering Seasonal Poisson #
 ##############################
 
-system("cd ~/Desktop/ComposableModels/ && sbt \"run-main examples.FilteringSeasonalPoisson\"")
-filteredPoisson = read.csv("~/Desktop/ComposableModels/seasonalPoissonFiltered.csv", header = F)
-colnames(filteredPoisson) = c("Time", "Observation", sapply(1:7, function(i) paste0("PredictedState", i)), sapply(1:7, function(i) c(paste0("LowerState", i), paste0("UpperState", i))))
+system("sbt \"run-main examples.FilteringSeasonalPoisson\"")
+filteredPoisson = read.csv("seasonalPoissonFiltered.csv", header = F)
+colnames(filteredPoisson) = c("Time", "Observation", "PredictedEta", "lowerEta", "upperEta", sapply(1:7, function(i) paste0("PredictedState", i)), sapply(1:7, function(i) c(paste0("LowerState", i), paste0("UpperState", i))))
 
-pdf("~/Desktop/ComposableModels/Figures/FilteredPoisson.pdf")
+pdf("Figures/FilteredPoisson.pdf")
 
 p1 = filteredPoisson %>%  
   inner_join(seasPois, by = "Time") %>%
@@ -49,28 +49,23 @@ p1 = filteredPoisson %>%
   gather(key = "key", value = "value", -Time, -LowerState1, -UpperState1) %>%
   ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + 
   geom_ribbon(aes(ymax = UpperState1, ymin = LowerState1), alpha = 0.1) + 
-  ggtitle("Generalised Brownian Motion State for Local Level") + 
-  ggtitle("Ornstein-Uhlenbeck Process Representing Seasonality") + theme(legend.position = "bottom")
+  ggtitle("Generalised Brownian Motion State for Local Level") + theme(legend.position = "bottom")
 
-p2 = filteredPoisson %>%
+p3 = filteredPoisson %>%
   inner_join(seasPois, by = "Time") %>%
-  dplyr::select(PredictedState2, State2, LowerState2, UpperState2, Time) %>%
-  gather(key = "key", value = "value", -Time, -LowerState2, -UpperState2) %>%
+  dplyr::select(PredictedEta, lowerEta, upperEta, Eta, Time) %>%
+  gather(key = "key", value = "value", -Time, -lowerEta, -upperEta) %>%
   ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + 
-  geom_ribbon(aes(ymax = UpperState2, ymin = LowerState2), alpha = 0.2) + 
-  ggtitle("Ornstein-Uhlenbeck Process Representing Seasonality") + theme(legend.position = "bottom")
+  geom_ribbon(aes(ymax = upperEta, ymin = lowerEta), alpha = 0.2) + 
+  theme(legend.position = "bottom") + ggtitle("Filtered rate of Poisson Process")
 
-grid.arrange(p1, p2)
+grid.arrange(p3, p1)
 
 dev.off()
 
+##########################
+# Determining Parameters #
+##########################
 
-#####################
-# Online Simulation #
-#####################
-
-seasPois = read.csv("~/Desktop/ComposableModels/OnlineModel.csv", header = F,
-                    col.names = c("Time", "Value", "Eta", "Gamma", sapply(1:7, function(i) paste("State", i, sep = ""))))
-
-seasPois %>%
-  ggplot(aes(x = Time, y = Value)) + geom_step()
+# system("sbt \"run-main examples.DetermineComposedParams\"")
+# iters = read.csv("../poisson-10000-200-1.csv", header = F, col.names = c("m0", "c0", ""))
