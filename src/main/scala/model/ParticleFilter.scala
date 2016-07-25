@@ -44,6 +44,10 @@ trait ParticleFilter {
 
   val unparamMod: Parameters => Model
   val t0: Time
+  def initialiseState(p: Parameters, particles: Int): Rand[PfState] = {
+      val state = replicateM(particles, unparamMod(p).x0)
+      state map (s => PfState(t0, None, s, Vector.fill(particles)(1.0), 0.0))
+  }
 
   def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Rand[Vector[(State, Eta)]]
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood
@@ -70,21 +74,18 @@ trait ParticleFilter {
   }
 
   def llFilter(data: Vector[Data])(particles: Int)(p: Parameters): Rand[LogLikelihood] = {
-    val mod = unparamMod(p)
-    val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
-
-    data.foldLeft(always(initState))((s, y) => s flatMap (x => stepFilter(y, x)(p))) map (_.ll)
+    val initState = initialiseState(p, particles)
+    data.foldLeft(initState)((s, y) => s flatMap (x => stepFilter(y, x)(p))) map (_.ll)
   }
 
   /**
     * Run a filter over a vector of data and return a vector of PfState
     */
   def accFilter(data: Vector[Data])(particles: Int)(p: Parameters): Rand[Vector[PfState]] = {
-    val mod = unparamMod(p)
-    val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
+    val initState = initialiseState(p, particles)
 
     val x = data.
-      foldLeft(Vector(always(initState)))(
+      foldLeft(Vector(initState))(
         (acc, y) => (acc.head flatMap (x => stepFilter(y, x)(p))) +: acc)
 
     sequence(x.reverse.tail)
@@ -94,10 +95,9 @@ trait ParticleFilter {
     * Run a filter over a stream of data
     */
   def filter(data: Source[Data, Any])(particles: Int)(p: Parameters): Source[Rand[PfState], Any] = {
-    val mod = unparamMod(p)
-    val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
+    val initState = initialiseState(p, particles)
 
-    data.scan(always(initState))((s, y) => s flatMap (x => stepFilter(y, x)(p)))
+    data.scan(initState)((s, y) => s flatMap (x => stepFilter(y, x)(p)))
   }
 }
 
@@ -238,6 +238,13 @@ object ParticleFilter {
     */
   def sequence[A](l: Vector[Rand[A]]): Rand[Vector[A]] = {
     traverse(l)(a => a)
+  }
+
+  /**
+    * ReplicateM, fills a Vector with the monad (Rand[A]) and sequences it
+    */
+  def replicateM[A](n: Int, fa: Rand[A]): Rand[Vector[A]] = {
+    sequence(Vector.fill(n)(fa))
   }
 }
 

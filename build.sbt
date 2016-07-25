@@ -14,5 +14,6 @@ libraryDependencies  ++= Seq(
   "com.typesafe.akka" %% "akka-stream" % "2.4.6",
   "org.scalanlp" %% "breeze" % "0.10",
   "org.scalatest" %% "scalatest" % "2.2.4" % "test",
-  "com.github.fommil.netlib" % "all" % "1.1.2"
+  "com.github.fommil.netlib" % "all" % "1.1.2",
+  "org.typelevel" %% "cats" % "0.6.1"
 )

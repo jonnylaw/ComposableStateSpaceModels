@@ -26,6 +26,7 @@ import breeze.linalg.{DenseVector, diag}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import breeze.numerics.exp
+import cats.implicits._
 
 /**
   * Define a model to use throughout the examples in this file
@@ -42,7 +43,7 @@ trait TestModel {
     OrnsteinParameter(DenseVector.fill(6)(1.0), DenseVector.fill(6)(0.1), DenseVector.fill(6)(0.1)))
 
   val params = poissonParams |+| seasonalParams
-  val model = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
+  val model = PoissonModel(stepBrownian) |+| SeasonalModel(24, 3, stepOrnstein)
 }
 
 /**
@@ -109,7 +110,7 @@ object FilterOnline extends App {
     OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
 
   val params = poissonParams |+| seasonalParams
-  val unparamMod = Model.op(PoissonModel(stepBrownian), SeasonalModel(24, 3, stepOrnstein))
+  val unparamMod = PoissonModel(stepBrownian) |+| SeasonalModel(24, 3, stepOrnstein)
   val mod = unparamMod(params)
 
   // we can simulate from the process as a stream

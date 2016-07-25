@@ -25,6 +25,7 @@ import model.Utilities._
 import breeze.stats.distributions.MarkovChain._
 import breeze.stats.{mean, variance}
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
+import cats.implicits._
 
 
 object MultipleObservations {
@@ -56,7 +57,7 @@ object MultipleObservations {
     val poisson = PoissonModel(stepBrownian)
     val daily = SeasonalModel(24, 3, stepBrownian)
     val weekly = SeasonalModel(24*7, 3, stepBrownian)
-    val poissonMod = Model.op(Model.op(poisson, daily), weekly)
+    val poissonMod = poisson |+| daily |+| weekly
 
     // record observations at every other integer time point from 1 to 100
     val times = (1 to 100 by 2).map(_.toDouble).toList

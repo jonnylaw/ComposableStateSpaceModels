@@ -11,6 +11,7 @@ import akka.util.ByteString
 
 import model._
 import model.Model._
+import model.UnparamModel._
 import model.Filtering._
 import model.Streaming._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel, studentTModel}
@@ -23,6 +24,7 @@ import model.Parameters._
 import model.StateSpace._
 import java.io.{PrintWriter, File}
 import breeze.linalg.{DenseVector, diag}
+import cats.implicits._
 
 object SeasStudentT extends App {
   val tparams = LeafParameter(
@@ -36,7 +38,7 @@ object SeasStudentT extends App {
 
   val p = tparams |+| seasParams
 
-  val unparamMod = Model.op(studentTModel(stepOrnstein, 5), SeasonalModel(24, 3, stepOrnstein))
+  val unparamMod = studentTModel(stepOrnstein, 5) |+| SeasonalModel(24, 3, stepOrnstein)
   val mod = unparamMod(p)
 
   val times = (1 to 7*24).map(_.toDouble).toList
@@ -59,7 +61,7 @@ object GetSeasTParams extends App {
 
   val p = tparams |+| seasParams
 
-  val unparamMod = Model.op(studentTModel(stepOrnstein, 5), SeasonalModel(24, 3, stepOrnstein))
+  val unparamMod = studentTModel(stepOrnstein, 5) |+| SeasonalModel(24, 3, stepOrnstein)
 
   /**
     * Parse the timestamp and observations from the simulated data

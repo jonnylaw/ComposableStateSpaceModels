@@ -29,7 +29,7 @@ import breeze.linalg.{DenseVector, diag}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import breeze.numerics.exp
-
+import cats.implicits._
 
 object PoissonCars {
   def main(args: Array[String]): Unit = {
@@ -58,7 +58,7 @@ object PoissonCars {
 
     val poisson = PoissonModel(stepOrnstein)
     val daily = SeasonalModel(24, 3, stepOrnstein)
-    val unparamMod = Model.op(poisson, daily)
+    val unparamMod = poisson |+| daily
 
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
@@ -95,7 +95,7 @@ object LgcpCars {
 
     val poisson = LogGaussianCox(stepOrnstein)
     val daily = SeasonalModel(24, 3, stepOrnstein)
-    val unparamMod = Model.op(poisson, daily)
+    val unparamMod = poisson |+| daily
 
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
@@ -122,7 +122,7 @@ object SimCars extends App {
 
   val poisson = PoissonModel(stepOrnstein)
   val daily = SeasonalModel(24, 3, stepOrnstein)
-  val poissonMod = Model.op(poisson, daily)
+  val poissonMod = poisson |+| daily
 
   val times = (1 to 169).map(_.toDouble).toList
   val sims = simData(times, poissonMod(p))

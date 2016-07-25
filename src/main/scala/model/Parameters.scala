@@ -3,6 +3,7 @@ package model
 import breeze.linalg.{DenseMatrix, DenseVector, diag}
 import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}
 import breeze.numerics.exp
+import cats._
 
 sealed trait Parameters {
   override def toString = Parameters.flatten(this).mkString(", ")
@@ -26,6 +27,11 @@ object LeafParameter {
 }
 
 object Parameters {
+  implicit def parameterMonoid = new Monoid[Parameters] {
+    override def combine(p1: Parameters, p2: Parameters): Parameters = Parameters.combine(p1, p2)
+    override def empty: Parameters = LeafParameter()
+  }
+
   /**
     * A method to combine parameters
     */
