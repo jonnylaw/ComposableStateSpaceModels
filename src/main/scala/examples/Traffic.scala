@@ -12,7 +12,6 @@ import scala.concurrent.duration._
 import akka.util.ByteString
 
 import model._
-import model.Model._
 import model.Streaming._
 import model.POMP.{PoissonModel, SeasonalModel, LogGaussianCox}
 import model.DataTypes._
@@ -50,7 +49,7 @@ object PoissonCars {
       GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
       None,
       OrnsteinParameter(
-        theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7, -0.5, -0.7),
+        theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7),
         alpha = DenseVector.fill(6)(0.1),
         sigma = DenseVector.fill(6)(0.2)))
 
@@ -64,7 +63,7 @@ object PoissonCars {
 
     val mll = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
 
-    runPmmhToFile("cars-month", chains = 4, initParams, mll.llFilter(data) _, Parameters.perturb(delta), particles = particles, iterations = iters)
+    runPmmhToFile1("cars-month", chains = 4, initParams, mll.llFilter1(data) _, Parameters.perturb(delta), particles = particles, iterations = iters)
   }
 }
 
@@ -101,7 +100,52 @@ object LgcpCars {
 
     val mll = model.FilterLgcp(unparamMod, ParticleFilter.multinomialResampling, 0, data.map(_.t).min)
 
-    runPmmhToFile("lgcpcars-week", chains = 4, initParams, mll.llFilter(data), Parameters.perturb(delta), particles = particles, iterations = iters)
+    runPmmhToFile1("lgcpcars-week", chains = 4, initParams, mll.llFilter1(data), Parameters.perturb(delta), particles = particles, iterations = iters)
+  }
+}
+
+object NegBinCars {
+  def main(args: Array[String]): Unit = {
+    implicit val system = ActorSystem("FitCars")
+    implicit val materializer = ActorMaterializer()
+
+    val data = scala.io.Source.fromFile("poissonCars.csv").getLines.toVector.
+      drop(1).
+      map(a => a.split(",")).
+      map(rs => Data(rs(5).toDouble, rs(2).toDouble, None, None, None))
+
+    // define the model
+    val poissonParam = LeafParameter(
+      GaussianParameter(6.0, 0.1),
+      Some(1.0),
+      OrnsteinParameter(6.0, 0.1, 0.1))
+    val seasonalParamDaily = LeafParameter(
+      GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
+      None,
+      OrnsteinParameter(
+        theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7),
+        alpha = DenseVector.fill(6)(0.1),
+        sigma = DenseVector.fill(6)(0.2)))
+    val seasonalParamWeekly = LeafParameter(
+      GaussianParameter(DenseVector.fill(6)(0.01), diag(DenseVector.fill(6)(0.1))),
+      None,
+      OrnsteinParameter(
+        theta = DenseVector.fill(6)(-1.0),
+        alpha = DenseVector.fill(6)(0.1),
+        sigma = DenseVector.fill(6)(0.2)))
+
+    val initParams = poissonParam |+| seasonalParamDaily |+| seasonalParamWeekly
+
+    val negBin = negativeBinomial(stepOrnstein)
+    val daily = SeasonalModel(24, 3, stepOrnstein)
+    val weekly = SeasonalModel(24*7, 3, stepOrnstein)
+    val unparamMod = negBin |+| daily |+| weekly
+
+    val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
+
+    val mll = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
+
+    runPmmhToFile1("cars-month", chains = 4, initParams, mll.llFilter1(data) _, Parameters.perturb(delta), particles = particles, iterations = iters)
   }
 }
 

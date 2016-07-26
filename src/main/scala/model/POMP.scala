@@ -47,13 +47,6 @@ object POMP {
             case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
             case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
           }
-
-          def dataLikelihood = (s, y) =>
-          p match {
-            case LeafParameter(_,v,_  @unchecked) => v match {
-              case Some(scale  @unchecked) => 1/scale * StudentsT(df).logPdf((y - s.head) / scale)
-            }
-          }
         }
       }
     }
@@ -94,13 +87,6 @@ object POMP {
             case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
             case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
           }
-
-          def dataLikelihood = (s, y) =>
-          p match {
-            case LeafParameter(_,v,_  @unchecked) => v match {
-              case Some(noisesd  @unchecked) => Gaussian(s.head, noisesd).logPdf(y)
-            }
-          }
         }
       }
     }
@@ -127,12 +113,6 @@ object POMP {
         def stepFunction = (x, dt) => p match {
           case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
           case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
-        }
-
-        def dataLikelihood = (s, y) => p match {
-          case LeafParameter(_,v,_) => v match {
-            case Some(noisesd @unchecked) => Gaussian(s.head, noisesd).logPdf(y)
-          }
         }
       }
     }
@@ -164,13 +144,11 @@ object POMP {
           case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
         }
 
-        def dataLikelihood = (s, y) =>
-        (Poisson(s.head).logProbabilityOf(y.toInt))
       }
     }
   }
 
-  def BernoulliModel(stepFun: StepFunction): Parameters => Model = new UnparamModel {
+  def BernoulliModel(stepFun: StepFunction): UnparamModel = new UnparamModel {
     def apply(params: Parameters) =
       new Model {
 
@@ -211,18 +189,7 @@ object POMP {
           case LeafParameter(_,_,sdeparam @unchecked) => stepFun(sdeparam)(x, dt)
           case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
         }
-        
-        /**
-          * log(0) is undefined, so we just return a very small number for the log-likelihood when the probability is one
-          */
-        def dataLikelihood = {
-          (p, y) =>
-          if (y) {
-            if (p.head == 0.0) -1e99 else log(p.head)
-          } else {
-            if ((1 - p.head) == 0.0) -1e99 else log(1-p.head)
-          }
-        }
+
       }
   }
 
@@ -235,7 +202,10 @@ object POMP {
       def apply(p: Parameters) =
         new Model {
 
-          def observation = ???
+          def observation = s => new Rand[Observation] with Density[Observation] {
+            def draw: Observation = ???
+            def apply(y: Observation) = exp(s.head - s(1))
+          }
 
           def f(s: State, t: Time) = s.head
 
@@ -251,15 +221,10 @@ object POMP {
             case LeafParameter(_,_,sdeparam @unchecked) => stepFun(sdeparam)(x, dt)
             case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
           }
-
-          /**
-            * The data likelihood requires two parameters, the hazard and cumulative hazard
-            */
-          def dataLikelihood = (s, y) => s.head - s(1)
         }
     }
 
-  def negativeBinomial(stepFun: StepFunction): Parameters => Model =
+  def negativeBinomial(stepFun: StepFunction): UnparamModel =
     new UnparamModel {
       def apply(p: Parameters) = {
         new Model {
@@ -268,12 +233,20 @@ object POMP {
             def draw = {
               p match {
                 case LeafParameter(_, scale, _) =>
-                  scale.map(NegativeBinomial(mu.head, _).draw).get
+                  val sigma = scale.get
+                  val p = (sigma*sigma - mu.head) / sigma*sigma
+                  val r = mu.head * mu.head / (sigma * sigma - mu.head)
+
+                  NegativeBinomial(r, p).draw
               }
             }
-            def apply(y: Observation) =  p match {
+            def apply(y: Observation) = p match {
               case LeafParameter(_, scale, _) =>
-                NegativeBinomial(mu.head, scale.get).logProbabilityOf(y.toInt)
+                val sigma = scale.get
+                val p = (sigma*sigma - mu.head) / sigma*sigma
+                val r = mu.head * mu.head / (sigma * sigma - mu.head)
+
+                NegativeBinomial(r, p).probabilityOf(y.toInt)
               case _ => throw new Exception("Can't determine the likelihood using a branch parameter")
             }
           }
@@ -292,12 +265,6 @@ object POMP {
           def stepFunction = (x, dt) => p match {
             case LeafParameter(_,_,sdeparam @unchecked) => stepFun(sdeparam)(x, dt)
             case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
-          }
-
-          def dataLikelihood = (s, y) => p match {
-            case LeafParameter(_, scale, _) =>
-              NegativeBinomial(s.head, scale.get).logProbabilityOf(y.toInt)
-            case _ => throw new Exception("Can't determine the likelihood using a branch parameter")
           }
         }
       }

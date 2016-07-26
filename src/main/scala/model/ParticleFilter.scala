@@ -12,13 +12,9 @@ import breeze.stats.distributions.Rand._
 import breeze.numerics.exp
 import breeze.linalg.DenseVector
 import ParticleFilter._
-import Filtering._
 
 import akka.stream.scaladsl.Source
 import akka.stream.scaladsl._
-
-// TODO:
-// * Implement a parallel particle filter (just use a par vec)
 
 /**
   * Representation of the state of the particle filter, at each step the previous observation time, t0, and 
@@ -52,6 +48,27 @@ trait ParticleFilter {
   def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Rand[Vector[(State, Eta)]]
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood
   def resample: Resample[State]
+
+  /**
+    * Step filter without Rand boxing by drawing directly from the transition kernel
+    */
+  def stepFilter1(y: Data, s: PfState)(p: Parameters): PfState = {
+    val dt = y.t - s.t // calculate time between observations
+
+    val (x1, eta) = advanceState(s.particles, dt, y.t)(p).draw.unzip
+    val w = eta map (a => calculateWeights(a, y.observation)(p))
+    val max = w.max
+    val w1 = w map { a => exp(a - max) }
+    val x2 = resample(x1, w1)
+    val ll = s.ll + max + math.log(breeze.stats.mean(w1))
+
+    PfState(y.t, Some(y.observation), x2, w1, ll)
+  }
+
+  def llFilter1(data: Vector[Data])(particles: Int)(p: Parameters): LogLikelihood = {
+    val initState = initialiseState(p, particles).draw
+    data.foldLeft(initState)((s, y) => stepFilter1(y, s)(p)).ll
+  }
 
   /**
     * Perform one step of a particle filter
@@ -252,7 +269,7 @@ case class Filter(model: Parameters => Model, resamplingScheme: Resample[State],
   
   val unparamMod = model
 
-  def advanceStateHelp(x: State, dt: TimeIncrement, t: Time)(p: Parameters): Rand[(State, Eta)] = {
+  def advanceStateHelper(x: State, dt: TimeIncrement, t: Time)(p: Parameters): Rand[(State, Eta)] = {
     val mod = unparamMod(p)
     for {
       x1 <- mod.stepFunction(x, dt)
@@ -263,7 +280,7 @@ case class Filter(model: Parameters => Model, resamplingScheme: Resample[State],
   def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Rand[Vector[(State, Eta)]] = {
     val mod = unparamMod(p)
 
-    traverse(x)(advanceStateHelp(_, dt, t)(p))
+    traverse(x)(advanceStateHelper(_, dt, t)(p))
   }
 
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood = {

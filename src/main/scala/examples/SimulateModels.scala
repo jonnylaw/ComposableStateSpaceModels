@@ -8,7 +8,6 @@ import scala.concurrent.duration._
 import akka.util.ByteString
 
 import model._
-import model.Model._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel}
 import model.DataTypes._
 import model.{State, Model}
@@ -22,6 +21,7 @@ import breeze.stats.distributions.{Gaussian, MultivariateGaussian}
 import breeze.linalg.{DenseVector, diag}
 import breeze.numerics.exp
 import scala.concurrent.ExecutionContext.Implicits.global
+import cats.implicits._
 
 /**
   * A model to use for the examples in this class
@@ -153,7 +153,7 @@ object SeasonalBernoulli extends App {
     BrownianParameter(DenseVector.fill(6)(0.1), diag(DenseVector.fill(6)(1.0))))
 
   val params = bernoulliParams |+| seasonalParams
-  val mod = Model.op(BernoulliModel(stepBrownian), SeasonalModel(24, 3, stepBrownian))
+  val mod = BernoulliModel(stepBrownian) |+| SeasonalModel(24, 3, stepBrownian)
 
   val times = (1 to 100).map(_.toDouble).toList
   val sims = simData(times, mod(params))

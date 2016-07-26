@@ -10,9 +10,7 @@ import scala.concurrent.duration._
 import akka.util.ByteString
 
 import model._
-import model.Model._
 import model.UnparamModel._
-import model.Filtering._
 import model.Streaming._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel, studentTModel}
 import model.DataTypes._

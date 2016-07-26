@@ -8,9 +8,7 @@ import akka.stream.scaladsl._
 import akka.util.ByteString
 
 import model._
-import model.Model._
 import model.Streaming._
-import model.Filtering._
 import model.POMP._
 import model.StateSpace._
 import model.DataTypes._
@@ -82,12 +80,12 @@ object MultipleObservations {
        val data = vc map (x => Data(x.time, x.count, None, None, None))
 
        // define the particle filter using 200 particles and the same poisson model we generated the data from
-       val mll = pfMllFold(data.sortBy(_.t), poissonMod)(200)
+       val mll = Filter(poissonMod, ParticleFilter.multinomialResampling, data.map(_.t).min).llFilter(data.sortBy(_.t))(200) _
 
        // PMMH is a random Akka stream, this
        // means we can write asynchronously to a file
        // without holding all iterations in memory
-       ParticleMetropolis(mll, p, Parameters.perturb(0.1)).iters.
+       ParticleMetropolisRand(mll, p, Parameters.perturb(0.1)).iters.
          map(x => x.params).
          take(10000).
          map(a => ByteString(a + "\n")).

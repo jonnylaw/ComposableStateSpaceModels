@@ -2,9 +2,7 @@ import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 
 import model._
-import model.Model._
 import model.Streaming._
-import model.Filtering._
 import model.POMP._
 import model.StateSpace._
 import model.DataTypes._

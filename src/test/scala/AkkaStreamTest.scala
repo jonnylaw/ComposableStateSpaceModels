@@ -1,5 +1,4 @@
 import org.scalatest._
-import model.Filtering._
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer

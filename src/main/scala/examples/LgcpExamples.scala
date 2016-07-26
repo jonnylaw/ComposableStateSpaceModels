@@ -10,9 +10,8 @@ import scala.concurrent.duration._
 import akka.util.ByteString
 
 import model._
-import model.Model._
-import model.Filtering._
 import model.Streaming._
+import model.ParticleFilter._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, LogGaussianCox, BernoulliModel}
 import model.DataTypes._
 import model.{State, Model}
@@ -45,7 +44,7 @@ object SimulateLGCP extends App {
   pw.close()
 }
 
-object FilterLgcp extends App {
+object FilteringLgcp extends App {
   val data = scala.io.Source.fromFile("lgcpsims.csv").getLines.
     map(a => a.split(",")).
     map(rs => Data(rs.head.toDouble, rs(1).toDouble, None, None, None)).
@@ -54,10 +53,10 @@ object FilterLgcp extends App {
 
   val mod = new LgcpModel {}
 
-  val filtered = pfLGCP(1000, data.sortBy(_.t), mod.model, 2)(mod.params)
+  val filtered = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2, data.map(_.t).min).accFilter(data.sortBy(_.t))(1000)(mod.params)
 
   val pw = new PrintWriter("LgcpFiltered.csv")
-  pw.write(filtered.mkString("\n"))
+  pw.write(filtered.draw.mkString("\n"))
   pw.close()
 }
 
@@ -74,7 +73,7 @@ object GetLgcpParams {
 
     val mod = new LgcpModel {}
 
-    val mll = pfLGCPmll(data.sortBy(_.t), mod.model, 2)(250)
+    val mll = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2, data.map(_.t).min).llFilter(data.sortBy(_.t))(200) _
 
     val iterations = 10000
 
@@ -82,7 +81,7 @@ object GetLgcpParams {
     // this means we can write the iterations to a file as they are generated
     // therefore we use constant time memory even for large MCMC runs
     val delta = args.map(_.toDouble).toVector
-    val iters = ParticleMetropolis(mll, mod.params, Parameters.perturbIndep(delta)).iters
+    val iters = ParticleMetropolisRand(mll, mod.params, Parameters.perturbIndep(delta)).iters
 
     iters.
       via(monitorStream(1000, 1)).

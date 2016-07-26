@@ -1,4 +1,4 @@
-name := "ComposableModels"
+name := "ComposableModels_WithRand"
 
 version := "1.0"
 
