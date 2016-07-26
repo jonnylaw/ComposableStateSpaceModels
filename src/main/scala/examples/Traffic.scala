@@ -145,7 +145,7 @@ object NegBinCars {
 
     val mll = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
 
-    runPmmhToFile1("cars-month", chains = 4, initParams, mll.llFilter1(data) _, Parameters.perturb(delta), particles = particles, iterations = iters)
+    runPmmhToFile1("cars-month-negbin-", chains = 4, initParams, mll.llFilter1(data) _, Parameters.perturb(delta), particles = particles, iterations = iters)
   }
 }
 

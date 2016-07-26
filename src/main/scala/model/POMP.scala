@@ -251,6 +251,8 @@ object POMP {
             }
           }
 
+          override def link(x: Double) = Vector(exp(x))
+
           def f(s: State, t: Time) = s.head
 
           def x0 = p match {
