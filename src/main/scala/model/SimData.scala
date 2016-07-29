@@ -17,6 +17,7 @@ import java.io.File
 import akka.stream.scaladsl._
 import akka.util.ByteString
 import Stream._
+import model.ParticleFilter._
 
 
 object SimData {
@@ -191,8 +192,8 @@ object SimData {
       } yield Data(t, y1, Some(eta), Some(gamma), Some(x1))
   }
 
-  // Should this be a Rand[Vector[Data]] or a Vector[Rand[Data]] ??
-  def simDataRand(times: Seq[Time], mod: Model): Vector[Rand[Data]] = {
+
+  def simDataRand(times: Seq[Time], mod: Model): Rand[Vector[Data]] = {
     val x0 = mod.x0.draw
     val init = simStepRand(x0, times.head, 0, mod)
 
@@ -208,7 +209,7 @@ object SimData {
       d +: acc
     }
 
-    data.reverse
+    sequence(data.reverse)
   }
 
   /**

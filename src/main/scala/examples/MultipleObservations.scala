@@ -34,16 +34,16 @@ object MultipleObservations {
 
     // define a model for count data, where the rate of the poisson process changes
     // periodically on a weekly and daily basis
-    val poissonParam = LeafParameter(
+    val poissonParam: Parameters = LeafParameter(
       GaussianParameter(0.0, 1.0),
       None,
       BrownianParameter(0.0, 1.0))
-    val seasonalParamDaily = LeafParameter(
+    val seasonalParamDaily: Parameters = LeafParameter(
       GaussianParameter(DenseVector(Array.fill(6)(0.0)),
       diag(DenseVector(Array.fill(6)(1.0)))),
       None,
       BrownianParameter(DenseVector(Array.fill(6)(0.1)), diag(DenseVector(Array.fill(6)(0.4)))))
-    val seasonalParamWeekly = LeafParameter(
+    val seasonalParamWeekly: Parameters = LeafParameter(
       GaussianParameter(DenseVector(Array.fill(6)(0.0)),
       diag(DenseVector(Array.fill(6)(1.0)))),
       None,

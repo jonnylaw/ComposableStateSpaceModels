@@ -25,11 +25,11 @@ import breeze.linalg.{DenseVector, diag}
 import cats.implicits._
 
 object SeasStudentT extends App {
-  val tparams = LeafParameter(
+  val tparams: Parameters = LeafParameter(
     GaussianParameter(0.0, 3.0),
     Some(0.3),
     OrnsteinParameter(3.0, 1.0, 0.5))
-  val seasParams = LeafParameter(
+  val seasParams: Parameters = LeafParameter(
     GaussianParameter(DenseVector.fill(6)(0.0), diag(DenseVector.fill(6)(3.0))),
     None,
     OrnsteinParameter(DenseVector.fill(6)(2.0), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.3)))
@@ -48,11 +48,11 @@ object SeasStudentT extends App {
 }
 
 object GetSeasTParams extends App {
-  val tparams = LeafParameter(
+  val tparams: Parameters = LeafParameter(
     GaussianParameter(0.0, 3.0),
     Some(0.3),
     OrnsteinParameter(3.0, 1.0, 0.5))
-  val seasParams = LeafParameter(
+  val seasParams: Parameters = LeafParameter(
     GaussianParameter(DenseVector.fill(6)(0.0), diag(DenseVector.fill(6)(3.0))),
     None,
     OrnsteinParameter(DenseVector.fill(6)(2.0), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.3)))

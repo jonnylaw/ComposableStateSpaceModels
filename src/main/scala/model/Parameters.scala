@@ -7,8 +7,6 @@ import cats._
 
 sealed trait Parameters {
   override def toString = Parameters.flatten(this).mkString(", ")
-  def |+|(that: Parameters): Parameters =
-    Parameters.combine(this, that)
   def length: Int = Parameters.length(this)
   def isEmpty: Boolean = Parameters.isEmpty(this)
   def perturb(delta: Double): Rand[Parameters] =
@@ -43,11 +41,6 @@ object Parameters {
     } else {
       BranchParameter(lp, rp)
     }
-
-  /**
-    * A zero element, which represents an empty parameter and forms a left and right identity
-    */
-  def zero: Parameters = LeafParameter()
 
   /**
     * Checks to see if a parameter is empty
@@ -125,12 +118,14 @@ object Parameters {
       val paramSize = (0 to (t.size - 1))
       (paramSize map (i => s"theta$i")) ++ (paramSize map (i => s"alpha$i")) ++ (paramSize map (i => s"sigma$i"))
     case StepConstantParameter(a) => IndexedSeq("a")
+    case EmptyStepParameter => IndexedSeq()
   }
 
   def getInitParamNames(p: StateParameter): IndexedSeq[String] = p match {
     case GaussianParameter(m, s) =>
       val paramSize = (0 to (m.size -1))
       (paramSize map (i => s"m0$i")) ++ (paramSize map (i => s"C0$i"))
+    case EmptyParameter => IndexedSeq()
   }
 
   /**
@@ -200,6 +195,7 @@ object GaussianParameter {
 object StateParameter {
   def flatten(p: StateParameter): Vector[Double] = p match {
     case GaussianParameter(m, s) => (m.data ++ diag(s).toArray).toVector
+    case EmptyParameter => Vector()
   }
   def length(p: StateParameter): Int = flatten(p).length
 }
@@ -216,6 +212,7 @@ object SdeParameter {
     case BrownianParameter(m, s) => m.data.toVector ++ diag(s).data.toVector
     case OrnsteinParameter(theta, alpha, sigma) => theta.data.toVector ++ alpha.data.toVector ++ sigma.data.toVector
     case StepConstantParameter(a) => a.data.toVector
+    case EmptyStepParameter => Vector()
  }
 
   def length(p: SdeParameter): Int = flatten(p).length  

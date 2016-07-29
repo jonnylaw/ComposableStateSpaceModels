@@ -159,22 +159,23 @@ class ModelSuite extends FlatSpec with Matchers {
   }
 
   "Combine three models" should "result in a state space of three combined states" in {
-    val p1 = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
-    val p2 = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(2.0))
-    val p3 = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(3.0))
+    val p1: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
+    val p2: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(2.0))
+    val p3: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(3.0))
 
     val p = p1 |+| p2 |+| p3
 
     val threeLinear = LinearModelNoNoise(stepNull) |+| LinearModelNoNoise(stepConstant) |+| LinearModelNoNoise(stepConstant)
 
     val x0 = threeLinear(p).x0.draw
-    assert(x0 == (LeafState(0.0) |+| LeafState(0.0) |+| LeafState(0.0)))
+    val s1: State = LeafState(0.0)
+    assert(x0 == (s1 |+| s1 |+| s1))
   }
 
   "Combine three Models" should "advance each state space seperately" in {
-    val p1 = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
-    val p2 = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(2.0))
-    val p3 = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(3.0))
+    val p1: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
+    val p2: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(2.0))
+    val p3: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(3.0))
 
     val p = p1 |+| p2 |+| p3
 
@@ -182,13 +183,16 @@ class ModelSuite extends FlatSpec with Matchers {
 
     val x0 = threeLinear(p).x0.draw
     val x1 = threeLinear(p).stepFunction(x0, 1).draw
-    assert(x1 == (LeafState(0.0) |+| LeafState(2.0) |+| LeafState(3.0)))
+    val s1: State = LeafState(0.0)
+    val s2: State = LeafState(2.0)
+    val s3: State = LeafState(3.0)
+    assert(x1 == (s1 |+| s2 |+| s3))
   }
 
   "Combine three models" should "return an observation which is the sum of the state space, plus measurement error" in {
-    val p1 = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
-    val p2 = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(2.0))
-    val p3 = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(3.0))
+    val p1: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
+    val p2: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(2.0))
+    val p3: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(3.0))
 
     val p = p1 |+| p2 |+| p3
 

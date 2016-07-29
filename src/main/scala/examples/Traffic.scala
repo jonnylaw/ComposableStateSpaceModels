@@ -41,11 +41,11 @@ object PoissonCars {
       map(rs => Data(rs(5).toDouble, rs(2).toDouble, None, None, None))
 
     // define the model
-    val poissonParam = LeafParameter(
+    val poissonParam: Parameters = LeafParameter(
       GaussianParameter(6.0, 0.1),
       None,
       OrnsteinParameter(6.0, 0.1, 0.1))
-    val seasonalParamDaily = LeafParameter(
+    val seasonalParamDaily: Parameters = LeafParameter(
       GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
       None,
       OrnsteinParameter(
@@ -78,11 +78,11 @@ object LgcpCars {
       map(rs => Data(rs(1).toDouble, true, None, None, None))
 
     // define the model
-    val lgcpParam = LeafParameter(
+    val lgcpParam: Parameters = LeafParameter(
       GaussianParameter(6.0, 0.1),
       None,
       OrnsteinParameter(6.0, 0.1, 0.1))
-    val seasonalParamDaily = LeafParameter(
+    val seasonalParamDaily: Parameters = LeafParameter(
       GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
       None,
       OrnsteinParameter(
@@ -115,18 +115,18 @@ object NegBinCars {
       map(rs => Data(rs(5).toDouble, rs(2).toDouble, None, None, None))
 
     // define the model
-    val poissonParam = LeafParameter(
+    val poissonParam: Parameters = LeafParameter(
       GaussianParameter(6.0, 0.1),
       Some(1.0),
       OrnsteinParameter(6.0, 0.1, 0.1))
-    val seasonalParamDaily = LeafParameter(
+    val seasonalParamDaily: Parameters = LeafParameter(
       GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
       None,
       OrnsteinParameter(
         theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7),
         alpha = DenseVector.fill(6)(0.1),
         sigma = DenseVector.fill(6)(0.2)))
-    val seasonalParamWeekly = LeafParameter(
+    val seasonalParamWeekly: Parameters = LeafParameter(
       GaussianParameter(DenseVector.fill(6)(0.01), diag(DenseVector.fill(6)(0.1))),
       None,
       OrnsteinParameter(
@@ -150,11 +150,11 @@ object NegBinCars {
 }
 
 object SimCars extends App {
-  val poissonParam = LeafParameter(
+  val poissonParam: Parameters = LeafParameter(
     GaussianParameter(6.0, 0.1),
     None,
     OrnsteinParameter(6.0, 0.1, 0.1))
-  val seasonalParamDaily = LeafParameter(
+  val seasonalParamDaily: Parameters = LeafParameter(
     GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
     None,
     OrnsteinParameter(

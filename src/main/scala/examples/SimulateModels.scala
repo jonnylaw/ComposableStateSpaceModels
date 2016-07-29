@@ -142,11 +142,11 @@ object SimulateOrnstein {
   * Simulate a simple composed model, a bernoulli model with seasonal probability
   */
 object SeasonalBernoulli extends App {
-  val bernoulliParams = LeafParameter(
+  val bernoulliParams: Parameters = LeafParameter(
     GaussianParameter(0.0, 1.0),
     None,
     BrownianParameter(0.1, 1.0))
-  val seasonalParams = LeafParameter(
+  val seasonalParams: Parameters = LeafParameter(
     GaussianParameter(DenseVector(Array.fill(6)(0.0)),
       diag(DenseVector(Array.fill(6)(1.0)))),
     None,

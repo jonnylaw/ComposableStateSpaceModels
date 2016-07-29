@@ -2,6 +2,7 @@ package model
 
 import model.POMP._
 import breeze.linalg.DenseVector
+import cats._
 
 /**
   * Created by jonny on 12/12/2015.
@@ -12,9 +13,6 @@ sealed trait State {
   def map(f: DenseVector[Double] => DenseVector[Double]): State = State.map(this)(f)
   def flatten: Vector[Double] = State.flatten(this)
   def head: Double = State.head(this)
-  def |+|(that: State): State = {
-    combine(this, that)
-  }
   def isEmpty: Boolean = State.isEmpty(this)
   override def toString: String = this.flatten.mkString(", ")
 }
@@ -28,6 +26,11 @@ object LeafState {
 }
 
 object State {
+  implicit def parameterMonoid = new Monoid[State] {
+    override def combine(s1: State, s2: State): State = State.combine(s1, s2)
+    override def empty: State = State.zero
+  }
+
   def combine(state1: State, state2: State): State = {
     if (state1.isEmpty) {
       state2
@@ -38,7 +41,7 @@ object State {
     }
   }
 
-  def zero: State = {
+  val zero: State = {
     LeafState(DenseVector[Double]())
   }
 

@@ -31,11 +31,11 @@ import cats.implicits._
   * Define a model to use throughout the examples in this file
   */
 trait TestModel {
-  val poissonParams = LeafParameter(
+  val poissonParams: Parameters = LeafParameter(
     GaussianParameter(3.0, 0.5),
     None,
     BrownianParameter(0.01, 0.3))
-  val seasonalParams = LeafParameter(
+  val seasonalParams: Parameters = LeafParameter(
     GaussianParameter(DenseVector.fill(6)(0.0),
       diag(DenseVector.fill(6)(0.5))),
     None,
@@ -98,11 +98,11 @@ object FilterOnline extends App {
   implicit val materializer = ActorMaterializer()
 
   // define the model
-    val poissonParams = LeafParameter(
+    val poissonParams: Parameters = LeafParameter(
     GaussianParameter(0.3, 0.5),
     None,
     BrownianParameter(0.1, 1.0))
-  val seasonalParams = LeafParameter(
+  val seasonalParams: Parameters = LeafParameter(
     GaussianParameter(DenseVector.fill(6)(0.3),
       diag(DenseVector.fill(6)(0.5))),
     None,
