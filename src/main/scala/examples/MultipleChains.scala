@@ -35,7 +35,7 @@ object MultipleChains {
     // define the particle filter, which calculates an empirical estimate of the marginal log-likelihood
     // this is a partially applied function, from Int => Parameters => LogLikelihood
     val mll = Filter(mod, ParticleFilter.multinomialResampling, 1.0).
-      llFilter(data.toVector.sortBy(_.t)) _
+      llFilterRand(data.toVector.sortBy(_.t)) _
 
     // specify the number of iterations for the MCMC
     // and number of particles for the particle filter

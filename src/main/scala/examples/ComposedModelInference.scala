@@ -65,12 +65,17 @@ object SimulateSeasonalPoisson extends App {
 object FilteringSeasonalPoisson extends App {
   val mod = new TestModel {}
 
+  // read the data from file and parse it into a Data class 
   val data = scala.io.Source.fromFile("seasonalPoissonSims.csv").getLines.
     map(a => a.split(",")).
     map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
     toVector
 
-  val filtered = Filter(mod.model, ParticleFilter.multinomialResampling, data.map(_.t).min).accFilter(data)(1000)(mod.params)
+  // Define the particle filter
+  val filter = Filter(mod.model, ParticleFilter.multinomialResampling, data.map(_.t).min)
+
+  // Run the particle filter over the observed data using 1,000 particles
+  val filtered = filter.filterWithIntervals(data)(1000)(mod.params)
 
   val pw = new PrintWriter("seasonalPoissonFiltered.csv")
   pw.write(filtered.draw.mkString("\n"))
@@ -88,9 +93,13 @@ object DetermineComposedParams extends App {
     map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
     toVector
 
-  val mll = Filter(mod.model, ParticleFilter.multinomialResampling, data.map(_.t).min).llFilter(data) _
+  val mll = Filter(mod.model, ParticleFilter.multinomialResampling, data.map(_.t).min).llFilter(data)(200) _
 
-  runPmmhToFile("poisson", 2, mod.params, mll, Parameters.perturb(0.1), 200, 10000)
+  val iters = ParticleMetropolis(mll, mod.params, Parameters.perturb(0.05)).iters
+
+  val pw = new PrintWriter("SeasonalPoissonParams.csv")
+  pw.write(iters.sample(10000).mkString("\n"))
+  pw.close()
 }
 
 object FilterOnline extends App {

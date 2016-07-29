@@ -69,7 +69,10 @@ object GetSeasTParams extends App {
     map(rs => rs map (_.toDouble)).
     map(rs => Data(rs.head, rs(1), None, None, None))
 
-  val mll = Filter(unparamMod, ParticleFilter.multinomialResampling, 0.0).llFilter(data.toVector.sortBy(_.t)) _
+  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, 0.0)
+  val iters = ParticleMetropolis(filter.llFilter(data.toVector.sortBy(_.t))(200), p, Parameters.perturb(0.1)).iters
 
-  runPmmhToFile("seasTmcmc", 4, p, mll, Parameters.perturb(0.1), 200, 10000)
+  val pw = new PrintWriter("seastMCMC.csv")
+  pw.write(iters.sample(10000).mkString("\n"))
+  pw.close()
 }

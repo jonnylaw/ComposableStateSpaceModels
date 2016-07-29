@@ -45,11 +45,11 @@ object PoissonCars {
       GaussianParameter(6.0, 0.1),
       None,
       OrnsteinParameter(6.0, 0.1, 0.1))
-    val seasonalParamDaily: Parameters = LeafParameter(
-      GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
+    val seasonalParamDaily = LeafParameter(
+      GaussianParameter(DenseVector.fill(6)(-0.5), diag(DenseVector.fill(6)(0.1))),
       None,
       OrnsteinParameter(
-        theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7),
+        theta = DenseVector.fill(6)(-1.0),
         alpha = DenseVector.fill(6)(0.1),
         sigma = DenseVector.fill(6)(0.2)))
 
@@ -61,9 +61,13 @@ object PoissonCars {
 
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
-    val mll = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
+    val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
+    val mll = filter.llFilter(data)(particles) _
+    val its = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05)).params
 
-    runPmmhToFile1("cars-month", chains = 4, initParams, mll.llFilter1(data) _, Parameters.perturb(delta), particles = particles, iterations = iters)
+    val pw = new PrintWriter("PoissonTraffic.csv")
+    pw.write(its.sample(iters).mkString("\n"))
+    pw.close()
   }
 }
 
@@ -82,11 +86,12 @@ object LgcpCars {
       GaussianParameter(6.0, 0.1),
       None,
       OrnsteinParameter(6.0, 0.1, 0.1))
-    val seasonalParamDaily: Parameters = LeafParameter(
-      GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
+
+    val seasonalParamDaily = LeafParameter(
+      GaussianParameter(DenseVector.fill(6)(-0.5), diag(DenseVector.fill(6)(0.1))),
       None,
       OrnsteinParameter(
-        theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7, -0.5, -0.7),
+        theta = DenseVector.fill(6)(-1.0),
         alpha = DenseVector.fill(6)(0.1),
         sigma = DenseVector.fill(6)(0.2)))
 
@@ -98,9 +103,13 @@ object LgcpCars {
 
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
-    val mll = model.FilterLgcp(unparamMod, ParticleFilter.multinomialResampling, 0, data.map(_.t).min)
+    val filter = FilterLgcp(unparamMod, ParticleFilter.multinomialResampling, 0, data.map(_.t).min)
+    val mll = filter.llFilter(data)(particles) _
+    val its = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05)).params
 
-    runPmmhToFile1("lgcpcars-week", chains = 4, initParams, mll.llFilter1(data), Parameters.perturb(delta), particles = particles, iterations = iters)
+    val pw = new PrintWriter("LgcpTraffic.csv")
+    pw.write(its.sample(iters).mkString("\n"))
+    pw.close()
   }
 }
 
@@ -142,10 +151,14 @@ object NegBinCars {
     val unparamMod = negBin |+| daily |+| weekly
 
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
+    
+    val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
+    val mll = filter.llFilter(data)(particles) _
+    val its = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05)).params
 
-    val mll = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
-
-    runPmmhToFile1("cars-month-negbin-", chains = 4, initParams, mll.llFilter1(data) _, Parameters.perturb(delta), particles = particles, iterations = iters)
+    val pw = new PrintWriter("NegBinTraffic.csv")
+    pw.write(its.sample(iters).mkString("\n"))
+    pw.close()
   }
 }
 

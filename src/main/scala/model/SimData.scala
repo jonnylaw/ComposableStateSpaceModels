@@ -7,6 +7,7 @@ import model.POMP._
 import model.Utilities._
 import model.DataTypes._
 import model.State._
+import model.ParticleFilter._
 import breeze.linalg.linspace
 import breeze.stats.distributions.Rand._
 
@@ -191,7 +192,6 @@ object SimData {
       y1 <- mod.observation(eta)
       } yield Data(t, y1, Some(eta), Some(gamma), Some(x1))
   }
-
 
   def simDataRand(times: Seq[Time], mod: Model): Rand[Vector[Data]] = {
     val x0 = mod.x0.draw

@@ -53,7 +53,8 @@ object FilteringLgcp extends App {
 
   val mod = new LgcpModel {}
 
-  val filtered = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2, data.map(_.t).min).accFilter(data.sortBy(_.t))(1000)(mod.params)
+  val filter = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2, data.map(_.t).min)
+  val filtered = filter.accFilter(data.sortBy(_.t))(1000)(mod.params)
 
   val pw = new PrintWriter("LgcpFiltered.csv")
   pw.write(filtered.draw.mkString("\n"))
@@ -73,7 +74,7 @@ object GetLgcpParams {
 
     val mod = new LgcpModel {}
 
-    val mll = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2, data.map(_.t).min).llFilter(data.sortBy(_.t))(200) _
+    val filter = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2, data.map(_.t).min)
 
     val iterations = 10000
 
@@ -81,16 +82,10 @@ object GetLgcpParams {
     // this means we can write the iterations to a file as they are generated
     // therefore we use constant time memory even for large MCMC runs
     val delta = args.map(_.toDouble).toVector
-    val iters = ParticleMetropolisRand(mll, mod.params, Parameters.perturbIndep(delta)).iters
+    val iters = ParticleMetropolis(filter.llFilter(data.sortBy(_.t))(200), mod.params, Parameters.perturbIndep(delta)).iters
 
-    iters.
-      via(monitorStream(1000, 1)).
-      runWith(Sink.ignore)
-
-    iters.
-      map(s => s.params).
-      take(iterations).
-      map( p => ByteString(s"$p\n")).
-      runWith(FileIO.toFile(new File("LgcpMCMC.csv")))
+    val pw = new PrintWriter("LgcpMCMC.csv")
+    pw.write(iters.sample(iterations).mkString("\n"))
+    pw.close()
   }
 }

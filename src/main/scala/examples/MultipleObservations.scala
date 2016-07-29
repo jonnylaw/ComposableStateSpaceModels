@@ -80,12 +80,12 @@ object MultipleObservations {
        val data = vc map (x => Data(x.time, x.count, None, None, None))
 
        // define the particle filter using 200 particles and the same poisson model we generated the data from
-       val mll = Filter(poissonMod, ParticleFilter.multinomialResampling, data.map(_.t).min).llFilter(data.sortBy(_.t))(200) _
+       val mll = Filter(poissonMod, ParticleFilter.multinomialResampling, data.map(_.t).min).llFilterRand(data.sortBy(_.t))(200) _
 
        // PMMH is a random Akka stream, this
        // means we can write asynchronously to a file
        // without holding all iterations in memory
-       ParticleMetropolisRand(mll, p, Parameters.perturb(0.1)).iters.
+       ParticleMetropolisRand(mll, p, Parameters.perturb(0.1)).itersAkka.
          map(x => x.params).
          take(10000).
          map(a => ByteString(a + "\n")).

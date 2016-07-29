@@ -1,3 +1,5 @@
+package examples
+
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Source
@@ -6,6 +8,9 @@ import akka.stream.scaladsl._
 import scala.concurrent.{duration, Await}
 import scala.concurrent.duration._
 import akka.util.ByteString
+import GraphDSL.Implicits._
+import akka.stream.ClosedShape
+import java.nio.file.{Path, Paths}
 
 import model._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel}
@@ -16,6 +21,7 @@ import model.Utilities._
 import model.State._
 import model.Parameters._
 import model.StateSpace._
+import model.Streaming._
 import java.io.{PrintWriter, File}
 import breeze.stats.distributions.{Gaussian, MultivariateGaussian}
 import breeze.linalg.{DenseVector, diag}
@@ -161,4 +167,99 @@ object SeasonalBernoulli extends App {
   val pw = new PrintWriter("seasonalBernoulliSims.csv")
   pw.write(sims.mkString("\n"))
   pw.close()
+}
+
+trait LinearModel {
+  val unparamMod = LinearModel(stepBrownian)
+  val p = LeafParameter(GaussianParameter(0.1, 1.0), Some(1.0), BrownianParameter(-0.2, 1.0))
+  val mod = unparamMod(p)
+  val data: Vector[Data]
+  val times = (1 to 100).map(_.toDouble).toList
+  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, times.min)
+  val mll = filter.llFilter(data)(200) _
+  val mh = ParticleMetropolis(mll, p, Parameters.perturb(0.05))
+}
+
+/**
+  * Test Multiple methods with the same data
+  */
+object SimLinear extends App {
+  val mod = new LinearModel {
+    val data = simDataRand(times, mod).draw
+  }
+
+  val pw = new PrintWriter("LinearModelSims.csv")
+  pw.write(mod.data.mkString("\n"))
+  pw.close()
+}
+
+/**
+  * Breeze MCMC for linear model using monads, this works perfectly, but no monitoring
+  */
+object BreezeMCMC extends App {
+  val mod = new LinearModel {
+    val data = scala.io.Source.fromFile("LinearModelSims.csv").getLines.
+      map(a => a.split(",")).
+      map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None)).
+      toVector
+  }
+
+  val iters = mod.mh.params
+  
+  val pw = new PrintWriter("LinearModelBreeze.csv")
+  pw.write(iters.sample(10000).mkString("\n"))
+  pw.close()
+}
+
+/**
+  * Using akka-streaming, something strange going on here
+  * Could it be random number generation in a stream??
+  */
+object StreamingLinearModel extends App {
+  implicit val system = ActorSystem("StreamingLinearModel")
+  implicit val materializer = ActorMaterializer()
+
+  val mod = new LinearModel {
+    val data = scala.io.Source.fromFile("LinearModelSims.csv").getLines.
+      map(a => a.split(",")).
+      map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None)).
+      toVector
+  }
+
+  val iters = mod.mh.akkaProcess
+
+  iters.
+    take(10000).
+    map(p => ByteString(s"$p\n")).
+    runWith(FileIO.toFile(new File(s"LinearModelStreamOut.csv")))
+}
+
+/**
+  * Graph DSL version, this doesn't work either... :(
+  */
+object StreamingGraph extends App {
+  implicit val system = ActorSystem("Graphs")
+  implicit val materializer = ActorMaterializer()
+
+  val mod = new LinearModel {
+    val data = scala.io.Source.fromFile("LinearModelSims.csv").getLines.
+      map(a => a.split(",")).
+      map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None)).
+      toVector
+  }
+
+  val out = FileIO.toPath(Paths.get("./LinearModelGraph.csv"))
+
+  val graph = RunnableGraph.fromGraph(GraphDSL.create() { implicit builder =>
+    val bcast = builder.add(Broadcast[MetropState](2))
+    
+    mod.mh.itersAkka ~> bcast
+    bcast ~> monitorStream(1000, 1) ~> Sink.ignore
+
+    bcast ~> Flow[MetropState].take(10000) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
+
+    ClosedShape
+  })
+
+  graph.run()
 }
