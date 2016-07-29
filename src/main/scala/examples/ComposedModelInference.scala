@@ -97,7 +97,7 @@ object DetermineComposedParams extends App {
 
   val iters = ParticleMetropolis(mll, mod.params, Parameters.perturb(0.05)).iters
 
-  val pw = new PrintWriter("SeasonalPoissonParams.csv")
+  val pw = new PrintWriter("SeasonalPoissonParamsLol.csv")
   pw.write(iters.sample(10000).mkString("\n"))
   pw.close()
 }
@@ -107,7 +107,7 @@ object FilterOnline extends App {
   implicit val materializer = ActorMaterializer()
 
   // define the model
-    val poissonParams: Parameters = LeafParameter(
+  val poissonParams: Parameters = LeafParameter(
     GaussianParameter(0.3, 0.5),
     None,
     BrownianParameter(0.1, 1.0))

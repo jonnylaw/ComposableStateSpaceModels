@@ -31,7 +31,8 @@ iters = read.csv("seastMCMC.csv", header = F,
                                sapply(2:7, function(i) paste0("c", i)),
                                sapply(2:7, function(i) paste0("theta", i)),
                                sapply(2:7, function(i) paste0("alpha", i)),
-                               sapply(2:7, function(i) paste0("sigma", i))))
+                               sapply(2:7, function(i) paste0("sigma", i)),
+                               "accepted"))
 
 pdf("Figures/SeasonalTParameters.pdf")
 plot(mcmc(iters))

@@ -176,8 +176,8 @@ trait LinearModel {
   val data: Vector[Data]
   val times = (1 to 100).map(_.toDouble).toList
   val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, times.min)
-  val mll = filter.llFilter(data)(200) _
-  val mh = ParticleMetropolis(mll, p, Parameters.perturb(0.05))
+  val mll = filter.llFilter(data)(500) _
+  val mh = ParticleMetropolis(mll, p, Parameters.perturb(1.0))
 }
 
 /**
@@ -204,16 +204,13 @@ object BreezeMCMC extends App {
       toVector
   }
 
-  val iters = mod.mh.params
-  
   val pw = new PrintWriter("LinearModelBreeze.csv")
-  pw.write(iters.sample(10000).mkString("\n"))
+  pw.write(mod.mh.itersVector(10000).mkString("\n"))
   pw.close()
 }
 
 /**
-  * Using akka-streaming, something strange going on here
-  * Could it be random number generation in a stream??
+  * Using akka-streaming, random walk metropolis algorithm
   */
 object StreamingLinearModel extends App {
   implicit val system = ActorSystem("StreamingLinearModel")
@@ -226,7 +223,7 @@ object StreamingLinearModel extends App {
       toVector
   }
 
-  val iters = mod.mh.akkaProcess
+  val iters = mod.mh.itersAkka
 
   iters.
     take(10000).
@@ -235,7 +232,7 @@ object StreamingLinearModel extends App {
 }
 
 /**
-  * Graph DSL version, this doesn't work either... :(
+  * Graph DSL version, random walk metropolis algorithm
   */
 object StreamingGraph extends App {
   implicit val system = ActorSystem("Graphs")

@@ -72,13 +72,6 @@ trait MetropolisHastings {
   }
 
   /**
-    * Straight up convert the breeze iterations into an akka stream
-    */
-  def akkaProcess: Source[MetropState, Any] = {
-    Source.fromIterator(() => iters.steps)
-  }
-
-  /**
     * A single step of the metropolis hastings algorithm to be 
     * used with breeze implementation of Markov Chain.
     * This is a slight alteration to the implementation in breeze, 
@@ -101,11 +94,20 @@ trait MetropolisHastings {
 
   /**
     * Use the Breeze Markov Chain to generate a process of MetropState
-    * Process can be sampled from using .sample(n)
+    * Calling .sample(n) on this will create a single site metropolis hastings, 
+    * proposing parameters only from the initial supplied parameter values
     */
   def iters: Process[MetropState] = {
     val initState = MetropState(-1e99, initialParams, 0)
     MarkovChain(initState)(mhStepRand)
+  }
+
+  /**
+    * Returns iterations from the MCMC algorithm in a vector
+    * using sampleStep, sampleStep 
+    */
+  def itersVector(n: Int): Vector[MetropState] = {
+    MetropolisHastings.sampleStep(n, iters)
   }
 
   /**
@@ -118,6 +120,20 @@ trait MetropolisHastings {
 
   def params: Rand[Parameters] = {
     iters map (_.params)
+  }
+}
+
+object MetropolisHastings {
+  def sampleStep[T](n: Int, p: Process[T]): Vector[T] = {
+    def go(p: Process[T], acc: Vector[T]): Vector[T] = {
+      if (acc.size == n) {
+        acc
+      } else {
+        val draw = p.step
+        go(draw._2, acc :+ draw._1)
+      }
+    }
+    go(p, Vector[T]())
   }
 }
 

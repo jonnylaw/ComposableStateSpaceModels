@@ -10,6 +10,9 @@ import akka.stream.scaladsl._
 import scala.concurrent.{duration, Await}
 import scala.concurrent.duration._
 import akka.util.ByteString
+import GraphDSL.Implicits._
+import akka.stream.ClosedShape
+import java.nio.file.{Path, Paths}
 
 import model._
 import model.Streaming._
@@ -63,11 +66,22 @@ object PoissonCars {
 
     val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
     val mll = filter.llFilter(data)(particles) _
-    val its = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05)).params
+    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05))
 
-    val pw = new PrintWriter("PoissonTraffic.csv")
-    pw.write(its.sample(iters).mkString("\n"))
-    pw.close()
+    val out = FileIO.toPath(Paths.get("./PoissonTrafficMCMC.csv"))
+
+    val graph = RunnableGraph.fromGraph(GraphDSL.create() { implicit builder =>
+      val bcast = builder.add(Broadcast[MetropState](2))
+      
+      mh.itersAkka ~> bcast
+      bcast ~> monitorStream(1000, 1) ~> Sink.ignore
+
+      bcast ~> Flow[MetropState].take(10000) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
+
+      ClosedShape
+    })
+
+    graph.run()
   }
 }
 
@@ -105,11 +119,22 @@ object LgcpCars {
 
     val filter = FilterLgcp(unparamMod, ParticleFilter.multinomialResampling, 0, data.map(_.t).min)
     val mll = filter.llFilter(data)(particles) _
-    val its = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05)).params
+    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05))
 
-    val pw = new PrintWriter("LgcpTraffic.csv")
-    pw.write(its.sample(iters).mkString("\n"))
-    pw.close()
+    val out = FileIO.toPath(Paths.get("./LgcpCarsMCMC.csv"))
+
+    val graph = RunnableGraph.fromGraph(GraphDSL.create() { implicit builder =>
+      val bcast = builder.add(Broadcast[MetropState](2))
+      
+      mh.itersAkka ~> bcast
+      bcast ~> monitorStream(1000, 1) ~> Sink.ignore
+
+      bcast ~> Flow[MetropState].take(10000) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
+
+      ClosedShape
+    })
+
+    graph.run()
   }
 }
 
@@ -154,11 +179,23 @@ object NegBinCars {
     
     val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
     val mll = filter.llFilter(data)(particles) _
-    val its = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05)).params
+    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05))
 
-    val pw = new PrintWriter("NegBinTraffic.csv")
-    pw.write(its.sample(iters).mkString("\n"))
-    pw.close()
+    val out = FileIO.toPath(Paths.get("./NegBinCars.csv"))
+
+    val graph = RunnableGraph.fromGraph(GraphDSL.create() { implicit builder =>
+      val bcast = builder.add(Broadcast[MetropState](2))
+      
+      mh.itersAkka ~> bcast
+      bcast ~> monitorStream(1000, 1) ~> Sink.ignore
+
+      bcast ~> Flow[MetropState].take(10000) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
+
+      ClosedShape
+    })
+
+    graph.run()
+
   }
 }
 
