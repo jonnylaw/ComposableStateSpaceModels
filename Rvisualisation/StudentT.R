@@ -16,4 +16,23 @@ seas = read.csv("seastdistSims.csv", header = F,
 
 seas %>%
   gather(key = "key", value = "value", -Time) %>%
-  ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + facet_wrap(~key)
+    ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + facet_wrap(~key)
+ggsave("Figures/SeasonalTSims.pdf")
+
+##################################
+# Seasonal Students T Parameters #
+##################################
+
+system("sbt \"run-main examples.GetSeasTParams\"")
+
+iters = read.csv("seastMCMC.csv", header = F,
+                 col.names = c("m0", "c0", "V", "theta1", "alpha1", "sigma1",
+                               sapply(2:7, function(i) paste0("m", i)),
+                               sapply(2:7, function(i) paste0("c", i)),
+                               sapply(2:7, function(i) paste0("theta", i)),
+                               sapply(2:7, function(i) paste0("alpha", i)),
+                               sapply(2:7, function(i) paste0("sigma", i))))
+
+pdf("Figures/SeasonalTParameters.pdf")
+plot(mcmc(iters))
+dev.off()

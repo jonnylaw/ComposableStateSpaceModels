@@ -59,10 +59,12 @@ dev.off()
 # MCMC for the LGCP #
 #####################
 
-# system("sbt \"run-main examples.GetLgcpParams\"")
-# iters = read.csv("~/Desktop/LgcpMCMC.csv", header = F, col.names = c("m0", "c0", "theta", "alpha", "sigma"))
+system("sbt \"run-main examples.GetLgcpParams\"")
+iters = read.csv("~/Desktop/LgcpMCMC.csv", header = F, col.names = c("m0", "c0", "theta", "alpha", "sigma"))
 
 ## Actual values m0 = 1.0, c0 = 1.0, theta = 1.0, alpha = 0.1, sigma = 0.4
 
-# mcmc(iters) %>% summary()
-# mcmc(iters) %>% plot()
+mcmc(iters) %>% summary()
+pdf("Figures/LgcpParameters.pdf")
+mcmc(iters) %>% plot()
+dev.off()

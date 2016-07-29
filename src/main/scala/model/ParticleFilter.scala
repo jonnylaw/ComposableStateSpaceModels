@@ -65,7 +65,7 @@ trait ParticleFilter {
     PfState(y.t, Some(y.observation), x2, w1, ll)
   }
 
-  def llFilter1(data: Vector[Data])(particles: Int)(p: Parameters): LogLikelihood = {
+  def llFilter(data: Vector[Data])(particles: Int)(p: Parameters): LogLikelihood = {
     val initState = initialiseState(p, particles).draw
     data.foldLeft(initState)((s, y) => stepFilter1(y, s)(p)).ll
   }
@@ -90,13 +90,14 @@ trait ParticleFilter {
     } yield PfState(y.t, Some(y.observation), x2, w1, ll)
   }
 
-  def llFilter(data: Vector[Data])(particles: Int)(p: Parameters): Rand[LogLikelihood] = {
+  def llFilterRand(data: Vector[Data])(particles: Int)(p: Parameters): Rand[LogLikelihood] = {
     val initState = initialiseState(p, particles)
     data.foldLeft(initState)((s, y) => s flatMap (x => stepFilter(y, x)(p))) map (_.ll)
   }
 
   /**
     * Run a filter over a vector of data and return a vector of PfState
+    * Containing the raw particles and associated weights at each time step
     */
   def accFilter(data: Vector[Data])(particles: Int)(p: Parameters): Rand[Vector[PfState]] = {
     val initState = initialiseState(p, particles)
@@ -107,6 +108,15 @@ trait ParticleFilter {
 
     sequence(x.reverse.tail)
   }
+
+  /**
+    * Filter the data, but get a vector containing the mean eta, eta intervals, mean state, 
+    * and credible intervals of the state
+    */
+  def filterWithIntervals(data: Vector[Data])(particles: Int)(p: Parameters): Rand[Vector[PfOut]] = {
+    accFilter(data)(particles)(p)map(_.map(getIntervals(unparamMod(p))))
+  }
+
 
   /**
     * Run a filter over a stream of data
@@ -120,6 +130,20 @@ trait ParticleFilter {
 
 object ParticleFilter {
   type Resample[A] = (Vector[A], Vector[LogLikelihood]) => Vector[A]
+
+  /**
+    * Transforms PfState into PfOut, including eta, eta intervals and state intervals
+    */
+  def getIntervals(mod: Model): PfState => PfOut = s => {
+    val meanState = weightedMean(s.particles, s.weights)
+    val stateIntervals = getAllCredibleIntervals(s.particles, 0.995)
+    val etas = s.particles map (x => mod.link(mod.f(x, s.t)).head)
+    val meanEta = mod.link(mod.f(meanState, s.t)).head
+    val etaIntervals = getOrderStatistic(etas, 0.995)
+
+    PfOut(s.t, s.observation, meanEta, etaIntervals, meanState, stateIntervals)
+  }
+
 
   /**
     * Return a vector of lag 1 time differences
@@ -262,6 +286,47 @@ object ParticleFilter {
     */
   def replicateM[A](n: Int, fa: Rand[A]): Rand[Vector[A]] = {
     sequence(Vector.fill(n)(fa))
+  }
+
+    /**
+    * Gets credible intervals for a vector of doubles
+    * @param samples a vector of samples from a distribution
+    * @param interval the upper interval of the required credible interval
+    * @return order statistics representing the credible interval of the samples vector
+    */
+  def getOrderStatistic(samples: Vector[Double], interval: Double): CredibleInterval = {
+    val index = math.floor(samples.length * interval).toInt
+    val ordered = samples.sorted
+
+    CredibleInterval(ordered(samples.length - index), ordered(index))
+  }
+
+  /**
+    * Get the credible intervals of the nth state vector
+    * @param s a State
+    * @param n a reference to a node of state tree, counting from 0 on the left
+    * @param interval the probability interval size
+    * @return a tuple of doubles, (lower, upper)
+
+    */
+  def credibleIntervals(s: Vector[State], n: Int, interval: Double): IndexedSeq[CredibleInterval] = {
+    val state: Vector[LeafState] = s map (State.getState(_, n)) // Gets the nth state vector
+    val stateVec = state.head.data.data.toVector.indices map (i => state.map(a => a.data(i)))
+    stateVec map (a => {
+      val index = Math.floor(interval * a.length).toInt
+      val stateSorted = a.sorted
+      CredibleInterval(stateSorted(a.length - index - 1), stateSorted(index - 1))
+    })
+  }
+
+  /**
+    * Use credible intervals to get all credible intervals of a state
+    * @param s a vector of states
+    * @param interval the interval for the probability interval between [0,1]
+    * @return a sequence of tuples, (lower, upper) corresponding to each state reading
+    */
+  def getAllCredibleIntervals(s: Vector[State], interval: Double): IndexedSeq[CredibleInterval] = {
+    State.toList(s.head).indices.flatMap(i => credibleIntervals(s, i, interval))
   }
 }
 

@@ -29,17 +29,17 @@ object Streaming {
     */
   def monitorStream(every: Int, chain: Int) = {
     Flow[MetropState].
-          zip(Source(Stream.from(1))).
-          grouped(1000).
-          map( x => {
-            val iter = x map (_._2)
-            val ll = x map (_._1.ll)
-            MonitorState(
-              iter.last,
-              variance(ll),
-              (x.map(_._1.accepted.toDouble).last)/iter.last)}
-          ).
-          map(m => println(s"""chain: $chain, iteration: ${m.i}, mll Variance: ${m.v}, acceptance ratio: ${m.a}"""))
+      zip(Source(Stream.from(1))).
+      grouped(every).
+      map( x => {
+        val iter = x map (_._2)
+        val ll = x map (_._1.ll)
+        MonitorState(
+          iter.last,
+          variance(ll),
+          (x.map(_._1.accepted.toDouble).last)/iter.last)}
+      ).
+      map(m => println(s"""chain: $chain, iteration: ${m.i}, mll Variance: ${m.v}, acceptance ratio: ${m.a}"""))
   }
 
   def runPmmhToFile1(
@@ -52,7 +52,7 @@ object Streaming {
 
     Source(1 to chains).
       mapAsync(parallelism = 4){ chain =>
-        val iters = ParticleMetropolis(mll(particles), initParams, perturb).iters
+        val iters = ParticleMetropolis(mll(particles), initParams, perturb).itersAkka
 
         println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
 
@@ -85,7 +85,7 @@ object Streaming {
 
     Source(1 to chains).
       mapAsync(parallelism = 4){ chain =>
-        val iters = ParticleMetropolisRand(mll(particles), initParams, perturb).iters
+        val iters = ParticleMetropolisRand(mll(particles), initParams, perturb).itersAkka
 
         println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
 

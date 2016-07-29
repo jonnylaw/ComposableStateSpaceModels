@@ -14,7 +14,7 @@ system("sbt \"run-main examples.SimulateSeasonalPoisson\"")
 seasPois = read.csv("seasonalPoissonSims.csv", header = F,
                     col.names = c("Time", "Value", "Eta", "Gamma", sapply(1:7, function(i) paste("State", i, sep = ""))))
 
-# png("Figures/SeasonalPoisson.png")
+png("Figures/SeasonalPoisson.png")
 p1 = seasPois %>%
   ggplot(aes(x = Time, y = Value)) + geom_step() + 
   ggtitle("Poisson Observations")
@@ -31,7 +31,7 @@ p3 = seasPois %>%
   ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + theme(legend.position = "none")
 
 grid.arrange(p1, p2, p3, heights = c(1,2,1))
-# dev.off()
+dev.off()
 
 ##############################
 # Filtering Seasonal Poisson #
@@ -67,5 +67,28 @@ dev.off()
 # Determining Parameters #
 ##########################
 
-# system("sbt \"run-main examples.DetermineComposedParams\"")
-# iters = read.csv("../poisson-10000-200-1.csv", header = F, col.names = c("m0", "c0", ""))
+plotIters = function(iters, variable, thin = 10, burning = nrow(iters)*0.1) {
+  mcmcObject = mcmc(iters[seq(from = burnin, to = nrow(iters), by = thin), variable]) %>% ggs()
+  
+  p1 = ggs_histogram(mcmcObject)
+  p2 = ggs_traceplot(mcmcObject)
+  p3 = ggs_autocorrelation(mcmcObject)
+  p4 = ggs_running(mcmcObject)
+  
+  grid.arrange(p1, p2, p3, p4)
+}
+
+system("sbt \"run-main examples.DetermineComposedParams\"")
+iters = read.csv("SeasonalPoissonParams.csv", header = F,
+                 col.names = c("m0", "c0", "mu0", "sigma0",
+                               sapply(2:7, function(i) paste0("m", i)),
+                               sapply(2:7, function(i) paste0("c", i)),
+                               sapply(1:6, function(i) paste0("theta", i)),
+                               sapply(1:6, function(i) paste0("alpha", i)),
+                               sapply(1:6, function(i) paste0("sigma", i)),
+                               "accepted"))
+
+pdf("Figures/SeasonalPoissonParams.pdf")
+plotIters(iters, 3:4)
+dev.off()
+

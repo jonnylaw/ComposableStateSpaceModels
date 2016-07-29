@@ -415,44 +415,4 @@
 //     loop(particles, 0, data, Vector())
 //   }
 
-//   /**
-//     * Gets credible intervals for a vector of doubles
-//     * @param samples a vector of samples from a distribution
-//     * @param interval the upper interval of the required credible interval
-//     * @return order statistics representing the credible interval of the samples vector
-//     */
-//   def getOrderStatistic(samples: Vector[Double], interval: Double): CredibleInterval = {
-//     val index = math.floor(samples.length * interval).toInt
-//     val ordered = samples.sorted
-
-//     CredibleInterval(ordered(samples.length - index), ordered(index))
-//   }
-
-//   /**
-//     * Get the credible intervals of the nth state vector
-//     * @param s a State
-//     * @param n a reference to a node of state tree, counting from 0 on the left
-//     * @param interval the probability interval size
-//     * @return a tuple of doubles, (lower, upper)
-
-//     */
-//   def credibleIntervals(s: Vector[State], n: Int, interval: Double): IndexedSeq[CredibleInterval] = {
-//     val state: Vector[LeafState] = s map (State.getState(_, n)) // Gets the nth state vector
-//     val stateVec = state.head.data.data.toVector.indices map (i => state.map(a => a.data(i)))
-//     stateVec map (a => {
-//       val index = Math.floor(interval * a.length).toInt
-//       val stateSorted = a.sorted
-//       CredibleInterval(stateSorted(a.length - index - 1), stateSorted(index - 1))
-//     })
-//   }
-
-//   /**
-//     * Use credible intervals to get all credible intervals of a state
-//     * @param s a vector of states
-//     * @param interval the interval for the probability interval between [0,1]
-//     * @return a sequence of tuples, (lower, upper) corresponding to each state reading
-//     */
-//   def getAllCredibleIntervals(s: Vector[State], interval: Double): IndexedSeq[CredibleInterval] = {
-//     State.toList(s.head).indices.flatMap(i => credibleIntervals(s, i, interval))
-//   }
 // }

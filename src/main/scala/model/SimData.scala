@@ -7,6 +7,7 @@ import model.POMP._
 import model.Utilities._
 import model.DataTypes._
 import model.State._
+import model.ParticleFilter._
 import breeze.linalg.linspace
 import breeze.stats.distributions.Rand._
 
@@ -192,7 +193,7 @@ object SimData {
   }
 
   // Should this be a Rand[Vector[Data]] or a Vector[Rand[Data]] ??
-  def simDataRand(times: Seq[Time], mod: Model): Vector[Rand[Data]] = {
+  def simDataRand(times: Seq[Time], mod: Model): Rand[Vector[Data]] = {
     val x0 = mod.x0.draw
     val init = simStepRand(x0, times.head, 0, mod)
 
@@ -208,7 +209,7 @@ object SimData {
       d +: acc
     }
 
-    data.reverse
+    sequence(data.reverse)
   }
 
   /**
