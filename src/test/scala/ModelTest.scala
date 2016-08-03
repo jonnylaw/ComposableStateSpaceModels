@@ -17,9 +17,8 @@ import cats.Monoid
 class ModelSuite extends FlatSpec with Matchers {
   def LinearModelNoNoise(stepFun: StepFunction): UnparamModel = new UnparamModel {
     def apply(p: Parameters): Model = new Model {
-      def observation = x => new Rand[Observation] with Density[Observation] {
+      def observation = x => new Rand[Observation] {
         def draw = x.head
-        def apply(y: Observation) = y
       }
 
       def f(s: State, t: Time) = s.head
@@ -29,6 +28,8 @@ class ModelSuite extends FlatSpec with Matchers {
       def stepFunction = (x, dt) => p match {
         case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
       }
+
+      def dataLikelihood = (x, y) => y
     }
   }
 
@@ -36,9 +37,8 @@ class ModelSuite extends FlatSpec with Matchers {
     new UnparamModel {
       def apply(p: Parameters): Model = new Model {
 
-        def observation = x => new Rand[Observation] with Density[Observation] {
+        def observation = x => new Rand[Observation] {
           def draw = x.head
-          def apply(y: Observation) = y
         }
 
         def buildF(harmonics: Int, t: Time): DenseVector[Double] = {
@@ -58,6 +58,8 @@ class ModelSuite extends FlatSpec with Matchers {
         def stepFunction = (x, dt) => p match {
           case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
         }
+
+        def dataLikelihood = (x, y) => y
       }
     }
 
@@ -108,10 +110,10 @@ class ModelSuite extends FlatSpec with Matchers {
     val x1 = linearModel(p).stepFunction(x0, 1).draw
     val y = linearModel(p).observation(linearModel(p).link(linearModel(p).f(x1, 1))).draw
     val eta = linearModel(p).link(linearModel(p).f(x1, 1))
-    val datalik = linearModel(p).observation(eta).logApply(y)
+    val datalik = linearModel(p).dataLikelihood(eta, y)
     val eta1 = linearModel(p).link(linearModel(p).f(x1, 1))
 
-    assert(datalik == combinedModel(p).observation(eta1).logApply(y))
+    assert(datalik == combinedModel(p).dataLikelihood(eta1, y))
   }
 
   "Constant Step Function" should "Advance the state by a constant * dt" in {
@@ -135,11 +137,11 @@ class ModelSuite extends FlatSpec with Matchers {
 
     val y = linearModel(p).observation(linearModel(p).link(linearModel(p).f(x1, 1))).draw
     val eta = linearModel(p).link(linearModel(p).f(x1, 1))
-    val datalik = linearModel(p).observation(eta).logApply(y)
+    val datalik = linearModel(p).dataLikelihood(eta, y)
 
     val eta1 = linearModel(p).link(linearModel(p).f(x1, 1))
 
-    assert(datalik == combinedModel3(p).observation(eta).logApply(y))
+    assert(datalik == combinedModel3(p).dataLikelihood(eta, y))
   }
 
   "Combine two models" should "work" in {

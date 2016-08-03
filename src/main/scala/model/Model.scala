@@ -12,7 +12,7 @@ import cats.std.all._
 
 trait Model {
   // The observation model
-  def observation: Eta => (Rand[Observation] with Density[Observation])
+  def observation: Eta => Rand[Observation]
   // the link function
   def link(x: Gamma): Eta = Vector(x)
   // deterministic transformation, such as seasonality
@@ -21,6 +21,8 @@ trait Model {
   def x0: Rand[State]
   // Step the SDE
   def stepFunction: (State, TimeIncrement) => Rand[State]
+  // the data likelihood
+  def dataLikelihood: (Eta, Observation) => LogLikelihood
 }
 
 trait UnparamModel extends (Parameters => Model)
@@ -40,6 +42,7 @@ object UnparamModel {
           def f(s: State, t: Time) = s.head
           def x0 = new Rand[State] { def draw = LeafState(DenseVector[Double]()) }
           def stepFunction = stepNull(p)
+          def dataLikelihood = (s, y) => 0.0
         }
       }
     }
@@ -85,6 +88,11 @@ object UnparamModel {
           case (x: LeafState, param: LeafParameter) => // Null model case, non-null must be on left
             mod1(param).stepFunction(x, dt)
           case _ => throw new Exception("Incorrect Parameters or state supplied to composed model stepFunction")
+        }
+
+        def dataLikelihood = (s, y) => p match {
+          case param: LeafParameter => mod1(param).dataLikelihood(s, y)
+          case BranchParameter(lp, _) => mod1(lp).dataLikelihood(s, y)
         }
       }
   }

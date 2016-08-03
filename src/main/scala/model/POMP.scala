@@ -26,9 +26,8 @@ object POMP {
 
           def observation = x => p match {
             case LeafParameter(_,v,_) => v match {
-              case Some(scale) => new Rand[Observation] with Density[Observation] {
+              case Some(scale) => new Rand[Observation] {
                 def draw = StudentsT(df).draw*scale + x.head
-                def apply(y: Observation) = 1/scale * StudentsT(df).logPdf((y - x.head) / scale)
               }
             }
           }
@@ -47,6 +46,13 @@ object POMP {
             case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
             case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
           }
+
+          def dataLikelihood = (eta, y) => p match {
+            case LeafParameter(_, v, _) => v match {
+              case Some(scale) => 1/scale * StudentsT(df).logPdf((y - eta.head) / scale)
+              case None => throw new Exception("No Parameter supplied for Student T scale")
+            }
+          }
         }
       }
     }
@@ -59,9 +65,14 @@ object POMP {
       def apply(p: Parameters) = {
         new Model {
 
-          def observation = x => p match {
-            case LeafParameter(_,v,_) => v match {
-              case Some(noisesd) => Gaussian(x.head, noisesd)
+          def observation = x => new Rand[Observation] {
+            def draw = {
+              p match {
+                case LeafParameter(_,v,_) => v match {
+                  case Some(noisesd) => Gaussian(x.head, noisesd).draw
+                  case None => throw new Exception("No variance parameter for seasonal model likelihood / obsevation")
+                }
+              }
             }
           }
 
@@ -87,6 +98,12 @@ object POMP {
             case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
             case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
           }
+
+          def dataLikelihood = (eta, y) => p match {
+            case LeafParameter(_, v, _) => v match {
+              case Some(noiseSd) => Gaussian(eta.head, noiseSd).logPdf(y)
+            }
+          }
         }
       }
     }
@@ -94,10 +111,15 @@ object POMP {
   def LinearModel(stepFun: StepFunction): UnparamModel =  new UnparamModel {
     def apply(p: Parameters) = {
       new Model {
-
-        def observation = x => p match {
-          case LeafParameter(_,v,_  @unchecked) =>
-            v.map(Gaussian(x.head, _)).get
+        def observation = x => new Rand[Observation] {
+          def draw = {
+            p match {
+              case LeafParameter(_,v,_) => v match {
+                case Some(noisesd) => Gaussian(x.head, noisesd).draw
+                case None => throw new Exception("No variance parameter for linear model observation")
+              }
+            }
+          }
         }
 
         def f(s: State, t: Time) = s.head
@@ -114,6 +136,13 @@ object POMP {
           case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
           case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
         }
+
+        def dataLikelihood = (eta, y) => p match {
+          case LeafParameter(_, v, _) => v match {
+            case Some(noiseSd) => Gaussian(eta.head, noiseSd).logPdf(y)
+            case None => throw new Exception("No variance parameter for linear model likelihood")
+          }
+        }
       }
     }
   }
@@ -122,9 +151,9 @@ object POMP {
     def apply(p: Parameters) = {
       new Model {
 
-        def observation = lambda => new Rand[Observation] with Density[Observation] {
+        def observation = lambda => new Rand[Observation] {
           def draw = Poisson(lambda.head).draw
-          def apply(y: Observation) = Poisson(lambda.head).logProbabilityOf(y.toInt)
+
         }
 
         override def link(x: Double) = Vector(exp(x))
@@ -144,6 +173,7 @@ object POMP {
           case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
         }
 
+        def dataLikelihood = (lambda, y) => Poisson(lambda.head).logProbabilityOf(y.toInt)
       }
     }
   }
@@ -152,16 +182,9 @@ object POMP {
     def apply(params: Parameters) =
       new Model {
 
-        def observation = p => new Rand[Observation] with Density[Observation] {
+        def observation = p => new Rand[Observation] {
           def draw = {
             scala.util.Random.nextDouble < p.head
-          }
-          def apply(y: Observation) = {
-            if (y) {
-              if (p.head == 0.0) -1e99 else log(p.head)
-            } else {
-              if ((1 - p.head) == 0.0) -1e99 else log(1-p.head)
-            }
           }
         }
 
@@ -190,6 +213,14 @@ object POMP {
           case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
         }
 
+        def dataLikelihood = (p, y) => {
+          if (y) {
+            if (p.head == 0.0) -1e99 else log(p.head)
+          } else {
+            if ((1 - p.head) == 0.0) -1e99 else log(1-p.head)
+          }
+        }
+
       }
   }
 
@@ -202,9 +233,8 @@ object POMP {
       def apply(p: Parameters) =
         new Model {
 
-          def observation = s => new Rand[Observation] with Density[Observation] {
+          def observation = s => new Rand[Observation] {
             def draw: Observation = ???
-            def apply(y: Observation) = exp(s.head - s(1))
           }
 
           def f(s: State, t: Time) = s.head
@@ -221,6 +251,8 @@ object POMP {
             case LeafParameter(_,_,sdeparam @unchecked) => stepFun(sdeparam)(x, dt)
             case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
           }
+
+          def dataLikelihood = (lambda, y) => lambda.head - lambda(1)
         }
     }
 
@@ -229,7 +261,7 @@ object POMP {
       def apply(p: Parameters) = {
         new Model {
 
-          def observation = mu => new Rand[Observation] with Density[Observation] {
+          def observation = mu => new Rand[Observation] {
             def draw = {
               p match {
                 case LeafParameter(_, scale, _) =>
@@ -239,15 +271,6 @@ object POMP {
 
                   NegativeBinomial(r, p).draw
               }
-            }
-            def apply(y: Observation) = p match {
-              case LeafParameter(_, scale, _) =>
-                val sigma = scale.get
-                val p = (sigma*sigma - mu.head) / sigma*sigma
-                val r = mu.head * mu.head / (sigma * sigma - mu.head)
-
-                NegativeBinomial(r, p).probabilityOf(y.toInt)
-              case _ => throw new Exception("Can't determine the likelihood using a branch parameter")
             }
           }
 
@@ -268,6 +291,17 @@ object POMP {
             case LeafParameter(_,_,sdeparam @unchecked) => stepFun(sdeparam)(x, dt)
             case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
           }
+
+          def dataLikelihood = (mu, y) => p match {
+              case LeafParameter(_, scale, _) =>
+                val sigma = scale.get
+                val p = (sigma*sigma - mu.head) / sigma*sigma
+                val r = mu.head * mu.head / (sigma * sigma - mu.head)
+
+                NegativeBinomial(r, p).logProbabilityOf(y.toInt)
+              case _ => throw new Exception("Can't determine the likelihood using a branch parameter")
+            }
+
         }
       }
     }

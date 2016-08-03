@@ -42,7 +42,7 @@ object Streaming {
       map(m => println(s"""chain: $chain, iteration: ${m.i}, mll Variance: ${m.v}, acceptance ratio: ${m.a}"""))
   }
 
-  def runPmmhToFile1(
+  def runPmmhToFile(
     fileOut: String, chains: Int,
     initParams: Parameters, mll: Int => Parameters => LogLikelihood,
     perturb: Parameters => Rand[Parameters], particles: Int, iterations: Int): Unit = {
@@ -53,39 +53,6 @@ object Streaming {
     Source(1 to chains).
       mapAsync(parallelism = 4){ chain =>
         val iters = ParticleMetropolis(mll(particles), initParams, perturb).itersAkka
-
-        println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
-
-        iters.
-          zip(Source(Stream.from(1))).
-          map{ case (x, i) => (i, x.params) }.
-          take(iterations).
-          map{ case (i, p) => ByteString(s"$i, $p\n") }.
-          runWith(FileIO.toFile(new File(s"$fileOut-$iterations-$particles-$chain.csv")))
-  
-        iters.
-          via(monitorStream(1000, chain)).
-          runWith(Sink.ignore)
-      }.
-      runWith(Sink.onComplete { _ =>
-        system.shutdown()
-      })
-  }
-
-  /**
-    * Run the PMMH algorithm, with multiple chains
-    */
-  def runPmmhToFile(
-    fileOut: String, chains: Int,
-    initParams: Parameters, mll: Int => Parameters => Rand[LogLikelihood],
-    perturb: Parameters => Rand[Parameters], particles: Int, iterations: Int): Unit = {
-
-    implicit val system = ActorSystem("StreamingPmmh")
-    implicit val materializer = ActorMaterializer()
-
-    Source(1 to chains).
-      mapAsync(parallelism = 4){ chain =>
-        val iters = ParticleMetropolisRand(mll(particles), initParams, perturb).itersAkka
 
         println(s"""Running chain $chain, with $particles particles, $iterations iterations""")
 

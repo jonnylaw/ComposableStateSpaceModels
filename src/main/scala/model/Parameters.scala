@@ -166,7 +166,7 @@ case class GaussianParameter(m0: DenseVector[Double], c0: DenseMatrix[Double]) e
       def draw = {
         GaussianParameter(
           m0 map (Gaussian(_, delta).draw),
-          diag(diag(c0) map (x => x * exp(Gaussian(0, delta).draw))))
+          c0 mapValues (x => x * exp(Gaussian(0, delta).draw)))
       }
     }
   }

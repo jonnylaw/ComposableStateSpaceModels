@@ -190,7 +190,7 @@ object SimData {
       gamma = mod.f(x1, t)
       eta = mod.link(gamma)
       y1 <- mod.observation(eta)
-      } yield Data(t, y1, Some(eta), Some(gamma), Some(x1))
+    } yield Data(t, y1, Some(eta), Some(gamma), Some(x1))
   }
 
   def simDataRand(times: Seq[Time], mod: Model): Rand[Vector[Data]] = {

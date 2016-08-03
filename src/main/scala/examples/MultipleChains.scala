@@ -5,17 +5,16 @@ import model._
 import model.Streaming._
 import model.POMP._
 import model.StateSpace._
-import model.DataTypes._
-import model.State._
 import model.Parameters._
 import model.SimData._
 import model.LeafParameter
 import model.GaussianParameter
 import model.BrownianParameter
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object MultipleChains {
   def main(args: Array[String]) = {
-    import scala.concurrent.ExecutionContext.Implicits.global
+
     implicit val system = ActorSystem("StreamingPMMH")
     implicit val materializer = ActorMaterializer()
 
@@ -35,7 +34,7 @@ object MultipleChains {
     // define the particle filter, which calculates an empirical estimate of the marginal log-likelihood
     // this is a partially applied function, from Int => Parameters => LogLikelihood
     val mll = Filter(mod, ParticleFilter.multinomialResampling, 1.0).
-      llFilterRand(data.toVector.sortBy(_.t)) _
+      llFilter(data.toVector.sortBy(_.t)) _
 
     // specify the number of iterations for the MCMC
     // and number of particles for the particle filter

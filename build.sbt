@@ -1,4 +1,4 @@
-name := "ComposableModels_WithRand"
+name := "ComposableModels"
 
 version := "1.0"
 
@@ -15,5 +15,6 @@ libraryDependencies  ++= Seq(
   "org.scalanlp" %% "breeze" % "0.10",
   "org.scalatest" %% "scalatest" % "2.2.4" % "test",
   "com.github.fommil.netlib" % "all" % "1.1.2",
-  "org.typelevel" %% "cats" % "0.6.1"
+  "org.typelevel" %% "cats" % "0.6.1",
+  "com.github.scopt" %% "scopt" % "3.5.0"
 )

@@ -350,7 +350,7 @@ case class Filter(model: Parameters => Model, resamplingScheme: Resample[State],
 
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood = {
     val mod = unparamMod(p)
-    mod.observation(x).logApply(y)
+    mod.dataLikelihood(x, y)
   }
 
   def resample: Resample[State] = resamplingScheme
@@ -379,7 +379,7 @@ case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[Sta
 
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood = {
     val mod = unparamMod(p)
-    mod.observation(x).logApply(y)
+    mod.dataLikelihood(x, y)
   }
 
   def resample: Resample[State] = resamplingScheme

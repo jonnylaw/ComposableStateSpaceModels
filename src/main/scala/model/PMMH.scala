@@ -1,6 +1,6 @@
 package model
 
-import breeze.stats.distributions.{Uniform, Rand, MultivariateGaussian, Process, MarkovChain}
+import breeze.stats.distributions.{Uniform, Rand, MultivariateGaussian, Process, MarkovChain, Density}
 import breeze.stats.distributions.Rand._
 import breeze.stats.distributions.MarkovChain._
 import breeze.linalg.DenseMatrix
@@ -14,8 +14,9 @@ case class MetropState(ll: LogLikelihood, params: Parameters, accepted: Int) {
 }
 
 // TODO: Figure out why streaming MCMC is not working
-
 trait MetropolisHastings {
+
+  def prior: Density[Parameters] = new Density[Parameters] { def apply(p: Parameters): Double = 0.0 }
 
   /**
     * Proposal density, to propose new parameters for a model
@@ -124,49 +125,46 @@ trait MetropolisHastings {
 }
 
 object MetropolisHastings {
-  def sampleStep[T](n: Int, p: Process[T]): Vector[T] = {
-    def go(p: Process[T], acc: Vector[T]): Vector[T] = {
-      if (acc.size == n) {
-        acc
-      } else {
-        val draw = p.step
-        go(draw._2, acc :+ draw._1)
-      }
-    }
-    go(p, Vector[T]())
+  def sampleStep[T](n: Int, its: Process[T]): Vector[T] = {
+    (1 to n).foldLeft(Vector[(T, Process[T])](its.step))((acc, _) =>
+      {
+        val draw = acc.head._2.step
+        draw +: acc
+      }).map(_._1)
   }
 }
 
 case class ParticleMetropolis(
-  mll: Parameters => LogLikelihood,
-  initParams: Parameters,
-  perturb: Parameters => Rand[Parameters]) extends MetropolisHastings{
+  logLikelihood: Parameters => LogLikelihood,
+  initialParams: Parameters,
+  proposal: Parameters => Rand[Parameters]) extends MetropolisHastings{
 
-  def logLikelihood: Parameters => LogLikelihood = mll
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = 0.0
-  def proposal: Parameters => Rand[Parameters] = perturb
-  val initialParams = initParams
 }
 
 case class ParticleMetropolisHastings(
-  mll: Parameters => LogLikelihood,
+  logLikelihood: Parameters => LogLikelihood,
   transitionProb: (Parameters, Parameters) => LogLikelihood,
-  propParams: Parameters => Rand[Parameters],
-  initParams: Parameters) extends MetropolisHastings {
+  proposal: Parameters => Rand[Parameters],
+  initialParams: Parameters) extends MetropolisHastings {
 
-  def logLikelihood: Parameters => LogLikelihood = mll
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = transitionProb(from, to)
-  def proposal: Parameters => Rand[Parameters] = propParams
-  val initialParams = initParams
+
 }
 
-case class ParticleMetropolisRand(
-  mll: Parameters => Rand[LogLikelihood],
-  initParams: Parameters,
-  perturb: Parameters => Rand[Parameters]) extends MetropolisHastings{
+case class ParticleMetropolisWithPrior(
+  logLikelihood: Parameters => LogLikelihood,
+  proposal: Parameters => Rand[Parameters],
+  initialParams: Parameters, override val prior: Density[Parameters]) extends MetropolisHastings {
 
-  def logLikelihood: Parameters => LogLikelihood = p => mll(p).draw
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = 0.0
-  def proposal: Parameters => Rand[Parameters] = perturb
-  val initialParams = initParams
+}
+
+case class ParticleMetropolisHastingsWithPrior(
+  logLikelihood: Parameters => LogLikelihood,
+  transitionProb: (Parameters, Parameters) => LogLikelihood,
+  proposal: Parameters => Rand[Parameters],
+  initialParams: Parameters, override val prior: Density[Parameters]) extends MetropolisHastings {
+
+  def logTransition(from: Parameters, to: Parameters): LogLikelihood = transitionProb(from, to)
 }
