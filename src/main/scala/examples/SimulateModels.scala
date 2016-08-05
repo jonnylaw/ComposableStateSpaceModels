@@ -72,7 +72,7 @@ object FilterBernoulli extends App {
   val filtered = Filter(mod.model, ParticleFilter.multinomialResampling, 0.0).accFilter(data)(1000)(mod.p)
 
   val pw = new PrintWriter("BernoulliFiltered.csv")
-  pw.write(filtered.draw.mkString("\n"))
+  pw.write(filtered.mkString("\n"))
   pw.close()
 }
 

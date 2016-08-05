@@ -66,7 +66,7 @@ object PoissonCars {
 
     val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
     val mll = filter.llFilter(data)(particles) _
-    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05))
+    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(delta))
 
     val out = FileIO.toPath(Paths.get("./PoissonTrafficMCMC.csv"))
 
@@ -76,7 +76,7 @@ object PoissonCars {
       mh.itersAkka ~> bcast
       bcast ~> monitorStream(1000, 1) ~> Sink.ignore
 
-      bcast ~> Flow[MetropState].take(10000) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
+      bcast ~> Flow[MetropState].take(iters) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
 
       ClosedShape
     })
@@ -119,7 +119,7 @@ object LgcpCars {
 
     val filter = FilterLgcp(unparamMod, ParticleFilter.multinomialResampling, 0, data.map(_.t).min)
     val mll = filter.llFilter(data)(particles) _
-    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05))
+    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(delta))
 
     val out = FileIO.toPath(Paths.get("./LgcpCarsMCMC.csv"))
 
@@ -129,7 +129,7 @@ object LgcpCars {
       mh.itersAkka ~> bcast
       bcast ~> monitorStream(1000, 1) ~> Sink.ignore
 
-      bcast ~> Flow[MetropState].take(10000) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
+      bcast ~> Flow[MetropState].take(iters) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
 
       ClosedShape
     })

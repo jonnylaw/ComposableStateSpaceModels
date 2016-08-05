@@ -57,7 +57,7 @@ object FilteringLgcp extends App {
   val filtered = filter.accFilter(data.sortBy(_.t))(1000)(mod.params)
 
   val pw = new PrintWriter("LgcpFiltered.csv")
-  pw.write(filtered.draw.mkString("\n"))
+  pw.write(filtered.mkString("\n"))
   pw.close()
 }
 

@@ -17,10 +17,9 @@ object Streaming {
     /**
     * A class to monitor the state of ann MCMC chain
     * @param i the number of iterations computed
-    * @param v the variance of the estimate of the marginal log-likelihood estimate
     * @param a the proportion of accepted moves
     */
-  case class MonitorState(i: Int, v: Double, a: Double)
+  case class MonitorState(i: Int, a: Double)
 
   /**
     * A helper function to monitor the stream every 'every' iterations with a print statement
@@ -33,13 +32,9 @@ object Streaming {
       grouped(every).
       map( x => {
         val iter = x map (_._2)
-        val ll = x map (_._1.ll)
-        MonitorState(
-          iter.last,
-          variance(ll),
-          (x.map(_._1.accepted.toDouble).last)/iter.last)}
+        MonitorState(iter.last, (x.map(_._1.accepted.toDouble).last)/iter.last)}
       ).
-      map(m => println(s"""chain: $chain, iteration: ${m.i}, mll Variance: ${m.v}, acceptance ratio: ${m.a}"""))
+      map(m => println(s"""chain: $chain, iteration: ${m.i}, acceptance ratio: ${m.a}"""))
   }
 
   def runPmmhToFile(

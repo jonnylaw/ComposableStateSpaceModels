@@ -78,7 +78,7 @@ object FilteringSeasonalPoisson extends App {
   val filtered = filter.filterWithIntervals(data)(1000)(mod.params)
 
   val pw = new PrintWriter("seasonalPoissonFiltered.csv")
-  pw.write(filtered.draw.mkString("\n"))
+  pw.write(filtered.mkString("\n"))
   pw.close()
 }
 
