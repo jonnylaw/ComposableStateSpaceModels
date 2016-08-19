@@ -72,7 +72,7 @@ object FilterBernoulli extends App {
   val filtered = Filter(mod.model, ParticleFilter.multinomialResampling, 0.0).accFilter(data)(1000)(mod.p)
 
   val pw = new PrintWriter("BernoulliFiltered.csv")
-  pw.write(filtered.draw.mkString("\n"))
+  pw.write(filtered.mkString("\n"))
   pw.close()
 }
 
@@ -167,4 +167,38 @@ object SeasonalBernoulli extends App {
   val pw = new PrintWriter("seasonalBernoulliSims.csv")
   pw.write(sims.mkString("\n"))
   pw.close()
+}
+
+object SimulatePoisson extends App {
+  val params: Parameters = LeafParameter(
+    GaussianParameter(0.0, 1.0),
+    None,
+    OrnsteinParameter(2.0, 0.05, 1.0))
+
+  val mod = PoissonModel(stepOrnstein)
+
+  val times = (1 to 100).map(_.toDouble).toList
+  val sims = simData(times, mod(params))
+
+  val pw = new PrintWriter("PoissonSims.csv")
+  pw.write(sims.mkString("\n"))
+  pw.close()
+}
+
+object SimulateSeasonal extends App {
+  val params: Parameters = LeafParameter(
+    GaussianParameter(DenseVector(Array.fill(6)(0.0)),
+      diag(DenseVector(Array.fill(6)(1.0)))),
+    Some(1.0),
+    BrownianParameter(DenseVector.fill(6)(0.1), diag(DenseVector.fill(6)(1.0))))
+
+  val mod = SeasonalModel(24, 3, stepBrownian)
+
+  val times = (1 to 100).map(_.toDouble).toList
+  val sims = simData(times, mod(params))
+
+  val pw = new PrintWriter("SeasonalSims.csv")
+  pw.write(sims.mkString("\n"))
+  pw.close()
+
 }

@@ -1,8 +1,11 @@
 package model
 
 import model.POMP._
+import model.ParticleFilter._
+import model.DataTypes._
 import breeze.linalg.DenseVector
 import cats._
+import breeze.stats.distributions.Rand
 
 /**
   * Created by jonny on 12/12/2015.
@@ -89,7 +92,7 @@ object State {
     * @param w their associated weights
     * @return the weighted mean
     */
-  def weightedMean(x: Vector[State], w: Vector[Double]): State = {
+  def weightedMean(x: Seq[State], w: Vector[Double]): State = {
 
     val normalisedWeights = w map (_ / w.sum)
     val st = x.zip(normalisedWeights) map {
@@ -102,6 +105,48 @@ object State {
         loop(s, weight)
     }
     st.reduceLeft((a: State, b: State) => addStates(a,b))
+  }
+
+  def meanState(x: Rand[State]): State = {
+    val samples = x.sample(1000)
+    weightedMean(samples, Vector.fill(1000)(1))
+  }
+
+  /**
+    * Get the credible intervals of the nth state vector
+    * @param s a State
+    * @param n a reference to a node of state tree, counting from 0 on the left
+    * @param interval the probability interval size
+    * @return a tuple of doubles, (lower, upper)
+
+    */
+  def getCredibleInterval(s: Seq[State], n: Int, interval: Double): IndexedSeq[CredibleInterval] = {
+    val state = s map (State.getState(_, n)) // Gets the nth state vector
+    val stateVec = state.head.data.data.toVector.indices map (i => state.map(a => a.data(i)))
+    stateVec map (a => {
+      val index = Math.floor(interval * a.length).toInt
+      val stateSorted = a.sorted
+      CredibleInterval(stateSorted(a.length - index - 1), stateSorted(index - 1))
+    })
+  }
+
+  /**
+    * Use credible intervals to get all credible intervals of a state
+    * @param s a vector of states
+    * @param interval the interval for the probability interval between [0,1]
+    * @return a sequence of tuples, (lower, upper) corresponding to each state reading
+    */
+  def getAllCredibleIntervals(s: Seq[State], interval: Double): IndexedSeq[CredibleInterval] = {
+    State.toList(s.head).indices.flatMap(i => getCredibleInterval(s, i, interval))
+  }
+
+
+  /**
+    * Given a distribution over State, calculate credible intervals by 
+    * repeatedly drawing from the distribution and ordering the samples
+    */
+  def getCredibleIntervals(x0: Rand[State], interval: Double): IndexedSeq[CredibleInterval] = {
+    getAllCredibleIntervals(x0.sample(1000), interval)
   }
 
   /**

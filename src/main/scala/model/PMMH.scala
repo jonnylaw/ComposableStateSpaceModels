@@ -13,10 +13,14 @@ case class MetropState(ll: LogLikelihood, params: Parameters, accepted: Int) {
   override def toString = s"${params.toString}, $accepted"
 }
 
-// TODO: Figure out why streaming MCMC is not working
 trait MetropolisHastings {
 
-  def prior: Density[Parameters] = new Density[Parameters] { def apply(p: Parameters): Double = 0.0 }
+  /**
+    * Prior distribution for the parameters
+    */
+  def prior: Density[Parameters] = new Density[Parameters] {
+    def apply(p: Parameters): Double = 0.0
+  }
 
   /**
     * Proposal density, to propose new parameters for a model

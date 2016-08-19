@@ -166,22 +166,35 @@ object SimData {
   }
 
   /**
-    * Simulate data from a list of times, allowing for irregular observations
+    * Forecast Data given the most recently estimated state
+    * Return a vector
     */
-  def simData(times: Seq[Time], mod: Model): Vector[Data] = {
+  def forecastData(x0: Rand[State], times: Seq[Time], mod: Model): Seq[(Data, Data, Data)] = {
+    val intervals = getCredibleIntervals(x0, 0.99)
+    val mean = meanState(x0)
 
-    val x0 = mod.x0.draw
+    (simDataInit(intervals.map(_.lower), times, mod), simDataInit(intervals.map(_.upper), times, mod), simDataInit(mean, times, mod)).zipped.toSeq
+  }
+
+  def simDataInit(x0: State, times: Seq[Time], mod: Model): Seq[Data] = {
     val d0 = simStep(x0, times.head, 0, mod)
 
-    val data = times.tail.foldLeft(Vector[Data](d0)) { (acc, t) =>
-      val deltat = t - acc.head.t
-      val x0 = acc.head.sdeState.get
-      val d = simStep(x0, t, deltat, mod)
-
-      d +: acc
+    val data = times.tail.scanLeft(d0) { (d0, t) =>
+      val deltat = t - d0.t
+      val x0 = d0.sdeState.get
+      simStep(x0, t, deltat, mod)
     }
 
     data.reverse
+  }
+
+  /**
+    * Simulate data from a list of times, allowing for irregular observations
+    */
+  def simData(times: Seq[Time], mod: Model): Seq[Data] = {
+
+    val x0 = mod.x0.draw
+    simDataInit(x0, times, mod)
   }
 
   def simStepRand(x0: State, t: Time, deltat: TimeIncrement, mod: Model): Rand[Data] = {

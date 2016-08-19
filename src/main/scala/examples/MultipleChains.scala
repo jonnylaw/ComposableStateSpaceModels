@@ -30,21 +30,22 @@ object MultipleChains {
     // simulate data from a simple linear model with five parameters, including measurement noise
     val times = (1 to 100).map(_.toDouble).toList
     val data = simData(times, mod(p))
+
+    // specify the number of particles in the particle filter
+    val particles = 200
     
     // define the particle filter, which calculates an empirical estimate of the marginal log-likelihood
     // this is a partially applied function, from Int => Parameters => LogLikelihood
-    val mll = Filter(mod, ParticleFilter.multinomialResampling, 1.0).
-      llFilter(data.toVector.sortBy(_.t)) _
+    val filter = Filter(mod, ParticleFilter.multinomialResampling, 1.0)
+    val mll = filter.llFilter(data.toVector.sortBy(_.t))(particles) _
 
     // specify the number of iterations for the MCMC
-    // and number of particles for the particle filter
     val iterations = 10000
-    val particles = 200
 
     // Write the iterations to files, the file will be named according to the prefix
     // "linearModel", the chain number, total iterations and particles
     // the method of proposing new parameters is gaussianPerturb, a random walk about the parameter space
     // with positive parameters proposed on a log scale
-    runPmmhToFile("linearModel", 4, p, mll, perturb(0.1), particles, iterations)
+    runPmmhToFile("linearModel", 4, p, mll, perturb(0.1), iterations)
   }
 }

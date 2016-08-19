@@ -18,19 +18,11 @@ sims[,-(3:4)] %>%
     gather(key = "key", value = "value", -time) %>%
     ggplot(aes(x = time, y = value, colour = key)) + geom_line()
 
-## Recover the parameters using Breeze MCMC
-system("sbt \"run-main examples.BreezeMCMC\"")
-
-iters = read.csv("./LinearModelBreeze.csv", header = F,
-                 col.names = c("m0", "c0", "V", "mu", "sigma"))
-
-plot(mcmc(iters))
-
 ## Check the streaming MCMC
-## This uses the same model, data and metropolis hastings step
-## However it uses Source.unfold to produce a Markov chain and doesn't work
-## I'm not sure why :(
-akkastreamIters = read.csv("./LinearModelStreamOut.csv", header = F,
-                           col.names = c("m0", "c0", "V", "mu", "sigma", "accepted"))
+system("scp maths:/home/a9169110/LinearModel* ~/Desktop/ComposableStateSpaceModels/.")
 
-plot(mcmc(akkastreamIters[,-1]))
+iters = read.csv("./LinearModelGraph-0.1-500.csv", header = F,
+                 col.names = c("m0", "c0", "V", "mu", "sigma", "accepted")) %>%
+    dplyr::select(-accepted) %>%
+    mcmc()
+

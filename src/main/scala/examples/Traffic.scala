@@ -40,6 +40,7 @@ object PoissonCars {
 
     val data = scala.io.Source.fromFile("poissonCars.csv").getLines.toVector.
       drop(1).
+      take(500).
       map(a => a.split(",")).
       map(rs => Data(rs(5).toDouble, rs(2).toDouble, None, None, None))
 
@@ -66,22 +67,10 @@ object PoissonCars {
 
     val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
     val mll = filter.llFilter(data)(particles) _
-    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05))
+    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(delta))
 
-    val out = FileIO.toPath(Paths.get("./PoissonTrafficMCMC.csv"))
-
-    val graph = RunnableGraph.fromGraph(GraphDSL.create() { implicit builder =>
-      val bcast = builder.add(Broadcast[MetropState](2))
-      
-      mh.itersAkka ~> bcast
-      bcast ~> monitorStream(1000, 1) ~> Sink.ignore
-
-      bcast ~> Flow[MetropState].take(10000) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
-
-      ClosedShape
-    })
-
-    graph.run()
+    runPmmhToFile(s"PoissonTraffic-$delta-$particles", 4,
+      initParams, mll, Parameters.perturb(delta), iters)
   }
 }
 
@@ -119,112 +108,71 @@ object LgcpCars {
 
     val filter = FilterLgcp(unparamMod, ParticleFilter.multinomialResampling, 0, data.map(_.t).min)
     val mll = filter.llFilter(data)(particles) _
-    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05))
+    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(delta))
 
-    val out = FileIO.toPath(Paths.get("./LgcpCarsMCMC.csv"))
-
-    val graph = RunnableGraph.fromGraph(GraphDSL.create() { implicit builder =>
-      val bcast = builder.add(Broadcast[MetropState](2))
-      
-      mh.itersAkka ~> bcast
-      bcast ~> monitorStream(1000, 1) ~> Sink.ignore
-
-      bcast ~> Flow[MetropState].take(10000) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
-
-      ClosedShape
-    })
-
-    graph.run()
+    runPmmhToFile(s"LgcpTraffic-$delta-$particles", 4,
+      initParams, mll, Parameters.perturb(delta), iters)
   }
 }
 
-object NegBinCars {
-  def main(args: Array[String]): Unit = {
-    implicit val system = ActorSystem("FitCars")
-    implicit val materializer = ActorMaterializer()
+object FilterCars extends App {
+  val data = scala.io.Source.fromFile("poissonCars.csv").getLines.toVector.
+    drop(501).
+    map(a => a.split(",")).
+    map(rs => Data(rs(5).toDouble, rs(2).toDouble, None, None, None))
 
-    val data = scala.io.Source.fromFile("poissonCars.csv").getLines.toVector.
-      drop(1).
-      map(a => a.split(",")).
-      map(rs => Data(rs(5).toDouble, rs(2).toDouble, None, None, None))
-
-    // define the model
-    val poissonParam: Parameters = LeafParameter(
-      GaussianParameter(6.0, 0.1),
-      Some(1.0),
-      OrnsteinParameter(6.0, 0.1, 0.1))
-    val seasonalParamDaily: Parameters = LeafParameter(
-      GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
-      None,
-      OrnsteinParameter(
-        theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7),
-        alpha = DenseVector.fill(6)(0.1),
-        sigma = DenseVector.fill(6)(0.2)))
-    val seasonalParamWeekly: Parameters = LeafParameter(
-      GaussianParameter(DenseVector.fill(6)(0.01), diag(DenseVector.fill(6)(0.1))),
-      None,
-      OrnsteinParameter(
-        theta = DenseVector.fill(6)(-1.0),
-        alpha = DenseVector.fill(6)(0.1),
-        sigma = DenseVector.fill(6)(0.2)))
-
-    val initParams = poissonParam |+| seasonalParamDaily |+| seasonalParamWeekly
-
-    val negBin = negativeBinomial(stepOrnstein)
-    val daily = SeasonalModel(24, 3, stepOrnstein)
-    val weekly = SeasonalModel(24*7, 3, stepOrnstein)
-    val unparamMod = negBin |+| daily |+| weekly
-
-    val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
-    
-    val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
-    val mll = filter.llFilter(data)(particles) _
-    val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(0.05))
-
-    val out = FileIO.toPath(Paths.get("./NegBinCars.csv"))
-
-    val graph = RunnableGraph.fromGraph(GraphDSL.create() { implicit builder =>
-      val bcast = builder.add(Broadcast[MetropState](2))
-      
-      mh.itersAkka ~> bcast
-      bcast ~> monitorStream(1000, 1) ~> Sink.ignore
-
-      bcast ~> Flow[MetropState].take(10000) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
-
-      ClosedShape
-    })
-
-    graph.run()
-
-  }
-}
-
-object SimCars extends App {
-  val poissonParam: Parameters = LeafParameter(
-    GaussianParameter(6.0, 0.1),
+  // define the model
+   val poissonParam: Parameters = LeafParameter(
+    GaussianParameter(5.90476244, 0.05428142),
     None,
-    OrnsteinParameter(6.0, 0.1, 0.1))
-  val seasonalParamDaily: Parameters = LeafParameter(
-    GaussianParameter(DenseVector(-0.5, -0.3, -0.75, -0.3, -0.3, -0.5), diag(DenseVector.fill(6)(0.1))),
+    OrnsteinParameter(5.91759210, 0.21138829, 0.10249756))
+  val seasonalParamDaily = LeafParameter(
+    GaussianParameter(DenseVector(-0.61342281, -0.80213544, -0.88888523, -0.96405392, -0.08372973, -0.60655922), diag(DenseVector(0.07429421, 0.07430095, 0.15234295, 0.05018332, 0.07169831, 0.11063340))),
     None,
     OrnsteinParameter(
-      theta = DenseVector(-1.2, -1.0, -1.0, -0.5, -0.5, -0.7, -0.5, -0.7),
-      alpha = DenseVector.fill(6)(0.1),
-      sigma = DenseVector.fill(6)(0.2)))
+      theta = DenseVector(-1.46861526, -0.61782671, -0.40233685, -0.45720772, 0.04869052, -0.17680178),
+      alpha = DenseVector(0.20707158, 0.28219862, 0.10223457, 0.06999775, 0.17084591, 0.11341918),
+      sigma = DenseVector(0.69927626, 0.59157805, 1.31074547, 0.34254442, 0.18439177, 0.42491019)))
 
-  val p = poissonParam |+| seasonalParamDaily
+  val meanParams = poissonParam |+| seasonalParamDaily
 
   val poisson = PoissonModel(stepOrnstein)
   val daily = SeasonalModel(24, 3, stepOrnstein)
-  val poissonMod = poisson |+| daily
+  val unparamMod = poisson |+| daily
 
-  val times = (1 to 169).map(_.toDouble).toList
-  val sims = simData(times, poissonMod(p))
+  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
 
+  val filtered = filter.filterWithIntervals(data)(1000)(meanParams)
 
-  val pw = new PrintWriter("simCars.csv")
-  pw.write(sims.
-    map(data => s"${data.t}, ${data.observation}").
-    mkString("\n"))
+  val pw = new PrintWriter("CarsFiltered.csv")
+  pw.write(filtered.mkString("\n"))
+  pw.close()
+}
+
+object ForecastCars extends App {
+  // define the model
+   val poissonParam: Parameters = LeafParameter(
+    GaussianParameter(5.90476244, 0.05428142),
+    None,
+    OrnsteinParameter(5.91759210, 0.21138829, 0.10249756))
+  val seasonalParamDaily = LeafParameter(
+    GaussianParameter(DenseVector(-0.61342281, -0.80213544, -0.88888523, -0.96405392, -0.08372973, -0.60655922), diag(DenseVector(0.07429421, 0.07430095, 0.15234295, 0.05018332, 0.07169831, 0.11063340))),
+    None,
+    OrnsteinParameter(
+      theta = DenseVector(-1.46861526, -0.61782671, -0.40233685, -0.45720772, 0.04869052, -0.17680178),
+      alpha = DenseVector(0.20707158, 0.28219862, 0.10223457, 0.06999775, 0.17084591, 0.11341918),
+      sigma = DenseVector(0.69927626, 0.59157805, 1.31074547, 0.34254442, 0.18439177, 0.42491019)))
+
+  val meanParams = poissonParam |+| seasonalParamDaily
+
+  val poisson = PoissonModel(stepOrnstein)
+  val daily = SeasonalModel(24, 3, stepOrnstein)
+  val unparamMod = poisson |+| daily
+
+  val times = (500.0 to 600.0 by 1.0).toList
+  val forecast = simData(times, unparamMod(meanParams))
+
+  val pw = new PrintWriter("forecastCars.csv")
+  pw.write(forecast.mkString("\n"))
   pw.close()
 }

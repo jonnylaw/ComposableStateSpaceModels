@@ -29,7 +29,7 @@ trait LgcpModel {
   val params = LeafParameter(
     GaussianParameter(0.0, 1.0),
     None,
-    OrnsteinParameter(3.0, 0.5, 1.0))
+    OrnsteinParameter(2.0, 0.5, 1.0))
 
   val model = LogGaussianCox(stepOrnstein)
 }
@@ -57,7 +57,7 @@ object FilteringLgcp extends App {
   val filtered = filter.accFilter(data.sortBy(_.t))(1000)(mod.params)
 
   val pw = new PrintWriter("LgcpFiltered.csv")
-  pw.write(filtered.draw.mkString("\n"))
+  pw.write(filtered.mkString("\n"))
   pw.close()
 }
 

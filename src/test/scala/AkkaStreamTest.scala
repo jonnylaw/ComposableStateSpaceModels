@@ -8,8 +8,9 @@ import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
 import model.Utilities._
 import model.Streaming._
-
 import java.io.{PrintWriter, File}
+
+import java.nio.file.{Paths, Path}
 
 class AkkaStreamTest extends FlatSpec with Matchers {
   import scala.concurrent.ExecutionContext.Implicits.global
@@ -67,7 +68,7 @@ class AkkaStreamTest extends FlatSpec with Matchers {
     pw.write(params.map(_.mkString(",")).mkString("\n"))
     pw.close()
 
-    val future = cleanParameterFlow(f, 10, 1, 100).run
+    val future = cleanParameterFlow(Paths.get("parameters.csv"), 10, 1, 100).run
     val result = Await.result(future, 1000.millis)
 
     f.delete()
