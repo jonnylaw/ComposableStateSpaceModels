@@ -169,9 +169,24 @@ object ForecastCars extends App {
   val poisson = PoissonModel(stepOrnstein)
   val daily = SeasonalModel(24, 3, stepOrnstein)
   val unparamMod = poisson |+| daily
+  val mod = unparamMod(meanParams)
 
-  val times = (500.0 to 600.0 by 1.0).toList
-  val forecast = simData(times, unparamMod(meanParams))
+  val times = (500.0 to 550.0 by 1.0).toList
+
+  val data = scala.io.Source.fromFile("poissonCars.csv").getLines.toVector.
+    drop(1).
+    take(500).
+    map(a => a.split(",")).
+    map(rs => Data(rs(5).toDouble, rs(2).toDouble, None, None, None))
+
+  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
+
+  // calculate last filtered state using the parameters
+  val filtered = filter.accFilter(data)(1000)(meanParams)
+
+  val xm = filtered.last.particles
+
+  val forecast = forecastData(xm, times, mod)
 
   val pw = new PrintWriter("forecastCars.csv")
   pw.write(forecast.mkString("\n"))

@@ -165,15 +165,31 @@ object SimData {
     Data(t0, y1, Some(eta), Some(gamma), Some(x1))
   }
 
+  case class ForecastOut(t: Time, obs: Observation, obsIntervals: CredibleInterval, eta: Double, etaIntervals: CredibleInterval,
+    state: State, stateIntervals: IndexedSeq[CredibleInterval]) {
+
+    override def toString = s"$t, $obs, ${obsIntervals.toString}, $eta, ${etaIntervals.toString}, ${state.flatten.mkString(", ")}, ${stateIntervals.mkString(", ")}"
+  }
+
   /**
     * Forecast Data given the most recently estimated state
-    * Return a vector
+    * Return a vector of Data and credible intervals
     */
-  def forecastData(x0: Rand[State], times: Seq[Time], mod: Model): Seq[(Data, Data, Data)] = {
-    val intervals = getCredibleIntervals(x0, 0.99)
-    val mean = meanState(x0)
+  def forecastData(x0: Vector[State], times: Seq[Time], mod: Model): Seq[ForecastOut] = {
+    val samples = x0 map (simDataInit(_, times, mod))
 
-    (simDataInit(intervals.map(_.lower), times, mod), simDataInit(intervals.map(_.upper), times, mod), simDataInit(mean, times, mod)).zipped.toSeq
+    for {
+      sample <- samples.transpose
+      t = sample.head.t
+      state = sample.map(_.sdeState.get)
+      stateIntervals = getAllCredibleIntervals(state, 0.995)
+      statemean = meanState(state)
+      etas = state map (x => mod.link(mod.f(x, t)))
+      meanEta = breeze.stats.mean(etas.map(_.head))
+      etaIntervals = getOrderStatistic(etas.map(_.head), 0.995)
+      obs = breeze.stats.mean(etas map (mod.observation(_).draw))
+      obsIntervals = getOrderStatistic(etas map (mod.observation(_).draw), 0.995)
+    } yield ForecastOut(t, obs, obsIntervals, meanEta, etaIntervals, statemean, stateIntervals)
   }
 
   def simDataInit(x0: State, times: Seq[Time], mod: Model): Seq[Data] = {

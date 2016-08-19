@@ -19,8 +19,8 @@ sealed trait State {
   def isEmpty: Boolean = State.isEmpty(this)
   override def toString: String = this.flatten.mkString(", ")
 }
-case class LeafState(data: DenseVector[Double]) extends State with Serializable
-case class BranchState(left: State, right: State) extends State with Serializable
+case class LeafState(data: DenseVector[Double]) extends State
+case class BranchState(left: State, right: State) extends State
 
 object LeafState {
   def apply(a: Double): LeafState = {
@@ -29,7 +29,7 @@ object LeafState {
 }
 
 object State {
-  implicit def parameterMonoid = new Monoid[State] {
+  implicit def stateMonoid = new Monoid[State] {
     override def combine(s1: State, s2: State): State = State.combine(s1, s2)
     override def empty: State = State.zero
   }
@@ -107,9 +107,19 @@ object State {
     st.reduceLeft((a: State, b: State) => addStates(a,b))
   }
 
-  def meanState(x: Rand[State]): State = {
-    val samples = x.sample(1000)
-    weightedMean(samples, Vector.fill(1000)(1))
+  def weightedMean2(x: Seq[State], w: Vector[Double]): State = {
+    val normaliseWeights = w map (_ / w.sum)
+
+    x.zip(normaliseWeights).
+      map { case (state, weight) => state map (_ * weight) }.
+      reduce(addStates)
+  }
+
+  /**
+    *  Calculate the mean of a state
+    */
+  def meanState(x: Seq[State]): State = {
+    weightedMean(x, Vector.fill(x.length)(1))
   }
 
   /**
@@ -130,7 +140,7 @@ object State {
   }
 
   /**
-    * Use credible intervals to get all credible intervals of a state
+    * Use getCredibleInterval to get all credible intervals of a state
     * @param s a vector of states
     * @param interval the interval for the probability interval between [0,1]
     * @return a sequence of tuples, (lower, upper) corresponding to each state reading
