@@ -18,11 +18,9 @@ sims[,-(3:4)] %>%
     gather(key = "key", value = "value", -time) %>%
     ggplot(aes(x = time, y = value, colour = key)) + geom_line()
 
-## Check the streaming MCMC
-system("scp maths:/home/a9169110/LinearModel* ~/Desktop/ComposableStateSpaceModels/.")
+system("scp maths:/home/a9169110/LinearModel* ~/Desktop/ComposableModels")
 
-iters = read.csv("./LinearModelGraph-0.1-500.csv", header = F,
-                 col.names = c("m0", "c0", "V", "mu", "sigma", "accepted")) %>%
-    dplyr::select(-accepted) %>%
-    mcmc()
+iters = read.csv("LinearModelGraph-0.1-200.csv", header = F,
+                 col.names = c("m0", "c0", "V", "mu", "sigma", "accepted"))
 
+mcmcObj = mcmc(iters[,-6])

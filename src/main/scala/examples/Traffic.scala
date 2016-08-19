@@ -110,6 +110,7 @@ object LgcpCars {
     val mll = filter.llFilter(data)(particles) _
     val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(delta))
 
+
     runPmmhToFile(s"LgcpTraffic-$delta-$particles", 4,
       initParams, mll, Parameters.perturb(delta), iters)
   }

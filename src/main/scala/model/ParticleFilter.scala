@@ -52,16 +52,15 @@ trait ParticleFilter {
   /**
     * Step filter without Rand boxing by drawing directly from the transition kernel
     */
-  def stepFilter(s: PfState, y: Data)(p: Parameters): PfState = {
+  def stepFilter(y: Data, s: PfState)(p: Parameters): PfState = {
     val dt = y.t - s.t // calculate time between observations
 
-    val x = resample(s.particles, s.weights)
+    val unweightedX: Vector[State] = resample(s.particles, s.weights)
 
-    val (x1, eta) = advanceState(x, dt, y.t)(p).unzip
+    val (x1, eta) = advanceState(unweightedX, dt, y.t)(p).unzip
     val w = eta map (a => calculateWeights(a, y.observation)(p))
     val max = w.max
     val w1 = w map { a => exp(a - max) }
-
     val ll = s.ll + max + math.log(breeze.stats.mean(w1))
 
     PfState(y.t, Some(y.observation), x1, w1, ll)
@@ -308,6 +307,7 @@ case class Filter(model: Parameters => Model, resamplingScheme: Resample[State],
   
   val unparamMod = model
 
+<<<<<<< HEAD
   def advanceState(states: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)] = {
     val mod = unparamMod(p)
 
@@ -318,6 +318,18 @@ case class Filter(model: Parameters => Model, resamplingScheme: Resample[State],
     } yield (x1, eta)
   }
 
+=======
+  def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)] = {
+    val mod = unparamMod(p)
+
+    val state = x map (state => mod.stepFunction(state, dt).draw)
+
+    val eta = state map (x => mod.link(mod.f(x, t)))
+
+    state zip eta
+  }
+
+>>>>>>> c8caf3e0c33f9cf3d66f3646b92059072ebcfed7
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood = {
     val mod = unparamMod(p)
     mod.dataLikelihood(x, y)
