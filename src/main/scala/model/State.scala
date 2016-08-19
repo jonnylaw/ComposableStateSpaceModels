@@ -118,7 +118,6 @@ object State {
     * @param n a reference to a node of state tree, counting from 0 on the left
     * @param interval the probability interval size
     * @return a tuple of doubles, (lower, upper)
-
     */
   def getCredibleInterval(s: Seq[State], n: Int, interval: Double): IndexedSeq[CredibleInterval] = {
     val state = s map (State.getState(_, n)) // Gets the nth state vector
