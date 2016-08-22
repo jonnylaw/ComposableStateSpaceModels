@@ -13,6 +13,7 @@ sealed trait Parameters {
     Parameters.perturb(delta)(this)
   def perturbIndep(delta: Vector[Double]): Rand[Parameters] =
     Parameters.perturbIndep(delta)(this)
+  def proposeIdent: Rand[Parameters] = Parameters.proposeIdent(this)
 }
 
 case class LeafParameter(initParams: StateParameter, scale: Option[Double], sdeParam: SdeParameter) extends Parameters
@@ -28,6 +29,10 @@ object Parameters {
   implicit def parameterMonoid = new Monoid[Parameters] {
     override def combine(p1: Parameters, p2: Parameters): Parameters = Parameters.combine(p1, p2)
     override def empty: Parameters = LeafParameter()
+  }
+
+  def proposeIdent(p: Parameters): Rand[Parameters] = new Rand[Parameters] {
+    def draw = p
   }
 
   /**

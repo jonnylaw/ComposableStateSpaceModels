@@ -217,7 +217,7 @@ object POMP {
           if (y) {
             if (p.head == 0.0) -1e99 else log(p.head)
           } else {
-            if ((1 - p.head) == 0.0) -1e99 else log(1-p.head)
+            if (p.head == 1.0) -1e99 else log(1-p.head)
           }
         }
 

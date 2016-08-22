@@ -7,9 +7,6 @@ import breeze.linalg.DenseVector
 import cats._
 import breeze.stats.distributions.Rand
 
-/**
-  * Created by jonny on 12/12/2015.
-  */
 sealed trait State {
   import State._
 
