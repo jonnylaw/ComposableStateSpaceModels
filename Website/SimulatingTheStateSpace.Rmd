@@ -1,0 +1,35 @@
+---
+title: "Simulating the State"
+author: "Jonathan Law"
+date: "22 August 2016"
+output: html_document
+---
+
+The state space of partially observed Markov process (POMP) models are continuous time Markov processes, also called [diffusion processes](https://en.wikipedia.org/wiki/Diffusion_process). These processes are governed by Stochastic Differential equations and can be simulated as a recursive stream.
+
+## Simulating with even timesteps
+
+To simulate generalised Brownian motion, we can use the provided function `simSdeStream`:
+
+```scala
+val p = BrownianParameter(mu = 0.1, sigma = 1.0)
+val initialState = LeafState(Gaussian(6.0, 1.0).draw)
+
+val sims = simSdeStream(
+    x0 = initialState, t0 = 0.0, 
+    totalIncrement = 300.0, precision = 1, stepBrownian(p)).toVector
+```
+
+First we specify the parameters needed for the for the generalised Brownian motion solution `stepBrownian`, then we specify the `initialState`. The function `simSdeStream` requires the initial time, `t0`, the total time increment, `totalIncrement`, the precision, which is translated into a timestep `dt = math.pow(10, -precision)` and the step function.
+
+## Simulating with irregular timesteps
+
+Step functions can be used to simulate on an arbitrary grid, there is a function provided which accepts a list of times, `List[Time]` which can be used to simulate realisation of a diffusion process with irregular timesteps. `Time` is a synonym for `Double`.
+
+```scala
+val p = BrownianParameter(mu = 0.1, sigma = 1.0)
+val x0 = LeafState(Gaussian(0.0, 3.0).draw)
+val times: List[Time] = (63.0 to 250.5 by 0.5).toList
+
+simSdeIrregular(x0, times, stepBrownian(p))
+```

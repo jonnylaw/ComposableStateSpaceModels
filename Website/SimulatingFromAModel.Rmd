@@ -1,0 +1,46 @@
+---
+title: "Simulating from a Model"
+author: "Jonathan Law"
+date: "22 August 2016"
+output: html_document
+---
+
+In order to test inference algorithms such as the particle filter and the PMMH algorithm, it is useful to simulate data from models. A partially observed Markov process (POMP) model has an observed layer, and hence an observation distribution, along with a linking function (which translates the latent variables into the parameter space of the observation distribution). There is an associated latent layer which isn't observed and controls the observations of the process, the latent layer is a Markov process, meaning each future realisation of the process is independent of the past realisations given the present realisation. The observation at time `t` is dependent on the latent state at time `t`. 
+
+In order to add additional structure to the model, there is a linear transformation function, `f` which can be used to add seasonality to the latent variables. The model is represented in the DAG below:
+
+## Forward Simulation
+
+Here, we simulate from a model with a Bernoulli observation distribution, the parameter of the Bernoulli distribution is `p`, a probability which must lie between zero and one. The linking function for the Bernoulli model is the logistic function, `1.0/(1 + exp(-x))`. The parameters are represented by a `LeafParameter`, this is made clear when [[composing models|Composing-Models]], as parameters of two models combine to form a `BranchParameter` and a binary tree. 
+
+The `LeafParameter` is made from a parameter representing the initial state, an optional scale parameter for observation densities which require this (Normal, Students-T etc) and the parameters of the Markov transition kernel.
+
+The model is declared unparameterised, as a function from `Parameters => Model`, it is paired with a step function representing the solution to a Stochastic Differential Equation, in this case, the [Ornstein-Uhlenbeck Process](https://en.wikipedia.org/wiki/Ornstein%E2%80%93Uhlenbeck_process).
+
+```scala
+val p = LeafParameter(
+    GaussianParameter(6.0, 1.0),
+    None,
+    OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0))
+val mod = BernoulliModel(stepOrnstein)
+
+val times = (1.0 to 100.0 by 1.0).toList
+val sims = simData(times, mod(p))
+```
+
+Note that any list of times can be supplied to `simData`, simulation and inference supports irregular observation times.
+
+## Simulating from the Log-Gaussian Cox-Proces
+
+The Log-Gaussian Cox-Process must be simulated from using the `simLGCP`.
+
+```scala
+  val params = LeafParameter(
+    GaussianParameter(1.0, 1.0),
+    None,
+    OrnsteinParameter(1.0, 0.1, 0.4))
+
+  val mod = LogGaussianCox(stepOrnstein)
+
+  val sims = simLGCP(0.0, 3.0, mod(params), 2)
+```

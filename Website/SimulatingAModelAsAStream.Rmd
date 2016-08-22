@@ -1,0 +1,75 @@
+---
+title: "Simulating a Model as a Stream"
+author: "Jonathan Law"
+date: "22 August 2016"
+output: html_document
+---
+
+When modelling real world data from sensor networks, such as the [Urban Observatory](http://uoweb1.ncl.ac.uk/) or the [NE Open Data Service](https://www.netraveldata.co.uk/) we can consume the data as it is recorded. In order to consume the data as it arrives, it makes sense to use a [reactive stream](http://www.reactive-streams.org/), [Akka Streams](http://akka.io/) are an implementation of reactive streams. Statistical modelling is computationally intensive, so if the number of incoming observations increases due to a variable sampling rate of a sensor then we want to implement a backpressure strategy to reduce or buffer the amount of incoming data. For instance we could drop every other observation if it was determined that this wouldn't affect the quality of the inference significantly, or we could buffer the extra observations and wait until the sampling rate of the sensor declines again to catch up.
+
+In order to test the inference algorithms, it is useful to simulate data from the models, but in the format we expect to receive the real data. Since the models are Markov processes, the stream must keep track of the previous state. We must build an actor system from the Akka stream, then specify the model and parameters.
+
+```scala
+  import model.Parameters._
+  import model.POMP.BernoulliModel
+  import model.StateSpace.stepOrnstein
+  import model.SimData._
+
+  import akka.actor.ActorSystem
+  import akka.stream.ActorMaterializer
+  import akka.stream.scaladsl._
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  implicit val system = ActorSystem("SimulateBernoulliOnline")
+  implicit val materializer = ActorMaterializer()
+
+  val p = LeafParameter(
+    GaussianParameter(6.0, 1.0),
+    None,
+    OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0))
+  
+  val mod = BernoulliModel(stepOrnstein)(p)
+
+  val sims = simStream(mod, precision = 0, t0 = 0.0)
+```
+
+`simStream` uses the `unfold` method which constructs an infinite stream starting from a zero value, the stream will terminate if it receives a `None`, the function signature is:
+
+```scala
+def unfold[S, E](s: S)(f: S => Option[(S, E)]): Source[E, NotUsed]
+```
+
+`s` represents the zero value, in our case a simulation from the initial state represented by `Gaussian(6.0, 1.0)`, along with a simulated observation and time, `t0 = 0.0`. The function `f` maps to an `Option` containing a tuple, the first element of the tuple is passed to `f` for each subsequent iteration, as long as the `Option` returns `Some` the stream will iterate. 
+
+## Practicalities of working with streaming data
+
+Now we can print this infinite stream of simulations to the console, or write them to a file, or use a particle filter to perform inference. However, if we try printing the stream to the console we can't see the numbers as they fly past, how about throttling the stream:
+
+```scala
+import scala.concurrent.duration._
+
+val throttled = sims.
+  zip(Source.tick(1 second, 1 second, ())).
+  map { case (s,_) => s }.
+  runForeach(println)
+```
+
+This pipeline zips a ticking `Source` of `Unit`, the discards the unit and prints each observation on a new line. This will print a new observation each second, forever. We can also limit the number of items we generate using `take`:
+
+```scala
+throttled.
+  take(100).
+  runForeach(println)
+```
+
+Another option is thinning the stream, discarding every other simulation:
+
+```scala
+throttled.
+  zip(Source.from(1)).
+  filter { case (_, i) => i % 2 == 0 }.
+  map { case (a, _) => a }.
+  runForeach(println)
+```
+
+We can also use the [particle filter](The-Particle-Filter) on the data as a stream, and group observations into chunks and use the [Particle Marginal Metropolis Hastings](Streaming-MCMC) algorithm.

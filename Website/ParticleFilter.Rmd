@@ -1,0 +1,191 @@
+---
+title: "Particle Filter"
+author: "Jonathan Law"
+date: "22 August 2016"
+output: html_document
+---
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, background=TRUE, results='hide'}
+packages <- c("dplyr", "tidyr", "ggplot2", "gridExtra", "magrittr", "scales", "readr")
+newPackages <- packages[!(packages %in% as.character(installed.packages()[,"Package"]))]
+if(length(newPackages)) install.packages(newPackages)
+lapply(packages,require,character.only=T)
+
+theme_set(theme_minimal())
+```
+
+The particle filter is a highly flexible filter, used to perform Bayesian inference for non-linear and non-Gaussian state space models. It works by simulating many realisations of the state space in a particle cloud and determining which are the closest fit to observed data by calculating the observation likelihood. This type of simulation can be slow. The [Kalman Filter](https://en.wikipedia.org/wiki/Kalman_filter) is an exact solution for calculating the latent state for Gaussian, Dynamic Linear Models. The Kalman Filter is very efficient and accurate as it doesn't require simulation, but the class of models we consider can't be solved analytically in closed form. Other filters, such as the Extended and Unscented Kalman Filter have been developed, which apply to non-linear state space models. 
+
+In our application, it is natural to use a particle filter. The particle filter can operate with observations arriving irregularly, it can handle non-Gaussian observation models and non-linear transformations.
+
+## Bootstrap Particle Filter
+
+First consider a simple model with a one-dimensional state-space and a Poisson observation model. The algorithm for the bootstrap particle filter is presented below. Note that in the package all of this is already implemented in a more sophisticated way, this is merely presented here for illustrative purposes.
+
+* The parameters of the model can be written as a case class, `m0` and `c0` represent the parameters of the initial distribution of the state, represented by a draw from a Gaussian distribution. `mu` and `sigma` are the parameters of the Markov transition kernel, which is generalised brownian motion
+
+```scala
+case class Parameters(m0: Double, c0: Double, mu: Double, sigma: Double)
+```
+
+* Initialise a particle cloud of size `n` using the initial parameters
+
+```scala
+import breeze.stats.distributions.Gaussian
+
+val p = Parameters(0.1, 3.0, 0.1, 1.0)
+val particles = Vector.fill(n)(Gaussian(p.m0, p.c0))
+```
+
+* Advance the state space (`particles`) to the time of the next observation according to the Markov transition kernel
+
+```scala
+def transition(p: Parameters, dt: TimeInterval): State => State = {
+    x => Gaussian(x + m0*dt, math.sqrt(p.sigma * p.sigma * dt)).draw
+}
+
+val advanced = particles map (transition(p, dt))
+```
+
+`State` and `TimeInterval` are type aliases for `Double`
+
+* Calculate the likelihood weights of each particle given the observation
+
+```scala
+import breeze.stats.distributions.Poisson
+
+def likelihood(y: Observation): State => LogLikelihood = x => {
+  Poisson(exp(x)).logProbabilityOf(y)
+}
+
+val weights = advanced map likelihood(y)
+```
+
+`LogLikelihood` is an alias for Double
+
+* Resample the states according to the likelihood weights, using the `Multinomial` distribution from Breeze
+
+```scala
+import breeze.stats.distributions.Multinomial
+
+def resample(x: Vector[State], w: Vector[LogLikelihood]): Vector[State] = {
+  val xInd = Multinomial(DenseVector(w.toArray)).sample(x.length).toVector
+  xInd map ( x(_) )
+}
+
+val resampledState = resample(advanced, weights)
+```
+
+* Repeat the process for all of the observed data, collecting the resampled particles at each time point. The particles can be used to calculate summary statistics, such as the mean and credible intervals by selecting the appropriate order statistics from the empirical distributions.
+
+* The marginal likelihood of the path given the observed data and parameters can be calculated by calculating the product of the average of the weights at each time point. This marginal likelihood is used in the [[Particle Marginal Metroplis Hastings|Streaming-MCMC]] algorithm, which can be used to calculate the full joint posterior p(x, t | y).
+
+## Filtering a Stream of Data
+
+In order to filter information arriving in real-time, given we have access to the marginal posterior distribution of the parameters given the data so far, we simply apply the particle filter to each new observation arriving. However, the particle filter relies on the previous value of the particle cloud and the time difference between each observation since our models allow the possibility of irregularly observed data.
+
+This means we need to store state in the stream, let's first consider how to construct a stream of simulated data. We can use `Source.unfold` from [Akka streaming](https://akka.io) which allows us to construct infinite streams, as long as the function returns a `Some`. The function starts with a zero value, then passes the first value of the tuple inside the `Some` back into the function. In this way we can easily construct Markov chains as streams.
+
+```scala
+val mod: Model = // a parameterised model
+val dt = 0.1 // the time step for the simulation
+val d0 = simStep(mod.x0.draw, 0.0, dt, mod)
+
+val sims = Source.unfold(d0)(x => Some((simStep(x.sdeState, x.t + dt, dt, mod), x))) 
+```
+
+Now we can simulate values from any model as a stream. Now we must apply a particle filter to the stream, assuming we don't know the values of the latent variables, which of course we do because the data is simulated. In order to keep track of state, we can use a `scan`.
+
+```scala
+val n = 1000
+val t0 = 0.0
+val particleCloud = Vector.fill(n)(mod.x0.draw)
+val initState = Vector(PfState(t0, None, particleCloud, State.zero, IndexedSeq[CredibleInterval]()))
+
+observations.
+  scan(initState)((d, y) => filterStep(y, d, mod, 200))
+```
+
+`scan` accepts a zero value, `initState` and a function from a single observation, `y` and the previous state `d` to calculate the state given the current observation. Using `scan` in this way, outputs the value of the state as each observation is received.
+
+## Example: Filtering a Single Model
+
+Here we present an example of filtering a model with a Poisson observation model. First we simulate a Poisson model with an Ornstein-Uhlenbeck state space.
+
+```scala
+import model.{LeafParameter, GaussianParameter, OrnsteinParameter}
+import model.SimData._
+import model.POMP.PoissonModel
+import model.StateSpace._
+
+val p = LeafParameter(
+  GaussianParameter(-2.0, 1.0),
+  None,
+  OrnsteinParameter(theta = 2.0, alpha = 1.0, sigma = 1.0))
+val mod = PoissonModel(stepOrnstein)
+
+
+val times = (1.0 to 100.0 by 1.0).toList
+val sims = simData(times, mod(p))
+```
+
+The figure below shows a simulation from the Poisson model, the state space of the Ornstein-Uhlenbeck process can vary on the entire real line, the parameter space of the Poisson model is $\mathbb{Z}^+$ as the parameter, $\lambda(t)$, is the mean of a counting process. The log-link function is used to transform the state space to the appropriate parameter space, $\lambda(t) = g(x(t)) = \exp(x(t))$
+
+```{r, echo=FALSE}
+system("cd ../ && sbt \"run-main examples.SimulatePoisson\"")
+poisson = read_csv("../PoissonSims.csv", 
+                col_names = c("Time", "Value", "Eta", "Gamma", "State"))
+
+p1 = poisson %>%
+  ggplot(aes(x = Time, y = Value)) + geom_step() + 
+  ggtitle("Poisson Observations")
+
+p2 = poisson %>%
+  dplyr::select(Time, Eta, State) %>%
+  gather(key = "key", value = "value", -Time) %>%
+  ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + 
+  facet_wrap(~key, ncol = 1, scales = "free_y") + theme(legend.position="none")
+
+grid.arrange(p1, p2)
+```
+
+Now we can use the particle filter to estimate the state space, the scala code is given here and is available in the examples in the Github repo.
+
+```scala
+  val data = // poisson data
+
+  val p = LeafParameter(
+    GaussianParameter(6.0, 1.0),
+    None,
+    OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0))
+
+  // declare a new filter type including the model, resampling scheme and starting time, t0
+  val filter = Filter(mod.model, ParticleFilter.multinomialResampling, t0 = 0.0)
+  
+  // use the filter to return the state and credible intervals with 1000 particles
+  filter.filterWithIntervals(data)(1000)(mod.p)
+```
+
+```{r, echo = FALSE}
+system("cd ../ && sbt \"run-main examples.FilterPoisson\"")
+poissonFiltered = read_csv("../PoissonFiltered.csv",
+                        col_names = c("Time", "Value", "PredEta", "lowerEta", "upperEta", "PredState", "Lower", "Upper"))
+
+p1 = poisson %>%
+  dplyr::select(-Gamma, -Eta, -Value) %>%
+  inner_join(poissonFiltered[,-2], by = "Time") %>%
+  select(Time, State, PredState, Lower, Upper) %>%
+  gather(key = "key", value = "value", -Time, -Lower, -Upper) %>%
+  ggplot() + geom_line(aes(x = Time, y = value, linetype = key)) +
+  geom_ribbon(aes(x = Time, ymin = Lower, ymax = Upper), alpha = 0.3)
+
+p2 = poisson %>%
+  dplyr::select(-Gamma, -State, -Value) %>%
+  inner_join(poissonFiltered[,-2], by = "Time") %>%
+  select(Time, Eta, PredEta, lowerEta, upperEta) %>%
+  gather(key = "key", value = "value", -Time, -lowerEta, -upperEta) %>%
+  ggplot() + geom_line(aes(x = Time, y = value, linetype = key)) +
+  geom_ribbon(aes(x = Time, ymin = lowerEta, ymax = upperEta), alpha = 0.3)
+
+grid.arrange(p1, p2, ncol = 1)
+```
