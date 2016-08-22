@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+
+<title>A Metropolis Hastings Algorithm</title>
+
+<script type="text/javascript">
+window.onload = function() {
+  var imgs = document.getElementsByTagName('img'), i, img;
+  for (i = 0; i < imgs.length; i++) {
+    img = imgs[i];
+    // center an image if it is the only element of its parent
+    if (img.parentElement.childElementCount === 1)
+      img.parentElement.style.textAlign = 'center';
+  }
+};
+</script>
+
+
+
+
+
+<style type="text/css">
+body, td {
+   font-family: sans-serif;
+   background-color: white;
+   font-size: 13px;
+}
+
+body {
+  max-width: 800px;
+  margin: auto;
+  padding: 1em;
+  line-height: 20px;
+}
+
+tt, code, pre {
+   font-family: 'DejaVu Sans Mono', 'Droid Sans Mono', 'Lucida Console', Consolas, Monaco, monospace;
+}
+
+h1 {
+   font-size:2.2em;
+}
+
+h2 {
+   font-size:1.8em;
+}
+
+h3 {
+   font-size:1.4em;
+}
+
+h4 {
+   font-size:1.0em;
+}
+
+h5 {
+   font-size:0.9em;
+}
+
+h6 {
+   font-size:0.8em;
+}
+
+a:visited {
+   color: rgb(50%, 0%, 50%);
+}
+
+pre, img {
+  max-width: 100%;
+}
+pre {
+  overflow-x: auto;
+}
+pre code {
+   display: block; padding: 0.5em;
+}
+
+code {
+  font-size: 92%;
+  border: 1px solid #ccc;
+}
+
+code[class] {
+  background-color: #F8F8F8;
+}
+
+table, td, th {
+  border: none;
+}
+
+blockquote {
+   color:#666666;
+   margin:0;
+   padding-left: 1em;
+   border-left: 0.5em #EEE solid;
+}
+
+hr {
+   height: 0px;
+   border-bottom: none;
+   border-top-width: thin;
+   border-top-style: dotted;
+   border-top-color: #999999;
+}
+
+@media print {
+   * {
+      background: transparent !important;
+      color: black !important;
+      filter:none !important;
+      -ms-filter: none !important;
+   }
+
+   body {
+      font-size:12pt;
+      max-width:100%;
+   }
+
+   a, a:visited {
+      text-decoration: underline;
+   }
+
+   hr {
+      visibility: hidden;
+      page-break-before: always;
+   }
+
+   pre, blockquote {
+      padding-right: 1em;
+      page-break-inside: avoid;
+   }
+
+   tr, img {
+      page-break-inside: avoid;
+   }
+
+   img {
+      max-width: 100% !important;
+   }
+
+   @page :left {
+      margin: 15mm 20mm 15mm 10mm;
+   }
+
+   @page :right {
+      margin: 15mm 10mm 15mm 20mm;
+   }
+
+   p, h2, h3 {
+      orphans: 3; widows: 3;
+   }
+
+   h2, h3 {
+      page-break-after: avoid;
+   }
+}
+</style>
+
+
+
+</head>
+
+<body>
+<p>Markov Chain Monte Carlo (MCMC) is a method used to sample from an intractable posterior probability distributions. In general it is used to approximate high-dimensional integrals that can&#39;t be calculated analytically.</p>
+
+<p>In order to estimate the parameters of a Partially Observed Markov Process (POMP) model, we use Particle MCMC methods (see <a href="http://www.stats.ox.ac.uk/%7Edoucet/andrieu_doucet_holenstein_PMCMC.pdf">Doucet et al 2010</a>). This involves estimating the marginal likelihood of the process using a Particle Filter, then using the likelihood in a <a href="https://en.wikipedia.org/wiki/Metropolis%E2%80%93Hastings_algorithm">Metropolis hastings</a> algorithm. </p>
+
+<h2>A Metropolis Hastings Algorithm</h2>
+
+<p>As an introduction, consider a simple model without latent variables, the observation distribution is Gaussian, and the measurement noise and mean of the observation distribution is unknown. A general <a href="https://en.wikipedia.org/wiki/Metropolis%E2%80%93Hastings_algorithm">Metropolis-Hastings</a> algorithm to recover the parameter posterior is presented below:</p>
+
+<ul>
+<li>Represent the parameters as a case class:</li>
+</ul>
+
+<pre><code class="scala">case class Parameter(mu: Double, sigma: Double)
+</code></pre>
+
+<ul>
+<li>Propose a new set of parameters from a proposal distribution <code>propParams = propose(params)</code>, a simple proposal is a random walk around the parameter space:</li>
+</ul>
+
+<pre><code class="scala">import breeze.stats.distributions.Gaussian
+
+def propose(p: Parameter): Parameter = {
+    Parameter(Gaussian(p.mu, 0.1).draw, p.sigma * math.exp(Gaussian(0, 0.1).draw))
+  }
+</code></pre>
+
+<p>This will propose a new parameter in a location around the previous parameter. Not the sigma parameter is proposed as a symmetric perturbation around the current parameter value and as such will always be positive.</p>
+
+<ul>
+<li>Determine the probability of moving to and from proposed parameters</li>
+</ul>
+
+<pre><code class="scala">def logTransition(from: Parameter, to: Parameter): Parameter = {
+  Gaussian(from, 0.1).logPdf(to)
+}
+</code></pre>
+
+<ul>
+<li>The new parameters are used to calculate the marginal-likelihood of an observation:</li>
+</ul>
+
+<pre><code class="scala">def likelihood(y: Double): Parameter =&gt; Double = p =&gt; {
+    Gaussian(p.mu, p.sigma).logPdf(y)
+  }
+
+// calculate the likelihood of a list of points
+def allLikelihood(data: List[Double]): Parameter =&gt; Double = p =&gt; {
+  data.foldLeft(0.0)((l, y) =&gt; l + likelihood(y)(p))
+}
+</code></pre>
+
+<ul>
+<li>The new parameters are rejected or accepted with probability <code>a</code> as in the following expression:</li>
+</ul>
+
+<pre><code class="scala">import breeze.stats.distributions.Uniform
+import Stream._
+
+  def mh(likelihood: Parameter =&gt; Double, initParam: Parameter): Stream[Parameter] = {
+
+    Stream.iterate(initParam)(p =&gt; {
+      val propParam = propose(p)
+      val a = likelihood(propParam) - likelihood(p) + logTransition(propParams, p) - logTransition(p, propParams)
+      val logu = math.log(Uniform(0, 1).draw
+
+      if (logu &lt; a) { propParam } else { s }
+    })
+  }
+</code></pre>
+
+<p><code>a</code> represents the Metropolis-Hastings acceptance ratio, note that the acceptance ratio can been simplified by removing the <code>logTransition</code> terms, since the proposal distribution is symmetric. If we now simulate data from a Gaussian distribution with fixed mean and variance, we can recover the mean and variance using this Metropolis-Hastings algorithm:</p>
+
+<pre><code class="scala">def sims(n: Int, params: Parameter): List[Double] = {
+  List.fill(n)(Gaussian(params.mu, params.sigma).draw)
+}
+
+val p = Parameter(0.0, 1.0)
+val data = sims(100, p)
+
+val iters = mh(allLikelihood(data), p, 0.1).take(10000)
+</code></pre>
+
+<p>In order to ensure convergence to the correct posterior distribution, the acceptance ratio can be monitored, as a rule of thumb and acceptance ratio of 0.3 is acceptable. In order to control the acceptance ratio, the variance of the proposal distribution can be modified. The full code, with acceptance recording and an adaptive variance for the proposal distribution is in a <a href="https://gist.github.com/jonnylaw/0d01e2b67a5d4499ecd3674f97092aba#file-metropolishastings-scala">gist</a> and requires <a href="https://github.com/scalanlp/breeze">Breeze</a> as a dependency in order to simulate from the Gaussian and Uniform distributions.</p>
+
+<p>Common diagnostics are plotted below, including trace-plots, empirical distributions, auto-correlation function and running means. Here we can see the chain mixing well, with low auto-correlation. The distributions are tightly packed around 0.0 and 1.0 as expected.</p>
+
+<p><img src="https://raw.githubusercontent.com/jonnylaw/ComposableStateSpaceModels/master/Figures/MetropolisHastingsOutput.png" alt="MCMC Diagnostics"/></p>
+
+<h2>The PMMH Algorithm</h2>
+
+<p>In order to calculate the full-posterior of a latent variable model, we must approximate the marginal-likelihood with an unbiased estimate. It turns out an unbiased estimate of the marginal-likelihood can be obtained from the [[bootstrap particle filter|The-Particle-Filter]].</p>
+
+<h2>MCMC as a Stream</h2>
+
+<p>By default, the iterations from the PMMH algorithm are an Akka stream. Since the parameters are a stream, we can perform streaming operations on parameters, such as thinning:</p>
+
+<pre><code class="scala">def thinParameters[A](thin: Int) = {
+    Flow[A].zip(Source(Stream.from(1))).
+      filter{ case (_, iteration) =&gt; iteration % thin == 0}.
+      map{ case (p, _) =&gt; p }
+  }
+</code></pre>
+
+<p>The stream of parameters is zipped to a stream of integers, <code>1 2 3 ...</code>, and then filtered, finally the integers are removed by a call to map. MCMC algorithms often take a little while to properly start exploring the posterior, these iterations can be discarded by calling <code>drop</code>.</p>
+
+<pre><code class="scala">def burnin[A](burn: Int) = {
+    Flow[A].drop(burn)
+  }
+</code></pre>
+
+<p>Sometimes a complex model with many free parameters can require a large amount of iterations from the PMMH algorithm to determine the parameter posterior. In this case, we would like a way to stream the iterations to a file in order to avoid running out of memory. With Akka streams, we can asynchronously write to a file using the 
+<code>fileIO</code> sink:</p>
+
+<pre><code class="scala">import java.io.File
+import akka.stream.scaladsl._
+import akka.util.ByteString
+
+params.
+  map{ p =&gt; ByteString(s&quot;$p\n&quot;) }.
+  runWith(FileIO.toFile(new File(&quot;output.csv&quot;)))
+</code></pre>
+
+<p>A <code>toString</code> method in the <code>Parameters</code> class gives the CSV output. In order to determine the state space online using the parameter posterior, a suitable summary of the parameters must be provided for use the with [[particle filter|The-Particle-Filter]]. The mean of the parameters is a suitable value.</p>
+
+<p>First, consider how to calculate the average of parameters from a file. Since the iterations of the PMMH algorithm are written to a file, we must read in and parse the parameters. Consider a simple linear model:</p>
+
+<pre><code class="scala">  val p = LeafParameter(GaussianParameter(3.0, 2.0), Some(1.0), BrownianParameter(0.1, 1.0))
+  val mod = LinearModel(stepBrownian)
+
+  val times = (0.0 to 50.0 by 0.5).toList
+  val sims = simData(times, mod(p))
+</code></pre>
+
+<p>Now we have simulated data from a linear model, with a Gaussian observation model, let&#39;s recover the parameters using Particle Marginal Metropolis Hastings:</p>
+
+<pre><code class="scala">val mll = pfMll(sims, mod)(500)
+ParticleMetropolis(mll, p, Parameters.perturb(1.0)).iters.
+  take(10000).
+  map( p =&gt; ByteString(s&quot;$p\n&quot;)).
+  runWith(FileIO.toFile(new File(&quot;LinearMCMC.csv&quot;)))
+</code></pre>
+
+<p>Now we can read back in the file <code>LinearMCMC.csv</code>, parse, drop burnin terms and thin the stream before calculating the mean:</p>
+
+<pre><code class="scala">  val future = cleanParameterFlow(new File(&quot;LinearMCMC.csv&quot;), burnin = 1000, thin = 2, totalIterations = 10000)
+  val p: Vector[Double] = Await.result(p.run, 1 second)
+  val params = Parameter(GaussianParameter(p.head, p(1)), Some(p(2)), BrownianParameter(p(3), p(4)))
+</code></pre>
+
+<p><code>cleanParameterFlow</code> returns a future, since it could be reading an unbounded file. So we force it to return a result and parse the vector to the set of parameters required for the Linear Model.</p>
+
+<h2>PMMH Diagnostics</h2>
+
+<p>In practice it is desirable to run multiple chains from different starting values (with different prior distributions), with different proposal distributions or with different number of particles in order to establish whether the chain will converge on the correct posterior distribution (see <a href="https://darrenjw.wordpress.com/2014/06/08/tuning-particle-mcmc-algorithms/">Darren&#39;s Blog Post</a>). Since individual chains are independent, we can run them in parallel, which is easy using <a href="https://akka.io">Akka Streams</a>.</p>
+
+<pre><code class="scala">val particles = Vector(100, 200, 500, 1000)
+val params = Vector(p1, p2) // a vector of two sets of parameters
+
+val input = for {
+ n &lt;- particles
+ p &lt;- params
+} yield (n, p) // cross product, (100, p1), (200, p1), ...
+
+val iterations = 10000
+
+Source(input).
+  mapAsync(parallism = 4).
+  map { case (particles, params) =&gt; 
+
+    ParticleMetropolis(mll(particles), params, Parameters.perturb(0.1)).iters.
+      zip(Source(Stream.from(1))).
+      map{ case (x, i) =&gt; (i, x.params) }.
+      take(iterations).
+      map{ case (i, p) =&gt; ByteString(s&quot;$i, $p\n&quot;) }.
+      runWith(FileIO.toFile(new File(s&quot;$fileOut-$iterations-$particles-$chain.csv&quot;)))
+  }.
+  runWith(Sink.onComplete { _ =&gt;
+    system.shutdown()
+  })
+</code></pre>
+
+<p>A full suite of diagnostic tools can be found in the R package <a href="https://cran.r-project.org/web/packages/coda/index.html">coda</a>. Since the MCMC iterations are written to a csv, this can easily be imported using R and analysed using coda.  </p>
+
+</body>
+
+</html>
