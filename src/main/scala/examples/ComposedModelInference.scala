@@ -32,14 +32,14 @@ import cats.implicits._
   */
 trait TestModel {
   val poissonParams: Parameters = LeafParameter(
-    GaussianParameter(3.0, 0.5),
+    GaussianParameter(0.0, 0.5),
     None,
-    BrownianParameter(0.01, 0.3))
+    BrownianParameter(-0.05, 0.3))
   val seasonalParams: Parameters = LeafParameter(
     GaussianParameter(DenseVector.fill(6)(0.0),
       diag(DenseVector.fill(6)(0.5))),
     None,
-    OrnsteinParameter(DenseVector.fill(6)(1.0), DenseVector.fill(6)(0.1), DenseVector.fill(6)(0.1)))
+    OrnsteinParameter(DenseVector.fill(6)(1.0), DenseVector.fill(6)(0.1), DenseVector.fill(6)(0.5)))
 
   val params = poissonParams |+| seasonalParams
   val model = PoissonModel(stepBrownian) |+| SeasonalModel(24, 3, stepOrnstein)

@@ -21,11 +21,11 @@ object Streaming {
     * @param i the number of iterations computed
     * @param a the proportion of accepted moves
     */
-  case class MonitorState(i: Int, a: Double)
+  case class MonitorState(i: Int, a: Double, mllVar: Option[Double])
 
   /**
     * A helper function to monitor the stream every 'every' iterations with a print statement
-    * @param every number of iterations to wait until a print statement informs of the iteration, mll variance and acceptance ratio
+    * @param every number of iterations to wait until a print statement informs of the iteration, and acceptance ratio
     * @param chain, the chain number we are monitoring
     */
   def monitorStream(every: Int, chain: Int) = {
@@ -36,7 +36,8 @@ object Streaming {
         val iter = x map (_._2)
         MonitorState(
           iter.last,
-          (x.map(_._1.accepted.toDouble).last)/iter.last)}
+          (x.map(_._1.accepted.toDouble).last)/iter.last,
+          None)}
       ).
       map(m => println(s"""chain: $chain, iteration: ${m.i}, acceptance ratio: ${m.a}"""))
   }
@@ -61,6 +62,48 @@ object Streaming {
       ClosedShape
     })
   }
+
+  /**
+    * Used to monitor a pilot run of the PMMH algorithm
+    */
+  def monitorPilot(every: Int, chain: Int) = {
+    Flow[MetropState].
+      zip(Source(Stream.from(1))).
+      grouped(every).
+      map( x => {
+        val iter = x map (_._2)
+        val s = x map (_._1)
+        MonitorState(
+          iter.last,
+          (s.map(_.accepted.toDouble).last)/iter.last,
+          Some(breeze.stats.variance(s map (_.ll)))
+        )
+        }
+      ).
+      map(m => println(s"""chain: $chain, iteration: ${m.i}, 
+                            mll variance: ${m.mllVar.get}, acceptance ratio: ${m.a}"""))
+  }
+
+  /**
+    * Performs a pilot run of the PMMH algorithm, this runs PMMH iterations at a fixed parameter
+    * value, returns the acceptance ratio and mll variance, the mll variance should be 1
+    * Change the number of particles in the filter to alter the mll variance
+    */
+  def pilotRun(mll: Parameters => LogLikelihood, initParams: Parameters, iters: Int) = {
+    val mh = ParticleMetropolis(mll, initParams, Parameters.proposeIdent)
+    RunnableGraph.fromGraph(GraphDSL.create() { implicit builder =>
+      val out = Sink.ignore
+      val bcast = builder.add(Broadcast[MetropState](2))
+      
+      mh.itersAkka ~> bcast
+      bcast ~> monitorPilot(iters/10, 1) ~> Sink.ignore
+
+      bcast ~> Flow[MetropState].take(iters) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
+
+      ClosedShape
+    })
+  }
+
 
   def runPmmhToFile(
     fileOut: String, chains: Int,

@@ -326,3 +326,4 @@ case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[Sta
 
   def resample: Resample[State] = resamplingScheme
 }
+

@@ -32,26 +32,26 @@ import cats.implicits._
 /**
   * A model to use for the examples in this class
   */
-trait BernoulliModel {
+trait PoissonModel {
   val p = LeafParameter(
-    GaussianParameter(6.0, 1.0),
+    GaussianParameter(-1.0, 1.0),
     None,
-    BrownianParameter(mu = 0.1, sigma = 1.0))
+    OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 0.5))
   
-  val model = BernoulliModel(stepBrownian)
+  val model = PoissonModel(stepOrnstein)
 }
 
 /**
   * Simulate 100 observaitions from a simple bernoulli model
   */
-object SimulateBernoulli extends App {
+object SimulatePoisson extends App {
 
-  val mod = new BernoulliModel {}
+  val mod = new PoissonModel {}
   
   val times = (1 to 100).map(_.toDouble).toList
   val sims = simData(times, mod.model(mod.p))
 
-  val pw = new PrintWriter("BernoulliSims.csv")
+  val pw = new PrintWriter("PoissonSims.csv")
   pw.write(sims.mkString("\n"))
   pw.close()
 }
@@ -59,19 +59,22 @@ object SimulateBernoulli extends App {
 /**
   * Filter observations as a batch, return the state and credible intervals
   */
-object FilterBernoulli extends App {
+object FilterPoisson extends App {
   // read in the data from a csv file and parse it to a Data object
   // without the state, eta and gamma
-  val data = scala.io.Source.fromFile("BernoulliSims.csv").getLines.
+  val data = scala.io.Source.fromFile("PoissonSims.csv").getLines.
     map(a => a.split(",")).
     map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None)).
-    toVector
+    toVector.
+    sortBy(_.t)
 
-  val mod = new BernoulliModel {}
+  val mod = new PoissonModel {}
   
-  val filtered = Filter(mod.model, ParticleFilter.multinomialResampling, 0.0).accFilter(data)(1000)(mod.p)
+  val filter = Filter(mod.model, ParticleFilter.multinomialResampling, 0.0)
 
-  val pw = new PrintWriter("BernoulliFiltered.csv")
+  val filtered = filter.filterWithIntervals(data)(1000)(mod.p)
+
+  val pw = new PrintWriter("PoissonFiltered.csv")
   pw.write(filtered.mkString("\n"))
   pw.close()
 }
@@ -79,11 +82,11 @@ object FilterBernoulli extends App {
 /**
   * An example showing real time filtering of observations arriving as a stream
   */
-object FilterBernoulliOnline extends App {
-  implicit val system = ActorSystem("FilterBernoulliOnline")
+object FilterPoissonOnline extends App {
+  implicit val system = ActorSystem("FilterOnline")
   implicit val materializer = ActorMaterializer()
 
-  val model = new BernoulliModel {}
+  val model = new PoissonModel {}
   val mod = model.model(model.p)
   val observations = simStream(mod, 0, t0 = 0.0)
 
@@ -91,7 +94,7 @@ object FilterBernoulliOnline extends App {
   observations.
     take(100).
     map(a => ByteString(s"$a\n")).
-    runWith(FileIO.toFile(new File("OnlineBern.csv")))
+    runWith(FileIO.toFile(new File("OnlinePoisson.csv")))
 
   // particles and initial state for particle filter
   val n = 1000
@@ -104,11 +107,46 @@ object FilterBernoulliOnline extends App {
   pf.filter(observations)(n)(model.p).
     drop(1). // drop the initial state, with no corresponding observation
     map(a => ByteString(s"$a\n")).
-    runWith(FileIO.toFile(new File("filteredBernoulliOnline.csv")))
+    runWith(FileIO.toFile(new File("filteredPoissonOnline.csv")))
 
   Thread.sleep(10000) // sleep for 10 seconds
 
   system.shutdown
+}
+
+object GetPoissonParameters {
+  def main(args: Array[String]) = {
+    implicit val system = ActorSystem("FilterOnline")
+    implicit val materializer = ActorMaterializer()
+
+    // Read in the data from a file and parse it to a vector of Data
+    val data = scala.io.Source.fromFile("PoissonSims.csv").getLines.
+      map(a => a.split(",")).
+      map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None)).
+      toVector.sortBy(_.t)
+
+    // parse supplied command line arguments for number of iterations, particles and
+    // the size of the diagonal entries of the covariance matrix of the proposal distribution
+    val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
+
+    // create the model trait
+    val mod = new PoissonModel {}
+
+    // build the particle filter by selecting the model type and resampling scheme
+    val filter = Filter(mod.model, ParticleFilter.multinomialResampling, 0.0)
+
+    // specify the filter type (llFilter, to return estimate of log-likelihood),
+    // the number of particles and observations
+    val mll = filter.llFilter(data)(particles) _
+
+    // build the PMMH algorithm using mll estimate (via particle filter), the
+    // initial parameters and the proposal distribution for new paramters
+    val mh = ParticleMetropolis(mll, mod.p, Parameters.perturb(delta))
+
+    // run the PMMH as an akka stream in parallel and write the results to a file
+    runPmmhToFile(s"PoissonSimParams-$delta-$particles", 2,
+      mod.p, mll, Parameters.perturb(delta), iters)
+  }
 }
 
 /**
@@ -144,47 +182,6 @@ object SimulateOrnstein {
   }
 }
 
-/**
-  * Simulate a simple composed model, a bernoulli model with seasonal probability
-  */
-object SeasonalBernoulli extends App {
-  val bernoulliParams: Parameters = LeafParameter(
-    GaussianParameter(0.0, 1.0),
-    None,
-    BrownianParameter(0.1, 1.0))
-  val seasonalParams: Parameters = LeafParameter(
-    GaussianParameter(DenseVector(Array.fill(6)(0.0)),
-      diag(DenseVector(Array.fill(6)(1.0)))),
-    None,
-    BrownianParameter(DenseVector.fill(6)(0.1), diag(DenseVector.fill(6)(1.0))))
-
-  val params = bernoulliParams |+| seasonalParams
-  val mod = BernoulliModel(stepBrownian) |+| SeasonalModel(24, 3, stepBrownian)
-
-  val times = (1 to 100).map(_.toDouble).toList
-  val sims = simData(times, mod(params))
-
-  val pw = new PrintWriter("seasonalBernoulliSims.csv")
-  pw.write(sims.mkString("\n"))
-  pw.close()
-}
-
-object SimulatePoisson extends App {
-  val params: Parameters = LeafParameter(
-    GaussianParameter(0.0, 1.0),
-    None,
-    OrnsteinParameter(2.0, 0.05, 1.0))
-
-  val mod = PoissonModel(stepOrnstein)
-
-  val times = (1 to 100).map(_.toDouble).toList
-  val sims = simData(times, mod(params))
-
-  val pw = new PrintWriter("PoissonSims.csv")
-  pw.write(sims.mkString("\n"))
-  pw.close()
-}
-
 object SimulateSeasonal extends App {
   val params: Parameters = LeafParameter(
     GaussianParameter(DenseVector(Array.fill(6)(0.0)),
@@ -200,5 +197,4 @@ object SimulateSeasonal extends App {
   val pw = new PrintWriter("SeasonalSims.csv")
   pw.write(sims.mkString("\n"))
   pw.close()
-
 }
