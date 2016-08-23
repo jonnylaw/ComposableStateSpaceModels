@@ -10,8 +10,7 @@ import scala.concurrent.duration._
 import akka.util.ByteString
 
 import model._
-import model.Model._
-import model.Filtering._
+import model.UnparamModel._
 import model.Streaming._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel, studentTModel}
 import model.DataTypes._
@@ -23,20 +22,21 @@ import model.Parameters._
 import model.StateSpace._
 import java.io.{PrintWriter, File}
 import breeze.linalg.{DenseVector, diag}
+import cats.implicits._
 
 object SeasStudentT extends App {
-  val tparams = LeafParameter(
+  val tparams: Parameters = LeafParameter(
     GaussianParameter(0.0, 3.0),
     Some(0.3),
     OrnsteinParameter(3.0, 1.0, 0.5))
-  val seasParams = LeafParameter(
+  val seasParams: Parameters = LeafParameter(
     GaussianParameter(DenseVector.fill(6)(0.0), diag(DenseVector.fill(6)(3.0))),
     None,
     OrnsteinParameter(DenseVector.fill(6)(2.0), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.3)))
 
   val p = tparams |+| seasParams
 
-  val unparamMod = Model.op(studentTModel(stepOrnstein, 5), SeasonalModel(24, 3, stepOrnstein))
+  val unparamMod = studentTModel(stepOrnstein, 5) |+| SeasonalModel(24, 3, stepOrnstein)
   val mod = unparamMod(p)
 
   val times = (1 to 7*24).map(_.toDouble).toList
@@ -48,18 +48,18 @@ object SeasStudentT extends App {
 }
 
 object GetSeasTParams extends App {
-  val tparams = LeafParameter(
+  val tparams: Parameters = LeafParameter(
     GaussianParameter(0.0, 3.0),
     Some(0.3),
     OrnsteinParameter(3.0, 1.0, 0.5))
-  val seasParams = LeafParameter(
+  val seasParams: Parameters = LeafParameter(
     GaussianParameter(DenseVector.fill(6)(0.0), diag(DenseVector.fill(6)(3.0))),
     None,
     OrnsteinParameter(DenseVector.fill(6)(2.0), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.3)))
 
   val p = tparams |+| seasParams
 
-  val unparamMod = Model.op(studentTModel(stepOrnstein, 5), SeasonalModel(24, 3, stepOrnstein))
+  val unparamMod = studentTModel(stepOrnstein, 5) |+| SeasonalModel(24, 3, stepOrnstein)
 
   /**
     * Parse the timestamp and observations from the simulated data
@@ -69,7 +69,10 @@ object GetSeasTParams extends App {
     map(rs => rs map (_.toDouble)).
     map(rs => Data(rs.head, rs(1), None, None, None))
 
-  val mll = pfMll(data.toVector.sortBy(_.t), unparamMod) _
+  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, 0.0)
+  val iters = ParticleMetropolis(filter.llFilter(data.toVector.sortBy(_.t))(200), p, Parameters.perturb(0.1)).iters
 
-  runPmmhToFile("seasTmcmc", 4, p, mll, Parameters.perturb(0.1), 200, 10000)
+  val pw = new PrintWriter("seastMCMC.csv")
+  pw.write(iters.sample(10000).mkString("\n"))
+  pw.close()
 }

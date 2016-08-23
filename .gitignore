@@ -1,6 +1,7 @@
 # Hidden Folders
 .Rhistory
 .ensime_cache/*
+src/main/resources/*
 
 # scala stuff
 target/*

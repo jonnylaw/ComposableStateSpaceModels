@@ -10,9 +10,8 @@ import scala.concurrent.duration._
 import akka.util.ByteString
 
 import model._
-import model.Model._
-import model.Filtering._
 import model.Streaming._
+import model.ParticleFilter._
 import model.POMP.{PoissonModel, SeasonalModel, LinearModel, LogGaussianCox, BernoulliModel}
 import model.DataTypes._
 import model.{State, Model}
@@ -30,7 +29,7 @@ trait LgcpModel {
   val params = LeafParameter(
     GaussianParameter(0.0, 1.0),
     None,
-    OrnsteinParameter(3.0, 0.5, 1.0))
+    OrnsteinParameter(2.0, 0.5, 1.0))
 
   val model = LogGaussianCox(stepOrnstein)
 }
@@ -45,7 +44,7 @@ object SimulateLGCP extends App {
   pw.close()
 }
 
-object FilterLgcp extends App {
+object FilteringLgcp extends App {
   val data = scala.io.Source.fromFile("lgcpsims.csv").getLines.
     map(a => a.split(",")).
     map(rs => Data(rs.head.toDouble, rs(1).toDouble, None, None, None)).
@@ -54,7 +53,8 @@ object FilterLgcp extends App {
 
   val mod = new LgcpModel {}
 
-  val filtered = pfLGCP(1000, data.sortBy(_.t), mod.model, 2)(mod.params)
+  val filter = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2, data.map(_.t).min)
+  val filtered = filter.accFilter(data.sortBy(_.t))(1000)(mod.params)
 
   val pw = new PrintWriter("LgcpFiltered.csv")
   pw.write(filtered.mkString("\n"))
@@ -74,7 +74,7 @@ object GetLgcpParams {
 
     val mod = new LgcpModel {}
 
-    val mll = pfLGCPmll(data.sortBy(_.t), mod.model, 2)(250)
+    val filter = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2, data.map(_.t).min)
 
     val iterations = 10000
 
@@ -82,16 +82,10 @@ object GetLgcpParams {
     // this means we can write the iterations to a file as they are generated
     // therefore we use constant time memory even for large MCMC runs
     val delta = args.map(_.toDouble).toVector
-    val iters = ParticleMetropolis(mll, mod.params, Parameters.perturbIndep(delta)).iters
+    val iters = ParticleMetropolis(filter.llFilter(data.sortBy(_.t))(200), mod.params, Parameters.perturbIndep(delta)).iters
 
-    iters.
-      via(monitorStream(1000, 1)).
-      runWith(Sink.ignore)
-
-    iters.
-      map(s => s.params).
-      take(iterations).
-      map( p => ByteString(s"$p\n")).
-      runWith(FileIO.toFile(new File("LgcpMCMC.csv")))
+    val pw = new PrintWriter("LgcpMCMC.csv")
+    pw.write(iters.sample(iterations).mkString("\n"))
+    pw.close()
   }
 }

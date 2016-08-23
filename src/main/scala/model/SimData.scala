@@ -7,6 +7,7 @@ import model.POMP._
 import model.Utilities._
 import model.DataTypes._
 import model.State._
+import model.ParticleFilter._
 import breeze.linalg.linspace
 import breeze.stats.distributions.Rand._
 
@@ -17,6 +18,7 @@ import java.io.File
 import akka.stream.scaladsl._
 import akka.util.ByteString
 import Stream._
+import model.ParticleFilter._
 
 
 object SimData {
@@ -163,23 +165,80 @@ object SimData {
     Data(t0, y1, Some(eta), Some(gamma), Some(x1))
   }
 
+  case class ForecastOut(t: Time, obs: Observation, obsIntervals: CredibleInterval, eta: Double, etaIntervals: CredibleInterval,
+    state: State, stateIntervals: IndexedSeq[CredibleInterval]) {
+
+    override def toString = s"$t, $obs, ${obsIntervals.toString}, $eta, ${etaIntervals.toString}, ${state.flatten.mkString(", ")}, ${stateIntervals.mkString(", ")}"
+  }
+
+  /**
+    * Forecast Data given the most recently estimated state
+    * Return a vector of Data and credible intervals
+    */
+  def forecastData(x0: Vector[State], times: Seq[Time], mod: Model): Seq[ForecastOut] = {
+    val samples = x0 map (simDataInit(_, times, mod))
+
+    for {
+      sample <- samples.transpose
+      t = sample.head.t
+      state = sample.map(_.sdeState.get)
+      stateIntervals = getAllCredibleIntervals(state, 0.995)
+      statemean = meanState(state)
+      etas = state map (x => mod.link(mod.f(x, t)))
+      meanEta = breeze.stats.mean(etas.map(_.head))
+      etaIntervals = getOrderStatistic(etas.map(_.head), 0.995)
+      obs = breeze.stats.mean(etas map (mod.observation(_).draw))
+      obsIntervals = getOrderStatistic(etas map (mod.observation(_).draw), 0.995)
+    } yield ForecastOut(t, obs, obsIntervals, meanEta, etaIntervals, statemean, stateIntervals)
+  }
+
+  def simDataInit(x0: State, times: Seq[Time], mod: Model): Seq[Data] = {
+    val d0 = simStep(x0, times.head, 0, mod)
+
+    val data = times.tail.scanLeft(d0) { (d0, t) =>
+      val deltat = t - d0.t
+      val x0 = d0.sdeState.get
+      simStep(x0, t, deltat, mod)
+    }
+
+    data.reverse
+  }
+
   /**
     * Simulate data from a list of times, allowing for irregular observations
     */
-  def simData(times: Seq[Time], mod: Model): Vector[Data] = {
+  def simData(times: Seq[Time], mod: Model): Seq[Data] = {
 
     val x0 = mod.x0.draw
-    val d0 = simStep(x0, times.head, 0, mod)
+    simDataInit(x0, times, mod)
+  }
 
-    val data = times.tail.foldLeft(Vector[Data](d0)) { (acc, t) =>
-      val deltat = t - acc.head.t
-      val x0 = acc.head.sdeState.get
-      val d = simStep(x0, t, deltat, mod)
+  def simStepRand(x0: State, t: Time, deltat: TimeIncrement, mod: Model): Rand[Data] = {
+    for {
+      x1 <- mod.stepFunction(x0, deltat)
+      gamma = mod.f(x1, t)
+      eta = mod.link(gamma)
+      y1 <- mod.observation(eta)
+    } yield Data(t, y1, Some(eta), Some(gamma), Some(x1))
+  }
+
+  def simDataRand(times: Seq[Time], mod: Model): Rand[Vector[Data]] = {
+    val x0 = mod.x0.draw
+    val init = simStepRand(x0, times.head, 0, mod)
+
+    val data = times.tail.foldLeft(Vector[Rand[Data]](init)) { (acc, t) => 
+
+      val d = for {
+        d0 <- acc.head
+        deltat = t - d0.t
+        x0 = d0.sdeState.get
+        d1 <- simStepRand(x0, t, deltat, mod)
+      } yield d1
 
       d +: acc
     }
 
-    data.reverse
+    sequence(data.reverse)
   }
 
   /**

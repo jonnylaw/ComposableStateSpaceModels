@@ -12,13 +12,9 @@ import breeze.stats.distributions.Rand._
 import breeze.numerics.exp
 import breeze.linalg.DenseVector
 import ParticleFilter._
-import Filtering._
 
 import akka.stream.scaladsl.Source
 import akka.stream.scaladsl._
-
-// TODO:
-// * Implement a parallel particle filter (just use a par vec)
 
 /**
   * Representation of the state of the particle filter, at each step the previous observation time, t0, and 
@@ -44,77 +40,87 @@ trait ParticleFilter {
 
   val unparamMod: Parameters => Model
   val t0: Time
+  def initialiseState(p: Parameters, particles: Int): PfState = {
+      val state = Vector.fill(particles)(unparamMod(p).x0.draw)
+      PfState(t0, None, state, Vector.fill(particles)(1.0), 0.0)
+  }
 
   def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)]
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood
   def resample: Resample[State]
 
   /**
-    * Perform one step of a particle filter
-    * @param y a single timestamped observation
-    * @param s the state of the particle filter at the time of the last observation
-    * @return the state of the particle filter after observation y
+    * Step filter
     */
-  def stepFilter(y: Data, s: PfState)(p: Parameters): PfState = {
+  def stepFilter(s: PfState, y: Data)(p: Parameters): PfState = {
     val dt = y.t - s.t // calculate time between observations
 
-    val (w, x1) =
-      (for {
-        (x1, eta) <- advanceState(s.particles, dt, y.t)(p)
-        w = calculateWeights(eta, y.observation)(p)
-      } yield (w, x1)).unzip
+    val unweightedX: Vector[State] = resample(s.particles, s.weights)
 
-    val max = w.max // log sum exp
+    val (x1, eta) = advanceState(unweightedX, dt, y.t)(p).unzip
+    val w = eta map (a => calculateWeights(a, y.observation)(p))
+    val max = w.max
     val w1 = w map { a => exp(a - max) }
-    val x = resample(x1, w1)
+
     val ll = s.ll + max + math.log(breeze.stats.mean(w1))
 
-    PfState(y.t, Some(y.observation), x, w1, ll)
+    PfState(y.t, Some(y.observation), x1, w1, ll)
   }
 
+  /**
+    * Calculate the log-likelihood
+    */
   def llFilter(data: Vector[Data])(particles: Int)(p: Parameters): LogLikelihood = {
-    val mod = unparamMod(p)
-    val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
-
-    data.foldLeft(initState)((s, y) => stepFilter(y, s)(p)).ll
+    val initState = initialiseState(p, particles)
+    data.foldLeft(initState)(stepFilter(_, _)(p)).ll
   }
 
   /**
     * Run a filter over a vector of data and return a vector of PfState
+    * Containing the raw particles and associated weights at each time step
     */
   def accFilter(data: Vector[Data])(particles: Int)(p: Parameters): Vector[PfState] = {
-    val mod = unparamMod(p)
-    val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
+    val initState = initialiseState(p, particles)
 
-    val x = data.
-      foldLeft(Vector(initState))(
-        (acc, y) => stepFilter(y, acc.head)(p) +: acc)
+    val x = data.scanLeft(initState)(stepFilter(_, _)(p))
 
-    x.reverse.tail
+    x.tail
+  }
+
+  /**
+    * Filter the data, but get a vector containing the mean eta, eta intervals, mean state, 
+    * and credible intervals of the state
+    */
+  def filterWithIntervals(data: Vector[Data])(particles: Int)(p: Parameters): Vector[PfOut] = {
+    accFilter(data)(particles)(p).map(getIntervals(unparamMod(p)))
   }
 
   /**
     * Run a filter over a stream of data
     */
   def filter(data: Source[Data, Any])(particles: Int)(p: Parameters): Source[PfState, Any] = {
-    val mod = unparamMod(p)
-    val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
+    val initState = initialiseState(p, particles)
 
-    data.
-      scan(initState)((s, y) => stepFilter(y, s)(p))
-  }
-
-  def parFilter(data: Source[Data, Any])(particles: Int)(p: Parameters): Source[PfState, Any] = {
-    val mod = unparamMod(p)
-    val initState: PfState = PfState(t0, None, Vector.fill(particles)(mod.x0.draw), Vector.fill(particles)(1.0), 0.0)
-
-    data.
-      scan(initState)((s, y) => stepFilter(y, s)(p))
+    data.scan(initState)(stepFilter(_, _)(p))
   }
 }
 
 object ParticleFilter {
   type Resample[A] = (Vector[A], Vector[LogLikelihood]) => Vector[A]
+
+  /**
+    * Transforms PfState into PfOut, including eta, eta intervals and state intervals
+    */
+  def getIntervals(mod: Model): PfState => PfOut = s => {
+    val meanState = weightedMean(s.particles, s.weights)
+    val stateIntervals = getAllCredibleIntervals(s.particles, 0.995)
+    val etas = s.particles map (x => mod.link(mod.f(x, s.t)).head)
+    val meanEta = mod.link(mod.f(meanState, s.t)).head
+    val etaIntervals = getOrderStatistic(etas, 0.995)
+
+    PfOut(s.t, s.observation, meanEta, etaIntervals, meanState, stateIntervals)
+  }
+
 
   /**
     * Return a vector of lag 1 time differences
@@ -251,18 +257,40 @@ object ParticleFilter {
   def sequence[A](l: Vector[Rand[A]]): Rand[Vector[A]] = {
     traverse(l)(a => a)
   }
+
+  /**
+    * ReplicateM, fills a Vector with the monad (Rand[A]) and sequences it
+    */
+  def replicateM[A](n: Int, fa: Rand[A]): Rand[Vector[A]] = {
+    sequence(Vector.fill(n)(fa))
+  }
+
+    /**
+    * Gets credible intervals for a vector of doubles
+    * @param samples a vector of samples from a distribution
+    * @param interval the upper interval of the required credible interval
+    * @return order statistics representing the credible interval of the samples vector
+    */
+  def getOrderStatistic(samples: Seq[Double], interval: Double): CredibleInterval = {
+    val index = math.floor(samples.length * interval).toInt
+    val ordered = samples.sorted
+
+    CredibleInterval(ordered(samples.length - index), ordered(index))
+  }
 }
 
 case class Filter(model: Parameters => Model, resamplingScheme: Resample[State], t0: Time) extends ParticleFilter {
   
   val unparamMod = model
 
-  def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)] = {
+  def advanceState(states: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)] = {
     val mod = unparamMod(p)
-    val x1 = x map (p => mod.stepFunction(p, dt).draw)
-    val eta = x1 map ((s: State) => mod.link(mod.f(s, t)))
 
-    x1.zip(eta)
+    for {
+      x <- states
+      x1 = mod.stepFunction(x, dt).draw
+      eta = mod.link(mod.f(x1, t))
+    } yield (x1, eta)
   }
 
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood = {
@@ -281,15 +309,15 @@ case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[Sta
   val unparamMod = model
 
   def calcWeight(x: State, dt: TimeIncrement, t: Time)(p: Parameters): (State, Eta) = {
-    val mod = unparamMod(p)
-    val x1 = simSdeStream(x, t - dt, dt, precision, mod.stepFunction)
-    val transformedState = x1 map (a => mod.f(a.state, a.time))
+      val mod = unparamMod(p)
+      val x1 = simSdeStream(x, t - dt, dt, precision, mod.stepFunction)
+      val transformedState = x1 map (a => mod.f(a.state, a.time))
 
-    (x1.last.state, Vector(transformedState.last, transformedState.map(x => exp(x) * dt).sum))
+      (x1.last.state, Vector(transformedState.last, transformedState.map(x => exp(x) * dt).sum))
   }
 
   def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)] = {
-    x map(calcWeight(_, dt, t)(p))
+    x map (calcWeight(_, dt, t)(p))
   }
 
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood = {
@@ -299,3 +327,4 @@ case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[Sta
 
   def resample: Resample[State] = resamplingScheme
 }
+

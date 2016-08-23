@@ -32,6 +32,7 @@ object StateSpace {
               }))
           }
       }
+      case _ => throw new Exception("Incorrect parameters supplied to stepBrownian, expected BrownianParameter")
     }
   }
 
@@ -46,15 +47,15 @@ object StateSpace {
     (s, dt) => p match {
       case StepConstantParameter(a) =>
         new Rand[State] { def draw = s map (_ + (a :* dt)) }
+      case _ => throw new Exception("Incorrect Parameters supplied to stepConstant, expected StepConstantParameter")
     }
   }
 
   /**
-    * A step function for the Ornstein Uhlenbeck process dx_t = - alpha x_t dt + sigma dW_t
+    * A step function for the Ornstein Uhlenbeck process dx_t = alpha(theta - x_t) dt + sigma dW_t
     * @param p the parameters of the ornstein uhlenbeck process, theta, alpha and sigma
     * @return
     */
-
   def stepOrnstein(p: SdeParameter): (State, TimeIncrement) => Rand[State] = {
     (s, dt) =>  new Rand[State] {
       def draw = p match {
@@ -64,7 +65,8 @@ object StateSpace {
             // calculate the variance of the solution
             val variance = (sigma.data, alpha.data).zipped map { case (s, a) => (s*s/2*a)*(1-exp(-2*a*dt)) }
             DenseVector(mean.zip(variance) map { case (a, v) => Gaussian(a, sqrt(v)).draw() })
-            }
+          }
+        case _ => throw new Exception("Incorrect parameters supplied to stepOrnstein, expected OrnsteinParameter")
       }
     }
   }

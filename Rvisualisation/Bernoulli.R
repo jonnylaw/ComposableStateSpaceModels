@@ -9,7 +9,7 @@ theme_set(theme_minimal())
 #####################
 # Simulate Ornstein #
 #####################
-system("sbt \"run-main SimulateOrnstein\"")
+system("sbt \"run-main examples.SimulateOrnstein\"")
 orn = read.csv("OrnsteinSims.csv", header = F,
                col.names = c("Time", "Value"))
 
@@ -22,7 +22,7 @@ dev.off()
 # Simulate Binomial #
 #####################
 
-system("sbt \"run-main SimulateBernoulli\"")
+system("sbt \"run-main examples.SimulateBernoulli\"")
 bern = read.csv("BernoulliSims.csv", header = F,
                 col.names = c("Time", "Value", "Eta", "Gamma", "State"))
 
@@ -44,7 +44,7 @@ dev.off()
 # Seasonal Binomial #
 #####################
 
-system("sbt \"run-main SeasonalBernoulli\"")
+system("sbt \"run-main examples.SeasonalBernoulli\"")
 bernSeas = read.csv("seasonalBernoulliSims.csv", header = F,
                     col.names = c("Time", "Value", "Eta", "Gamma", sapply(1:7, function(i) paste("State", i, sep = ""))))
 
@@ -71,7 +71,7 @@ dev.off()
 # Filter Bernoulli #
 ####################
 
-system("sbt \"run-main FilterBernoulli\"")
+system("sbt \"run-main examples.FilterBernoulli\"")
 bernFiltered = read.csv("BernoulliFiltered.csv", header = F,
                         col.names = c("Time", "Value", "PredEta", "lowerEta", "upperEta", "PredState", "Lower", "Upper"))
 
@@ -79,33 +79,6 @@ png("~/Desktop/ComposableModels/Figures/BernoulliFiltered.png")
 p1 = bern %>%
   dplyr::select(-Gamma, -Eta, -Value) %>%
   inner_join(bernFiltered[,-2], by = "Time") %>%
-  gather(key = "key", value = "value", -Time, -PredEta, -lowerEta, -upperEta, -Upper, -Lower) %>%
-  ggplot(aes(x = Time, y = value, colour = key)) + geom_line() +
-  geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.2)
-
-p2 = bern %>%
-  dplyr::select(-Gamma, -State, -Value) %>%
-  inner_join(bernFiltered[,-2], by = "Time") %>%
-  gather(key = "key", value = "value", -Time, -PredState, -lowerEta, -upperEta, -Upper, -Lower) %>%
-  ggplot(aes(x = Time, y = value, colour = key)) + geom_line() +
-  geom_ribbon(aes(ymin = lowerEta, ymax = upperEta), alpha = 0.2)
-
-grid.arrange(p1, p2)
+  gather(key = "key", value = "value", -Time) %>%
+  ggplot(aes(x = Time, y = value, colour = key)) + geom_line()
 dev.off()
-
-##############################
-# Visualise Online Filtering #
-##############################
-
-# bernOnline = read.csv("OnlineBern.csv", header = F,
-                      # col.names = c("Time", "Value", "Eta", "Gamma", "State"))
-# bernOnlineFiltered = read.csv("~/Desktop/ComposableModels/filteredBernoulliOnline.csv")
-# colnames(bernOnlineFiltered) <- c("Time", "Value", "PredState", "Lower", "Upper")
-
-# png("~/Desktop/ComposableModels/Figures/BernoulliFilteredOnline.png")
-# bernOnline %>%
-#   dplyr::select(-Gamma, -Eta, -Value) %>%
-#   inner_join(bernOnlineFiltered[,-2], by = "Time") %>%
-#   gather(key = "key", value = "value", -Time) %>%
-#   ggplot(aes(x = Time, y = value, colour = key)) + geom_line()
-# dev.off()

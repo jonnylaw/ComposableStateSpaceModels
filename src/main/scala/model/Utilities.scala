@@ -1,6 +1,5 @@
 package model
 
-import model.Model._
 import model.POMP._
 import model.DataTypes._
 import breeze.linalg.DenseVector

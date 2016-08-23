@@ -3,17 +3,17 @@ package model
 import breeze.linalg.{DenseMatrix, DenseVector, diag}
 import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}
 import breeze.numerics.exp
+import cats._
 
 sealed trait Parameters {
   override def toString = Parameters.flatten(this).mkString(", ")
-  def |+|(that: Parameters): Parameters =
-    Parameters.combine(this, that)
   def length: Int = Parameters.length(this)
   def isEmpty: Boolean = Parameters.isEmpty(this)
   def perturb(delta: Double): Rand[Parameters] =
     Parameters.perturb(delta)(this)
   def perturbIndep(delta: Vector[Double]): Rand[Parameters] =
     Parameters.perturbIndep(delta)(this)
+  def proposeIdent: Rand[Parameters] = Parameters.proposeIdent(this)
 }
 
 case class LeafParameter(initParams: StateParameter, scale: Option[Double], sdeParam: SdeParameter) extends Parameters
@@ -26,6 +26,15 @@ object LeafParameter {
 }
 
 object Parameters {
+  implicit def parameterMonoid = new Monoid[Parameters] {
+    override def combine(p1: Parameters, p2: Parameters): Parameters = Parameters.combine(p1, p2)
+    override def empty: Parameters = LeafParameter()
+  }
+
+  def proposeIdent(p: Parameters): Rand[Parameters] = new Rand[Parameters] {
+    def draw = p
+  }
+
   /**
     * A method to combine parameters
     */
@@ -37,11 +46,6 @@ object Parameters {
     } else {
       BranchParameter(lp, rp)
     }
-
-  /**
-    * A zero element, which represents an empty parameter and forms a left and right identity
-    */
-  def zero: Parameters = LeafParameter()
 
   /**
     * Checks to see if a parameter is empty
@@ -119,12 +123,14 @@ object Parameters {
       val paramSize = (0 to (t.size - 1))
       (paramSize map (i => s"theta$i")) ++ (paramSize map (i => s"alpha$i")) ++ (paramSize map (i => s"sigma$i"))
     case StepConstantParameter(a) => IndexedSeq("a")
+    case EmptyStepParameter => IndexedSeq()
   }
 
   def getInitParamNames(p: StateParameter): IndexedSeq[String] = p match {
     case GaussianParameter(m, s) =>
       val paramSize = (0 to (m.size -1))
       (paramSize map (i => s"m0$i")) ++ (paramSize map (i => s"C0$i"))
+    case EmptyParameter => IndexedSeq()
   }
 
   /**
@@ -165,7 +171,7 @@ case class GaussianParameter(m0: DenseVector[Double], c0: DenseMatrix[Double]) e
       def draw = {
         GaussianParameter(
           m0 map (Gaussian(_, delta).draw),
-          diag(diag(c0) map (x => x * exp(Gaussian(0, delta).draw))))
+          c0 mapValues (x => x * exp(Gaussian(0, delta).draw)))
       }
     }
   }
@@ -194,6 +200,7 @@ object GaussianParameter {
 object StateParameter {
   def flatten(p: StateParameter): Vector[Double] = p match {
     case GaussianParameter(m, s) => (m.data ++ diag(s).toArray).toVector
+    case EmptyParameter => Vector()
   }
   def length(p: StateParameter): Int = flatten(p).length
 }
@@ -210,6 +217,7 @@ object SdeParameter {
     case BrownianParameter(m, s) => m.data.toVector ++ diag(s).data.toVector
     case OrnsteinParameter(theta, alpha, sigma) => theta.data.toVector ++ alpha.data.toVector ++ sigma.data.toVector
     case StepConstantParameter(a) => a.data.toVector
+    case EmptyStepParameter => Vector()
  }
 
   def length(p: SdeParameter): Int = flatten(p).length  

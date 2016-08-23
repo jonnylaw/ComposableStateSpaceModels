@@ -8,9 +8,7 @@ import akka.stream.scaladsl._
 import akka.util.ByteString
 
 import model._
-import model.Model._
 import model.Streaming._
-import model.Filtering._
 import model.POMP._
 import model.StateSpace._
 import model.DataTypes._
@@ -25,6 +23,7 @@ import model.Utilities._
 import breeze.stats.distributions.MarkovChain._
 import breeze.stats.{mean, variance}
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
+import cats.implicits._
 
 
 object MultipleObservations {
@@ -35,16 +34,16 @@ object MultipleObservations {
 
     // define a model for count data, where the rate of the poisson process changes
     // periodically on a weekly and daily basis
-    val poissonParam = LeafParameter(
+    val poissonParam: Parameters = LeafParameter(
       GaussianParameter(0.0, 1.0),
       None,
       BrownianParameter(0.0, 1.0))
-    val seasonalParamDaily = LeafParameter(
+    val seasonalParamDaily: Parameters = LeafParameter(
       GaussianParameter(DenseVector(Array.fill(6)(0.0)),
       diag(DenseVector(Array.fill(6)(1.0)))),
       None,
       BrownianParameter(DenseVector(Array.fill(6)(0.1)), diag(DenseVector(Array.fill(6)(0.4)))))
-    val seasonalParamWeekly = LeafParameter(
+    val seasonalParamWeekly: Parameters = LeafParameter(
       GaussianParameter(DenseVector(Array.fill(6)(0.0)),
       diag(DenseVector(Array.fill(6)(1.0)))),
       None,
@@ -56,7 +55,7 @@ object MultipleObservations {
     val poisson = PoissonModel(stepBrownian)
     val daily = SeasonalModel(24, 3, stepBrownian)
     val weekly = SeasonalModel(24*7, 3, stepBrownian)
-    val poissonMod = Model.op(Model.op(poisson, daily), weekly)
+    val poissonMod = poisson |+| daily |+| weekly
 
     // record observations at every other integer time point from 1 to 100
     val times = (1 to 100 by 2).map(_.toDouble).toList
@@ -81,12 +80,12 @@ object MultipleObservations {
        val data = vc map (x => Data(x.time, x.count, None, None, None))
 
        // define the particle filter using 200 particles and the same poisson model we generated the data from
-       val mll = pfMllFold(data.sortBy(_.t), poissonMod)(200)
+       val mll = Filter(poissonMod, ParticleFilter.multinomialResampling, data.map(_.t).min).llFilter(data.sortBy(_.t))(200) _
 
        // PMMH is a random Akka stream, this
        // means we can write asynchronously to a file
        // without holding all iterations in memory
-       ParticleMetropolis(mll, p, Parameters.perturb(0.1)).iters.
+       ParticleMetropolis(mll, p, Parameters.perturb(0.1)).itersAkka.
          map(x => x.params).
          take(10000).
          map(a => ByteString(a + "\n")).
