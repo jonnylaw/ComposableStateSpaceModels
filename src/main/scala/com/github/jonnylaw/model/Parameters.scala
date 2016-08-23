@@ -1,4 +1,4 @@
-package model
+package com.github.jonnylaw.model
 
 import breeze.linalg.{DenseMatrix, DenseVector, diag}
 import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}

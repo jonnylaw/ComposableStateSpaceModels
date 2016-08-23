@@ -1,13 +1,13 @@
-package model
+package com.github.jonnylaw.model
 
 import breeze.linalg.DenseVector
 import breeze.numerics.{exp, log}
 import breeze.stats.distributions.{Gaussian, Uniform, Exponential, Rand}
-import model.POMP._
-import model.Utilities._
-import model.DataTypes._
-import model.State._
-import model.ParticleFilter._
+import com.github.jonnylaw.model.POMP._
+import com.github.jonnylaw.model.Utilities._
+import com.github.jonnylaw.model.DataTypes._
+import com.github.jonnylaw.model.State._
+import com.github.jonnylaw.model.ParticleFilter._
 import breeze.linalg.linspace
 import breeze.stats.distributions.Rand._
 
@@ -18,7 +18,7 @@ import java.io.File
 import akka.stream.scaladsl._
 import akka.util.ByteString
 import Stream._
-import model.ParticleFilter._
+import com.github.jonnylaw.model.ParticleFilter._
 
 
 object SimData {

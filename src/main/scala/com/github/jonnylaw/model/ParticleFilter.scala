@@ -1,10 +1,10 @@
-package model
+package com.github.jonnylaw.model
 
-import model.POMP._
-import model.Utilities._
-import model.DataTypes._
-import model.State._
-import model.SimData._
+import com.github.jonnylaw.model.POMP._
+import com.github.jonnylaw.model.Utilities._
+import com.github.jonnylaw.model.DataTypes._
+import com.github.jonnylaw.model.State._
+import com.github.jonnylaw.model.SimData._
 import scala.language.higherKinds._
 
 import breeze.stats.distributions.{Rand, Uniform, Multinomial}

@@ -1,4 +1,4 @@
-package examples
+package com.gihub.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -10,12 +10,12 @@ import GraphDSL.Implicits._
 import akka.stream.ClosedShape
 import java.nio.file.{Path, Paths}
 
-import model._
-import model.POMP.LinearModel
-import model.DataTypes._
-import model.SimData._
-import model.StateSpace._
-import model.Streaming._
+import com.github.jonnylaw.model._
+import com.github.jonnylaw.model.POMP.LinearModel
+import com.github.jonnylaw.model.DataTypes._
+import com.github.jonnylaw.model.SimData._
+import com.github.jonnylaw.model.StateSpace._
+import com.github.jonnylaw.model.Streaming._
 import java.io.{PrintWriter, File}
 
 trait LinearModel {

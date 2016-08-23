@@ -1,8 +1,8 @@
-package model
+package com.github.jonnylaw.model
 
-import model.POMP._
-import model.ParticleFilter._
-import model.DataTypes._
+import com.github.jonnylaw.model.POMP._
+import com.github.jonnylaw.model.ParticleFilter._
+import com.github.jonnylaw.model.DataTypes._
 import breeze.linalg.DenseVector
 import cats._
 import breeze.stats.distributions.Rand

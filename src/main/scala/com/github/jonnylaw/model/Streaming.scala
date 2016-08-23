@@ -1,4 +1,4 @@
-package model
+package com.github.jonnylaw.model
 
 import akka.stream.ClosedShape
 import akka.stream.scaladsl.Source
@@ -10,7 +10,7 @@ import java.nio.file.{Path, Paths}
 import akka.stream.scaladsl._
 import GraphDSL.Implicits._
 import akka.util.ByteString
-import model.Utilities._
+import com.github.jonnylaw.model.Utilities._
 import breeze.stats.{mean, variance}
 import breeze.stats.distributions.Rand
 

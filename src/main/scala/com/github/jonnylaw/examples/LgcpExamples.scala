@@ -1,4 +1,4 @@
-package examples
+package com.gihub.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -9,17 +9,17 @@ import scala.concurrent.{duration, Await}
 import scala.concurrent.duration._
 import akka.util.ByteString
 
-import model._
-import model.Streaming._
-import model.ParticleFilter._
-import model.POMP.{PoissonModel, SeasonalModel, LinearModel, LogGaussianCox, BernoulliModel}
-import model.DataTypes._
-import model.{State, Model}
-import model.SimData._
-import model.Utilities._
-import model.State._
-import model.Parameters._
-import model.StateSpace._
+import com.github.jonnylaw.model._
+import com.github.jonnylaw.model.Streaming._
+import com.github.jonnylaw.model.ParticleFilter._
+import com.github.jonnylaw.model.POMP.{PoissonModel, SeasonalModel, LinearModel, LogGaussianCox, BernoulliModel}
+import com.github.jonnylaw.model.DataTypes._
+import com.github.jonnylaw.model.{State, Model}
+import com.github.jonnylaw.model.SimData._
+import com.github.jonnylaw.model.Utilities._
+import com.github.jonnylaw.model.State._
+import com.github.jonnylaw.model.Parameters._
+import com.github.jonnylaw.model.StateSpace._
 import java.io.{PrintWriter, File}
 import breeze.stats.distributions.Gaussian
 import breeze.linalg.{DenseVector, diag}

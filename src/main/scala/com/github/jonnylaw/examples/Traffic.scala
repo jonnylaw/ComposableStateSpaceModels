@@ -1,6 +1,6 @@
-package examples
+package com.gihub.jonnylaw.examples
 
-import model.POMP._
+import com.github.jonnylaw.model.POMP._
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -15,17 +15,17 @@ import akka.stream.ClosedShape
 import java.nio.file.{Path, Paths}
 import scala.concurrent.Future
 
-import model._
-import model.Streaming._
-import model.POMP.{PoissonModel, SeasonalModel, LogGaussianCox}
-import model.DataTypes._
-import model.{State, Model}
-import model.SimData._
-import model.Utilities._
-import model.ParticleFilter._
-import model.State._
-import model.Parameters._
-import model.StateSpace._
+import com.github.jonnylaw.model._
+import com.github.jonnylaw.model.Streaming._
+import com.github.jonnylaw.model.POMP.{PoissonModel, SeasonalModel, LogGaussianCox}
+import com.github.jonnylaw.model.DataTypes._
+import com.github.jonnylaw.model.{State, Model}
+import com.github.jonnylaw.model.SimData._
+import com.github.jonnylaw.model.Utilities._
+import com.github.jonnylaw.model.ParticleFilter._
+import com.github.jonnylaw.model.State._
+import com.github.jonnylaw.model.Parameters._
+import com.github.jonnylaw.model.StateSpace._
 import java.io.{PrintWriter, File}
 import breeze.stats.distributions.Gaussian
 import breeze.linalg.{DenseVector, diag}
@@ -123,7 +123,7 @@ object LgcpCars {
   * at a set of "good" parameters, typically it is said the mll variance should be one
   */
 object GetmllVariance {
-  def main(args: Array[String]) = {
+  def main(args: Array[String]): Unit = {
     implicit val system = ActorSystem("PilotRun")
     implicit val materializer = ActorMaterializer()
 
@@ -158,7 +158,7 @@ object GetmllVariance {
     val nParticles = args.head.toInt
 
     val mll = filter.llFilter(data)(nParticles) _
-    pilotRun(mll, meanParams, 1000).run
+    pilotRun(mll, meanParams, 1000).run()
   }
 }
 

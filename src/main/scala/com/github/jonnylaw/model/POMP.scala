@@ -1,4 +1,4 @@
-package model
+package com.github.jonnylaw.model
 
 import breeze.numerics.{cos, sin, sqrt, exp, log}
 import breeze.stats.distributions.{Bernoulli, Poisson, Gaussian, Rand, MultivariateGaussian, StudentsT, NegativeBinomial, Density}

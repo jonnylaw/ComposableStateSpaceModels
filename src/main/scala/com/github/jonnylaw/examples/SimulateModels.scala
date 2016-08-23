@@ -1,4 +1,4 @@
-package examples
+package com.gihub.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -12,16 +12,16 @@ import GraphDSL.Implicits._
 import akka.stream.ClosedShape
 import java.nio.file.{Path, Paths}
 
-import model._
-import model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel}
-import model.DataTypes._
-import model.{State, Model}
-import model.SimData._
-import model.Utilities._
-import model.State._
-import model.Parameters._
-import model.StateSpace._
-import model.Streaming._
+import com.github.jonnylaw.model._
+import com.github.jonnylaw.model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel}
+import com.github.jonnylaw.model.DataTypes._
+import com.github.jonnylaw.model.{State, Model}
+import com.github.jonnylaw.model.SimData._
+import com.github.jonnylaw.model.Utilities._
+import com.github.jonnylaw.model.State._
+import com.github.jonnylaw.model.Parameters._
+import com.github.jonnylaw.model.StateSpace._
+import com.github.jonnylaw.model.Streaming._
 import java.io.{PrintWriter, File}
 import breeze.stats.distributions.{Gaussian, MultivariateGaussian}
 import breeze.linalg.{DenseVector, diag}

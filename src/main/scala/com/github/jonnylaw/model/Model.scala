@@ -1,9 +1,9 @@
-package model
+package com.github.jonnylaw.model
 
-import model.DataTypes._
+import com.github.jonnylaw.model.DataTypes._
 import java.io.Serializable
-import model.POMP._
-import model.StateSpace._
+import com.github.jonnylaw.model.POMP._
+import com.github.jonnylaw.model.StateSpace._
 import breeze.stats.distributions.{Rand, Density}
 import breeze.linalg.DenseVector
 import cats._

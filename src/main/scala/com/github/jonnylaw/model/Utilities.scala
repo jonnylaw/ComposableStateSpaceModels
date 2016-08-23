@@ -1,11 +1,11 @@
-package model
+package com.github.jonnylaw.model
 
-import model.POMP._
-import model.DataTypes._
+import com.github.jonnylaw.model.POMP._
+import com.github.jonnylaw.model.DataTypes._
 import breeze.linalg.DenseVector
 import breeze.numerics.{exp, log}
 import breeze.stats.distributions.Multinomial
-import model.Parameters._
+import com.github.jonnylaw.model.Parameters._
 import Stream._
 
 object Utilities {

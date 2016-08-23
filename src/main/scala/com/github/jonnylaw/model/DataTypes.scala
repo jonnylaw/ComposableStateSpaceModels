@@ -1,12 +1,12 @@
-package model
+package com.github.jonnylaw.model
 
-import model.Utilities._
+import com.github.jonnylaw.model.Utilities._
 import java.io.Serializable
 import scala.util.parsing.json.JSONObject
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
 
 object DataTypes {
-  import model.POMP._
+  import com.github.jonnylaw.model.POMP._
 
   /**
     * A description containing the modelled quantities and observations

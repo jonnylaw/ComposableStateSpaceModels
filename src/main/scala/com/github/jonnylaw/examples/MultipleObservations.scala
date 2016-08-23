@@ -1,4 +1,4 @@
-package examples
+package com.gihub.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -7,19 +7,19 @@ import java.io.{File, PrintWriter}
 import akka.stream.scaladsl._
 import akka.util.ByteString
 
-import model._
-import model.Streaming._
-import model.POMP._
-import model.StateSpace._
-import model.DataTypes._
-import model.{State, Model}
-import model.SimData._
+import com.github.jonnylaw.model._
+import com.github.jonnylaw.model.Streaming._
+import com.github.jonnylaw.model.POMP._
+import com.github.jonnylaw.model.StateSpace._
+import com.github.jonnylaw.model.DataTypes._
+import com.github.jonnylaw.model.{State, Model}
+import com.github.jonnylaw.model.SimData._
 
-import model.State._
-import model.Parameters._
+import com.github.jonnylaw.model.State._
+import com.github.jonnylaw.model.Parameters._
 import scala.concurrent.{duration, Await}
 import scala.concurrent.duration._
-import model.Utilities._
+import com.github.jonnylaw.model.Utilities._
 import breeze.stats.distributions.MarkovChain._
 import breeze.stats.{mean, variance}
 import breeze.linalg.{DenseVector, DenseMatrix, diag}

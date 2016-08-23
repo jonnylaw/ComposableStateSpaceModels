@@ -1,3 +1,5 @@
+package com.github.jonnylaw
+
 package object model {
   type Eta = Vector[Double]
   type Gamma = Double

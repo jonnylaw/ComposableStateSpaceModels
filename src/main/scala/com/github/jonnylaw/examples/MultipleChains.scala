@@ -1,15 +1,15 @@
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 
-import model._
-import model.Streaming._
-import model.POMP._
-import model.StateSpace._
-import model.Parameters._
-import model.SimData._
-import model.LeafParameter
-import model.GaussianParameter
-import model.BrownianParameter
+import com.github.jonnylaw.model._
+import com.github.jonnylaw.model.Streaming._
+import com.github.jonnylaw.model.POMP._
+import com.github.jonnylaw.model.StateSpace._
+import com.github.jonnylaw.model.Parameters._
+import com.github.jonnylaw.model.SimData._
+import com.github.jonnylaw.model.LeafParameter
+import com.github.jonnylaw.model.GaussianParameter
+import com.github.jonnylaw.model.BrownianParameter
 import scala.concurrent.ExecutionContext.Implicits.global
 
 object MultipleChains {
