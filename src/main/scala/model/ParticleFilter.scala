@@ -66,6 +66,9 @@ trait ParticleFilter {
     PfState(y.t, Some(y.observation), x1, w1, ll)
   }
 
+  /**
+    * Calculate the log-likelihood
+    */
   def llFilter(data: Vector[Data])(particles: Int)(p: Parameters): LogLikelihood = {
     val initState = initialiseState(p, particles)
     data.foldLeft(initState)(stepFilter(_, _)(p)).ll
