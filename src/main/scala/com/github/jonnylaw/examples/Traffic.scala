@@ -1,37 +1,20 @@
-package com.gihub.jonnylaw.examples
+package com.github.jonnylaw.examples
 
 import com.github.jonnylaw.model.POMP._
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.Source
-import java.io.{File, PrintWriter}
-import akka.stream.scaladsl._
-import scala.concurrent.{duration, Await}
-import scala.concurrent.duration._
-import akka.util.ByteString
-import GraphDSL.Implicits._
-import akka.stream.ClosedShape
-import java.nio.file.{Path, Paths}
-import scala.concurrent.Future
 
 import com.github.jonnylaw.model._
 import com.github.jonnylaw.model.Streaming._
 import com.github.jonnylaw.model.POMP.{PoissonModel, SeasonalModel, LogGaussianCox}
 import com.github.jonnylaw.model.DataTypes._
-import com.github.jonnylaw.model.{State, Model}
 import com.github.jonnylaw.model.SimData._
-import com.github.jonnylaw.model.Utilities._
-import com.github.jonnylaw.model.ParticleFilter._
-import com.github.jonnylaw.model.State._
 import com.github.jonnylaw.model.Parameters._
 import com.github.jonnylaw.model.StateSpace._
-import java.io.{PrintWriter, File}
-import breeze.stats.distributions.Gaussian
+import java.io.PrintWriter
 import breeze.linalg.{DenseVector, diag}
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
-import breeze.numerics.exp
 import cats.implicits._
 
 object PoissonCars {
@@ -66,8 +49,8 @@ object PoissonCars {
 
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
-    val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
-    val mll = filter.llFilter(data)(particles) _
+    val filter = Filter(unparamMod, ParticleFilter.multinomialResampling)
+    val mll = filter.llFilter(data, data.map(_.t).min)(particles) _
     val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(delta))
 
     runPmmhToFile(s"PoissonTraffic-$delta-$particles", 4,
@@ -107,8 +90,8 @@ object LgcpCars {
 
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
-    val filter = FilterLgcp(unparamMod, ParticleFilter.multinomialResampling, 0, data.map(_.t).min)
-    val mll = filter.llFilter(data)(particles) _
+    val filter = FilterLgcp(unparamMod, ParticleFilter.multinomialResampling, 0)
+    val mll = filter.llFilter(data, data.map(_.t).min)(particles) _
     val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(delta))
 
     runPmmhToFile(s"LgcpTraffic-$delta-$particles", 4,
@@ -153,11 +136,11 @@ object GetmllVariance {
     val daily = SeasonalModel(24, 3, stepOrnstein)
     val unparamMod = poisson |+| daily
 
-    val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
+    val filter = Filter(unparamMod, ParticleFilter.multinomialResampling)
 
     val nParticles = args.head.toInt
 
-    val mll = filter.llFilter(data)(nParticles) _
+    val mll = filter.llFilter(data, data.map(_.t).min)(nParticles) _
     pilotRun(mll, meanParams, 1000).run()
   }
 }
@@ -187,9 +170,9 @@ object FilterCars extends App {
   val daily = SeasonalModel(24, 3, stepOrnstein)
   val unparamMod = poisson |+| daily
 
-  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
+  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling)
 
-  val filtered = filter.filterWithIntervals(data)(1000)(meanParams)
+  val filtered = filter.filterWithIntervals(data, data.map(_.t).min)(1000)(meanParams)
 
   val pw = new PrintWriter("CarsFiltered.csv")
   pw.write(filtered.mkString("\n"))
@@ -225,10 +208,10 @@ object ForecastCars extends App {
     map(a => a.split(",")).
     map(rs => Data(rs(5).toDouble, rs(2).toDouble, None, None, None))
 
-  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
+  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling)
 
   // calculate last filtered state using the parameters
-  val filtered = filter.accFilter(data)(1000)(meanParams)
+  val filtered = filter.accFilter(data, data.map(_.t).min)(1000)(meanParams)
   val lastState = ParticleFilter.multinomialResampling(
     filtered.last.particles,
     filtered.last.weights)
@@ -278,8 +261,8 @@ object PoissonWeekly {
 
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
-    val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, data.map(_.t).min)
-    val mll = filter.llFilter(data)(particles) _
+    val filter = Filter(unparamMod, ParticleFilter.multinomialResampling)
+    val mll = filter.llFilter(data, data.map(_.t).min)(particles) _
     val mh = ParticleMetropolis(mll, initParams, Parameters.perturb(delta))
 
     runPmmhToFile(s"PoissonTrafficWeekly-$delta-$particles", 4,

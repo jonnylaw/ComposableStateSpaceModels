@@ -1,15 +1,15 @@
-import model._
-import model.State._
+import com.github.jonnylaw.model._
+import com.github.jonnylaw.model.State._
 import org.scalatest._
-import model.POMP._
+import com.github.jonnylaw.model.POMP._
 import breeze.numerics.{exp, log, sin, cos}
-import model.DataTypes._
+import com.github.jonnylaw.model.DataTypes._
 import breeze.stats.distributions._
 import breeze.linalg.DenseVector
 import breeze.stats.{mean, variance}
-import model.SimData._
-import model.Utilities._
-import model.StateSpace._
+import com.github.jonnylaw.model.SimData._
+import com.github.jonnylaw.model.Utilities._
+import com.github.jonnylaw.model.StateSpace._
 import breeze.linalg.{DenseVector, diag}
 import cats.implicits._
 import cats.Monoid

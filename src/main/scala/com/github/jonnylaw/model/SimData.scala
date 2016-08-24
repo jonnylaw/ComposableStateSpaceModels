@@ -23,12 +23,13 @@ import com.github.jonnylaw.model.ParticleFilter._
 
 object SimData {
   /**
-    * Stream of sde simulation which may make computation faster
+    * Simulate a diffusion process as a stream
     * @param x0 the starting value of the stream
     * @param t0 the starting time of the stream
+    * @param totalIncrement the ending time of the stream
     * @param precision the step size of the stream 10e(-precision)
     * @param stepFun the stepping function to use to generate the SDE Stream
-    * @return a lazily evaluated stream from t0
+    * @return a lazily evaluated stream of Sde
     */
   def simSdeStream(
     x0: State,
@@ -48,7 +49,11 @@ object SimData {
   }
 
   /**
-    * Simulates an SDE at any specified times
+    * Simulates a diffusion process at any specified times
+    * @param x0 the initial state
+    * @param times a list of times at which to simulate the diffusion process
+    * @param stepFun the transition kernel of a diffusion process which can be simulated from
+    * @return a vector of Sde with values and times
     */
   def simSdeIrregular(
     x0: State,
@@ -66,7 +71,12 @@ object SimData {
   }
 
   /**
-    * Specialist function for simulating the log-Gaussian Cox-Process using thinning
+    * Simulate the log-Gaussian Cox-Process using thinning
+    * @param start the starting time of the process
+    * @param the end time of the process
+    * @param mod the model to simulate from. In a composition, the LogGaussianCox must be the left-hand model
+    * @param precision an integer specifying the timestep between simulating the latent state, 10e-precision
+    * @return a vector of Data specifying when events happened
     */
   def simLGCP(
     start: Time,
@@ -112,7 +122,13 @@ object SimData {
 
   /**
     * Generates a vector of event times from the Log-Gaussian Cox-Process
-    * by thinning an exponential process
+    * by thinning an exponential process, returns the value of the state space at the event times only
+    * @param start the start time of the process
+    * @param end the end time of the process
+    * @param mod the model used to generate the events. In a composition, LogGaussiancox must be the
+    * left-hand model
+    * @param precision the size of the discretized grid to simulate the latent state on, 10e-precision
+    * @return a vector of Data at representing only the times which events happened
     */
   def simLGCPEvents(
     start: Time,
@@ -152,19 +168,17 @@ object SimData {
     loop(start, Vector())
   }
 
-  def simStep(
-    x0: State,
-    t0: Time,
-    deltat: TimeIncrement,
-    mod: Model): Data = {
 
-    val x1 = mod.stepFunction(x0, deltat).draw
-    val gamma = mod.f(x1, t0)
-    val eta = mod.link(gamma)
-    val y1 = mod.observation(eta).draw
-    Data(t0, y1, Some(eta), Some(gamma), Some(x1))
-  }
-
+  /**
+    * Forecast data
+    * @param t the time of the observation
+    * @param obs an observation of the process
+    * @param obsIntervals the upper and lower credible intervals of the observation
+    * @param eta the transformed latent state
+    * @param etaIntervals the credible intervals of the transformed latent state
+    * @param state the untransformed latent state
+    * @param stateIntervals the intervals of the latent state
+    */
   case class ForecastOut(t: Time, obs: Observation, obsIntervals: CredibleInterval, eta: Double, etaIntervals: CredibleInterval,
     state: State, stateIntervals: IndexedSeq[CredibleInterval]) {
 
@@ -174,6 +188,12 @@ object SimData {
   /**
     * Forecast Data given the most recently estimated state
     * Return a vector of Data and credible intervals
+    * @param x0 a vector containing realisations from the state, 
+    * this can be from a distribution of Rand[State], by calling .sample(1000) 
+    * or output from a particle filter
+    * @param times a sequence of times to forecast at
+    * @param mod an exponential family model to simulate forward from
+    * @return a sequence of ForecastOut
     */
   def forecastData(x0: Vector[State], times: Seq[Time], mod: Model): Seq[ForecastOut] = {
     val samples = x0 map (simDataInit(_, times, mod))
@@ -192,6 +212,35 @@ object SimData {
     } yield ForecastOut(t, obs, obsIntervals, meanEta, etaIntervals, statemean, stateIntervals)
   }
 
+
+  /**
+    * Simulate a single step of an exponential family model
+    * @param x0 the initial state at the time of the last observation
+    * @param t0 the time of the last observation
+    * @param deltat the time increment to the next observation
+    * @param mod a composed model, not the LogGaussiancox model
+    * @return a Data element with the next latent state and observation
+    */
+  def simStep(
+    x0: State,
+    t0: Time,
+    deltat: TimeIncrement,
+    mod: Model): Data = {
+
+    val x1 = mod.stepFunction(x0, deltat).draw
+    val gamma = mod.f(x1, t0)
+    val eta = mod.link(gamma)
+    val y1 = mod.observation(eta).draw
+    Data(t0, y1, Some(eta), Some(gamma), Some(x1))
+  }
+
+  /**
+    * Given an initial state, simulate from a model
+    * @param x0 the initial state
+    * @param times a list of times to simulate the data
+    * @param mod an exponential family model
+    * @return a sequence of Data
+    */
   def simDataInit(x0: State, times: Seq[Time], mod: Model): Seq[Data] = {
     val d0 = simStep(x0, times.head, 0, mod)
 
@@ -206,6 +255,9 @@ object SimData {
 
   /**
     * Simulate data from a list of times, allowing for irregular observations
+    * @param times a list of times to simulate observations at
+    * @param mod an exponential family model
+    * @return a sequence of Data
     */
   def simData(times: Seq[Time], mod: Model): Seq[Data] = {
 
@@ -213,6 +265,14 @@ object SimData {
     simDataInit(x0, times, mod)
   }
 
+  /**
+    * Simulate a step using Rand (a monad representing a distribution which can be sampled from)
+    * @param x0 the initial state at the time of the previous observation
+    * @param t the time of the previous observation
+    * @param deltat the time increment to the time of the next observation
+    * @param mod an exponential family model to simulate from
+    * @return a Rand monad containing data, which can be sampled from to give a realisation from a model
+    */
   def simStepRand(x0: State, t: Time, deltat: TimeIncrement, mod: Model): Rand[Data] = {
     for {
       x1 <- mod.stepFunction(x0, deltat)
@@ -222,20 +282,23 @@ object SimData {
     } yield Data(t, y1, Some(eta), Some(gamma), Some(x1))
   }
 
-  def simDataRand(times: Seq[Time], mod: Model): Rand[Vector[Data]] = {
+  /**
+    * Simulate a vector of Data using Rand (a monad representing a distribution which can be sampled from)
+    * @param times a list of times to observe the process at
+    * @param mod an exponential family model
+    * @return a Rand monad containing a vector of data
+    */
+  def simDataRand(times: Seq[Time], mod: Model): Rand[Seq[Data]] = {
     val x0 = mod.x0.draw
     val init = simStepRand(x0, times.head, 0, mod)
 
-    val data = times.tail.foldLeft(Vector[Rand[Data]](init)) { (acc, t) => 
-
-      val d = for {
-        d0 <- acc.head
+    val data = times.tail.scanLeft(init) { (d, t) => 
+      for {
+        d0 <- d
         deltat = t - d0.t
         x0 = d0.sdeState.get
         d1 <- simStepRand(x0, t, deltat, mod)
       } yield d1
-
-      d +: acc
     }
 
     sequence(data.reverse)
@@ -245,6 +308,8 @@ object SimData {
     * Simulate data as an Akka Stream, with regular time intervals
     * @param mod The model to simulate from, can be composed or single
     * @param precision Used to determine the step length, dt = 10^-precision
+    * @param t0 the starting time of the process
+    * @return a source of an Akka Stream
     */
   def simStream(mod: Model, precision: Int, t0: Time): Source[Data, Any] = {
     val dt = math.pow(10, -precision)

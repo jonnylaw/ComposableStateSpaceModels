@@ -6,8 +6,8 @@ import akka.stream.scaladsl.Source
 import akka.stream.scaladsl._
 import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
-import model.Utilities._
-import model.Streaming._
+import com.github.jonnylaw.model.Utilities._
+import com.github.jonnylaw.model.Streaming._
 import java.io.{PrintWriter, File}
 
 import java.nio.file.{Paths, Path}

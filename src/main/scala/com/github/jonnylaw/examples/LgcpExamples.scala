@@ -1,4 +1,4 @@
-package com.gihub.jonnylaw.examples
+package com.github.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -53,8 +53,8 @@ object FilteringLgcp extends App {
 
   val mod = new LgcpModel {}
 
-  val filter = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2, data.map(_.t).min)
-  val filtered = filter.accFilter(data.sortBy(_.t))(1000)(mod.params)
+  val filter = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2)
+  val filtered = filter.accFilter(data.sortBy(_.t), data.map(_.t).min)(1000)(mod.params)
 
   val pw = new PrintWriter("LgcpFiltered.csv")
   pw.write(filtered.mkString("\n"))
@@ -74,7 +74,8 @@ object GetLgcpParams {
 
     val mod = new LgcpModel {}
 
-    val filter = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2, data.map(_.t).min)
+    val filter = FilterLgcp(mod.model, ParticleFilter.multinomialResampling, 2)
+    val mll = filter.llFilter(data.sortBy(_.t), data.map(_.t).min)(200) _
 
     val iterations = 10000
 
@@ -82,7 +83,7 @@ object GetLgcpParams {
     // this means we can write the iterations to a file as they are generated
     // therefore we use constant time memory even for large MCMC runs
     val delta = args.map(_.toDouble).toVector
-    val iters = ParticleMetropolis(filter.llFilter(data.sortBy(_.t))(200), mod.params, Parameters.perturbIndep(delta)).iters
+    val iters = ParticleMetropolis(mll, mod.params, Parameters.perturbIndep(delta)).iters
 
     val pw = new PrintWriter("LgcpMCMC.csv")
     pw.write(iters.sample(iterations).mkString("\n"))

@@ -38,9 +38,12 @@ case class PfState(
 
 trait ParticleFilter {
 
+  /**
+    * Abstract function representing an unparameterised model, can be a single model or 
+    * a model composition
+    */
   val unparamMod: Parameters => Model
-  val t0: Time
-  def initialiseState(p: Parameters, particles: Int): PfState = {
+  def initialiseState(p: Parameters, particles: Int, t0: Time): PfState = {
       val state = Vector.fill(particles)(unparamMod(p).x0.draw)
       PfState(t0, None, state, Vector.fill(particles)(1.0), 0.0)
   }
@@ -70,8 +73,8 @@ trait ParticleFilter {
   /**
     * Calculate the log-likelihood
     */
-  def llFilter(data: Vector[Data])(particles: Int)(p: Parameters): LogLikelihood = {
-    val initState = initialiseState(p, particles)
+  def llFilter(data: Vector[Data], t0: Time)(particles: Int)(p: Parameters): LogLikelihood = {
+    val initState = initialiseState(p, particles, t0)
     data.foldLeft(initState)(stepFilter(_, _)(p)).ll
   }
 
@@ -79,8 +82,8 @@ trait ParticleFilter {
     * Run a filter over a vector of data and return a vector of PfState
     * Containing the raw particles and associated weights at each time step
     */
-  def accFilter(data: Vector[Data])(particles: Int)(p: Parameters): Vector[PfState] = {
-    val initState = initialiseState(p, particles)
+  def accFilter(data: Vector[Data], t0: Time)(particles: Int)(p: Parameters): Vector[PfState] = {
+    val initState = initialiseState(p, particles, t0)
 
     val x = data.scanLeft(initState)(stepFilter(_, _)(p))
 
@@ -91,15 +94,15 @@ trait ParticleFilter {
     * Filter the data, but get a vector containing the mean eta, eta intervals, mean state, 
     * and credible intervals of the state
     */
-  def filterWithIntervals(data: Vector[Data])(particles: Int)(p: Parameters): Vector[PfOut] = {
-    accFilter(data)(particles)(p).map(getIntervals(unparamMod(p)))
+  def filterWithIntervals(data: Vector[Data], t0: Time)(particles: Int)(p: Parameters): Vector[PfOut] = {
+    accFilter(data, t0)(particles)(p).map(getIntervals(unparamMod(p)))
   }
 
   /**
     * Run a filter over a stream of data
     */
-  def filter(data: Source[Data, Any])(particles: Int)(p: Parameters): Source[PfState, Any] = {
-    val initState = initialiseState(p, particles)
+  def filter(data: Source[Data, Any], t0: Time)(particles: Int)(p: Parameters): Source[PfState, Any] = {
+    val initState = initialiseState(p, particles, t0)
 
     data.scan(initState)(stepFilter(_, _)(p))
   }
@@ -247,22 +250,22 @@ object ParticleFilter {
   /**
     * Traverse method for Rand and Vector
     */
-  def traverse[A,B](l: Vector[A])(f: A => Rand[B]): Rand[Vector[B]] = {
-    l.foldRight(always(Vector[B]()))((a, mlb) => map2(f(a), mlb)(_ +: _))
+  def traverse[A,B](l: Seq[A])(f: A => Rand[B]): Rand[Seq[B]] = {
+    l.foldRight(always(Seq[B]()))((a, mlb) => map2(f(a), mlb)(_ +: _))
   }
 
   /**
     * Sequence, Traverse with the identity
     */
-  def sequence[A](l: Vector[Rand[A]]): Rand[Vector[A]] = {
+  def sequence[A](l: Seq[Rand[A]]): Rand[Seq[A]] = {
     traverse(l)(a => a)
   }
 
   /**
     * ReplicateM, fills a Vector with the monad (Rand[A]) and sequences it
     */
-  def replicateM[A](n: Int, fa: Rand[A]): Rand[Vector[A]] = {
-    sequence(Vector.fill(n)(fa))
+  def replicateM[A](n: Int, fa: Rand[A]): Rand[Seq[A]] = {
+    sequence(Seq.fill(n)(fa))
   }
 
     /**
@@ -279,7 +282,7 @@ object ParticleFilter {
   }
 }
 
-case class Filter(model: Parameters => Model, resamplingScheme: Resample[State], t0: Time) extends ParticleFilter {
+case class Filter(model: Parameters => Model, resamplingScheme: Resample[State]) extends ParticleFilter {
   
   val unparamMod = model
 
@@ -304,7 +307,7 @@ case class Filter(model: Parameters => Model, resamplingScheme: Resample[State],
 /**
   * In order to calculate Eta in the LGCP model, we need to merge the advance state and transform state functions
   */
-case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[State], precision: Int, t0: Time) extends ParticleFilter {
+case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[State], precision: Int) extends ParticleFilter {
 
   val unparamMod = model
 

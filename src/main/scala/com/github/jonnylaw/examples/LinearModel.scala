@@ -1,4 +1,4 @@
-package com.gihub.jonnylaw.examples
+package com.github.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -22,10 +22,10 @@ trait LinearModel {
   val unparamMod = LinearModel(stepBrownian)
   val p = LeafParameter(GaussianParameter(0.1, 1.0), Some(1.0), BrownianParameter(-0.2, 1.0))
   val mod = unparamMod(p)
-  val data: Vector[Data]
+  val data: Seq[Data]
   val times = (0.0 to 1.0 by 0.01).toList
-  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling, times.min)
-  val mll: Int => Parameters => LogLikelihood = n => filter.llFilter(data)(n) _
+  val filter = Filter(unparamMod, ParticleFilter.multinomialResampling)
+  val mll: Int => Parameters => LogLikelihood = n => filter.llFilter(data.toVector, times.min)(n) _
   val mh: (Double, Int) => MetropolisHastings = (delta, n) => ParticleMetropolis(mll(n), p, Parameters.perturb(delta))
 
   case class Config(delta: Seq[Double] = Seq(0.1, 0.2), particles: Seq[Int] = Seq(200, 500), iterations: Int = 10000)
@@ -52,7 +52,7 @@ trait LinearModel {
   */
 object SimLinear extends App {
   val mod = new LinearModel {
-    val data = simDataRand(times, mod).draw
+    val data: Seq[Data] = simData(times, mod)
   }
 
   val pw = new PrintWriter("LinearModelSims.csv")
@@ -112,7 +112,7 @@ object BreezeMCMC {
 
         dn map { case (delta, n) =>
           val pw = new PrintWriter("LinearModelBreezeSingleSite.csv")
-          pw.write(mod.mh(delta, n).itersVector(config.iterations).mkString("\n"))
+          pw.write(mod.mh(delta, n).itersSeq(config.iterations).mkString("\n"))
           pw.close()
         }
       case None => // Incorrect arguments

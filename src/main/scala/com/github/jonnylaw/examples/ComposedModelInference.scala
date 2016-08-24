@@ -1,4 +1,4 @@
-package com.gihub.jonnylaw.examples
+package com.github.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -72,10 +72,10 @@ object FilteringSeasonalPoisson extends App {
     toVector
 
   // Define the particle filter
-  val filter = Filter(mod.model, ParticleFilter.multinomialResampling, data.map(_.t).min)
+  val filter = Filter(mod.model, ParticleFilter.multinomialResampling)
 
   // Run the particle filter over the observed data using 1,000 particles
-  val filtered = filter.filterWithIntervals(data)(1000)(mod.params)
+  val filtered = filter.filterWithIntervals(data, data.map(_.t).min)(1000)(mod.params)
 
   val pw = new PrintWriter("seasonalPoissonFiltered.csv")
   pw.write(filtered.mkString("\n"))
@@ -93,7 +93,8 @@ object DetermineComposedParams extends App {
     map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
     toVector
 
-  val mll = Filter(mod.model, ParticleFilter.multinomialResampling, data.map(_.t).min).llFilter(data)(200) _
+  val filter = Filter(mod.model, ParticleFilter.multinomialResampling)
+  val mll = filter.llFilter(data, data.map(_.t).min)(200) _
 
   val iters = ParticleMetropolis(mll, mod.params, Parameters.perturb(0.05)).iters
 
@@ -138,9 +139,9 @@ object FilterOnline extends App {
 
   // particles and initial state for particle filter
   val n = 1000
-  val mll = Filter(unparamMod, ParticleFilter.multinomialResampling, 0.0)
+  val bootstrapFilter = Filter(unparamMod, ParticleFilter.multinomialResampling)
 
-  mll.filter(observations)(n)(params).
+  bootstrapFilter.filter(observations, 0.0)(n)(params).
     drop(1).
     map(a => ByteString(s"$a\n")).
     runWith(FileIO.toFile(new File("OnlineComposedModelFiltered.csv")))

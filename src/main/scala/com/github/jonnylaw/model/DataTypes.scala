@@ -10,10 +10,11 @@ object DataTypes {
 
   /**
     * A description containing the modelled quantities and observations
-    * sdeState = x_t = p(x_t | x_t-1)
-    * gamma = f(x_t)
-    * eta = g(gamma)
-    * observation = pi(eta)
+    * @param sdeState = x_t = p(x_t | x_t-1), the latent state (Optional)
+    * @param gamma = f(x_t), the latent state transformed by the linear transformation (Optional)
+    * @param eta = g(gamma), the latent state transformed by the linking-function (Optional)
+    * @param observation = pi(eta), the observation
+    * @param t, the time of the observation
     */
   case class Data(
     t: Time,
@@ -36,14 +37,17 @@ object DataTypes {
   /**
     * Given a sorted set of data, removes duplicate sequential entries 
     * by time, even if they have different observations
+    * @param data a vector of data, consisting of observations
+    * @return a vector of data with duplicate readings removed
     */
   def removeDupTimes(data: Vector[Data]): Vector[Data] = {
-    val sortedData = data.tail.foldLeft(Vector(data.head))((acc, a) => if (a.t == acc.head.t) acc else a +: acc)
+    val sortedData = data.tail.sortBy(_.t).
+      foldLeft(Vector(data.head))((acc, a) => if (a.t == acc.head.t) acc else a +: acc)
     sortedData.reverse
   }
 
   /**
-    * Representing intervals sampled from the empirical filtering distribution p(x_t | y_t)
+    * Credible intervals from a set of samples in a distribution
     * @param lower the lower interval
     * @param upper the upper interval
     */
@@ -52,7 +56,7 @@ object DataTypes {
   }
 
   /**
-    * The structure which the particle filter returns,
+    * A class representing a return type for the particle filter, containing the state and associated credible intervals
     * @param time the time of the process
     * @param observation an optional observation, note discretely observed processes cannot be seen at all time points continuously
     * @param state the mean of the empirical filtering distribution at time 'time'
@@ -77,7 +81,9 @@ object DataTypes {
   }
 
   /**
-    * A representation of a simulated Diffusion process
+    * Representing a realisation from a stochastic differential equation
+    * @param time
+    * @param state
     */
   case class Sde(time: Time, state: State) {
     override def toString = time + "," + state.toString

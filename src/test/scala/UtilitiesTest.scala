@@ -1,5 +1,5 @@
 import org.scalatest._
-import model.Utilities._
+import com.github.jonnylaw.model.Utilities._
 
 class UtiltiesTest extends FlatSpec with Matchers {
 

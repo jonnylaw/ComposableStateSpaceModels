@@ -18,17 +18,12 @@ sealed trait Parameters {
 
 case class LeafParameter(initParams: StateParameter, scale: Option[Double], sdeParam: SdeParameter) extends Parameters
 case class BranchParameter(left: Parameters, right: Parameters) extends Parameters
-
-object LeafParameter {
-  def apply(): LeafParameter = {
-    LeafParameter(EmptyParameter, None, EmptyStepParameter)
-  }
-}
+case object EmptyParameter extends Parameters
 
 object Parameters {
   implicit def parameterMonoid = new Monoid[Parameters] {
     override def combine(p1: Parameters, p2: Parameters): Parameters = Parameters.combine(p1, p2)
-    override def empty: Parameters = LeafParameter()
+    override def empty: Parameters = EmptyParameter
   }
 
   def proposeIdent(p: Parameters): Rand[Parameters] = new Rand[Parameters] {
@@ -51,11 +46,8 @@ object Parameters {
     * Checks to see if a parameter is empty
     */
   def isEmpty(p: Parameters): Boolean = p match {
-    case LeafParameter(p, v, s) => (p, v, s) match {
-      case (EmptyParameter, None, EmptyStepParameter) => true
-      case _ => false
-    }
-    case BranchParameter(lp, rp) => isEmpty(lp) && isEmpty(rp)
+    case EmptyParameter => true
+    case _ => false
   }
 
   /**
@@ -123,14 +115,12 @@ object Parameters {
       val paramSize = (0 to (t.size - 1))
       (paramSize map (i => s"theta$i")) ++ (paramSize map (i => s"alpha$i")) ++ (paramSize map (i => s"sigma$i"))
     case StepConstantParameter(a) => IndexedSeq("a")
-    case EmptyStepParameter => IndexedSeq()
   }
 
   def getInitParamNames(p: StateParameter): IndexedSeq[String] = p match {
     case GaussianParameter(m, s) =>
       val paramSize = (0 to (m.size -1))
       (paramSize map (i => s"m0$i")) ++ (paramSize map (i => s"C0$i"))
-    case EmptyParameter => IndexedSeq()
   }
 
   /**
@@ -186,10 +176,6 @@ case class GaussianParameter(m0: DenseVector[Double], c0: DenseMatrix[Double]) e
     }
   }
 }
-case object EmptyParameter extends StateParameter {
-  def perturb(delta: Double): Rand[StateParameter] = ???
-  def perturbIndep(delta: Vector[Double]): Rand[StateParameter] = ???
-}
 
 object GaussianParameter {
   def apply(m0: Double, c0: Double): GaussianParameter = {
@@ -200,7 +186,6 @@ object GaussianParameter {
 object StateParameter {
   def flatten(p: StateParameter): Vector[Double] = p match {
     case GaussianParameter(m, s) => (m.data ++ diag(s).toArray).toVector
-    case EmptyParameter => Vector()
   }
   def length(p: StateParameter): Int = flatten(p).length
 }
@@ -217,7 +202,6 @@ object SdeParameter {
     case BrownianParameter(m, s) => m.data.toVector ++ diag(s).data.toVector
     case OrnsteinParameter(theta, alpha, sigma) => theta.data.toVector ++ alpha.data.toVector ++ sigma.data.toVector
     case StepConstantParameter(a) => a.data.toVector
-    case EmptyStepParameter => Vector()
  }
 
   def length(p: SdeParameter): Int = flatten(p).length  
@@ -310,9 +294,4 @@ object StepConstantParameter {
   def apply(a: Double): StepConstantParameter = {
     new StepConstantParameter(DenseVector(a))
   }
-}
-
-case object EmptyStepParameter extends SdeParameter {
-  def perturb(delta: Double): Rand[SdeParameter] = ???
-  def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???
 }

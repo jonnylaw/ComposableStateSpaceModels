@@ -1,4 +1,4 @@
-package com.gihub.jonnylaw.examples
+package com.github.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
@@ -70,9 +70,9 @@ object FilterPoisson extends App {
 
   val mod = new PoissonModel {}
   
-  val filter = Filter(mod.model, ParticleFilter.multinomialResampling, 0.0)
+  val filter = Filter(mod.model, ParticleFilter.multinomialResampling)
 
-  val filtered = filter.filterWithIntervals(data)(1000)(mod.p)
+  val filtered = filter.filterWithIntervals(data, 0.0)(1000)(mod.p)
 
   val pw = new PrintWriter("PoissonFiltered.csv")
   pw.write(filtered.mkString("\n"))
@@ -101,10 +101,10 @@ object FilterPoissonOnline extends App {
   val t0 = 0.0 // replace with first time point
   val particleCloud = Vector.fill(n)(mod.x0.draw)
 
-  val pf = Filter(model.model, ParticleFilter.multinomialResampling, 0.0)
+  val pf = Filter(model.model, ParticleFilter.multinomialResampling)
   
   // Use scan to filter a stream, which allows us to output the estimated state as the observations arrive
-  pf.filter(observations)(n)(model.p).
+  pf.filter(observations, 0.0)(n)(model.p).
     drop(1). // drop the initial state, with no corresponding observation
     map(a => ByteString(s"$a\n")).
     runWith(FileIO.toFile(new File("filteredPoissonOnline.csv")))
@@ -133,11 +133,11 @@ object GetPoissonParameters {
     val mod = new PoissonModel {}
 
     // build the particle filter by selecting the model type and resampling scheme
-    val filter = Filter(mod.model, ParticleFilter.multinomialResampling, 0.0)
+    val filter = Filter(mod.model, ParticleFilter.multinomialResampling)
 
     // specify the filter type (llFilter, to return estimate of log-likelihood),
     // the number of particles and observations
-    val mll = filter.llFilter(data)(particles) _
+    val mll = filter.llFilter(data, 0.0)(particles) _
 
     // build the PMMH algorithm using mll estimate (via particle filter), the
     // initial parameters and the proposal distribution for new paramters

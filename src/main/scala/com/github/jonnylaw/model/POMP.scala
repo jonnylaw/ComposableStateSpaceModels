@@ -18,6 +18,11 @@ object POMP {
   implicit def bool2obs(b: Boolean): Observation = if (b) 1.0 else 0.0
   implicit def obs2bool(o: Observation): Boolean = if (o == 0.0) false else true
 
+  /**
+    * Generalised student t model
+    * @param stepFun the diffusion process solution to use for this model
+    * @return an unparameterised model of the Student-T model, which can be composed with other models
+    */
   def studentTModel(
     stepFun: StepFunction, df: Int): UnparamModel =
     new UnparamModel {
@@ -30,6 +35,7 @@ object POMP {
                 def draw = StudentsT(df).draw*scale + x.head
               }
             }
+            case _ => throw new Exception("Incorrect parameters supplied to Student-t model observation, expected LeafParameter")
           }
 
           def f(s: State, t: Time) = s.head
@@ -40,6 +46,7 @@ object POMP {
                 case GaussianParameter(m0, c0) =>
                   MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
               }
+            case _ => throw new Exception("Incorrect parameters supplied to initial state distribution of student t model")
           }
 
           def stepFunction = (x, dt) => p match {
@@ -57,6 +64,12 @@ object POMP {
       }
     }
 
+  /**
+    * A seasonal model
+    * @param period the period of the seasonality
+    * @param harmonics the number of harmonics to use in the seasonal model
+    * @param stepFun a solution to a diffusion process representing the latent state
+    */
   def SeasonalModel(
     period: Int,
     harmonics: Int,
@@ -72,6 +85,7 @@ object POMP {
                   case Some(noisesd) => Gaussian(x.head, noisesd).draw
                   case None => throw new Exception("No variance parameter for seasonal model likelihood / obsevation")
                 }
+                case _ => throw new Exception("Incorrect parameters supplied to seasonal model")
               }
             }
           }
@@ -83,7 +97,8 @@ object POMP {
           }
 
           def f(s: State, t: Time) = s match {
-            case LeafState(x @unchecked) => buildF(harmonics, t) dot DenseVector(x.toArray)
+            case LeafState(x) => buildF(harmonics, t) dot DenseVector(x.toArray)
+            case _ => throw new Exception("Incorrect parameters supplied to transformation function of seasonal model")
           }
 
           def x0 = p match {
@@ -92,6 +107,7 @@ object POMP {
                 case GaussianParameter(m0, c0) =>
                   MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
               }
+            case _ => throw new Exception("Incorrect parameters supplied to initial state of seasonal model")
           }
 
           def stepFunction = (x, dt) => p match {
@@ -103,11 +119,17 @@ object POMP {
             case LeafParameter(_, v, _) => v match {
               case Some(noiseSd) => Gaussian(eta.head, noiseSd).logPdf(y)
             }
+            case _ => throw new Exception("Incorrect parameters supplied to data likelihood of seasonal model")
           }
         }
       }
     }
 
+  /**
+    * A linear unparameterised model
+    * @param stepFun a solution to a diffusion process representing the evolution of the latent state
+    * @return an UnparamModel which can be composed with other models
+    */
   def LinearModel(stepFun: StepFunction): UnparamModel =  new UnparamModel {
     def apply(p: Parameters) = {
       new Model {
@@ -118,6 +140,7 @@ object POMP {
                 case Some(noisesd) => Gaussian(x.head, noisesd).draw
                 case None => throw new Exception("No variance parameter for linear model observation")
               }
+              case _ => throw new Exception("Incorrect parameters supplied to Linear Model observation function")
             }
           }
         }
@@ -125,11 +148,13 @@ object POMP {
         def f(s: State, t: Time) = s.head
 
         def x0 = p match {
-          case LeafParameter(stateParam, _, _  @unchecked) =>
+          case LeafParameter(stateParam, _, _) =>
             stateParam match {
-              case GaussianParameter(m0, c0  @unchecked) =>
+              case GaussianParameter(m0, c0) =>
                 MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+              case _ => throw new Exception("Incorrect initial state parameters in linear model")
             }
+          case _ => throw new Exception("Incorrect parameters supplied to initial state of linear model")
         }
 
         def stepFunction = (x, dt) => p match {
@@ -140,20 +165,25 @@ object POMP {
         def dataLikelihood = (eta, y) => p match {
           case LeafParameter(_, v, _) => v match {
             case Some(noiseSd) => Gaussian(eta.head, noiseSd).logPdf(y)
-            case None => throw new Exception("No variance parameter for linear model likelihood")
+            case _ => throw new Exception("No variance parameter for linear model likelihood")
           }
+          case _ => throw new Exception("Incorrect parameters supplied to linear model data likelihood")
         }
       }
     }
   }
 
+  /**
+    * The Poisson unparameterised model with a one dimensional latent state
+    * @param stepFun a solution to a diffusion process representing the evolution of the latent space
+    * @return a Poisson UnparamModel which can be composed with other UnparamModels
+    */
   def PoissonModel(stepFun: StepFunction): UnparamModel = new UnparamModel {
     def apply(p: Parameters) = {
       new Model {
 
         def observation = lambda => new Rand[Observation] {
           def draw = Poisson(lambda.head).draw
-
         }
 
         override def link(x: Double) = Vector(exp(x))
@@ -165,12 +195,14 @@ object POMP {
             stateParam match {
               case GaussianParameter(m0, c0) =>
                 MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+              case _ => throw new Exception("Incorrect initial state parameter in poisson model x0")
             }
+          case _ => throw new Exception("Incorrect parameters supplied to poisson x0, needed LeafParameter")
         }
 
         def stepFunction = (x, dt) => p match {
           case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
-          case _ => throw new Exception("Step Function from a single model should receive a Leaf Parameter")
+          case _ => throw new Exception("Incorrect parameter to poisson step function, should receive a Leaf Parameter")
         }
 
         def dataLikelihood = (lambda, y) => Poisson(lambda.head).logProbabilityOf(y.toInt)
@@ -178,6 +210,10 @@ object POMP {
     }
   }
 
+  /**
+    * The bernoulli model with a one dimensional latent state
+    * @param stepFun a solution to a diffusion process 
+    */
   def BernoulliModel(stepFun: StepFunction): UnparamModel = new UnparamModel {
     def apply(params: Parameters) =
       new Model {
