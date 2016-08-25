@@ -1,4 +1,4 @@
-package com.gihub.jonnylaw.examples
+package com.github.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer

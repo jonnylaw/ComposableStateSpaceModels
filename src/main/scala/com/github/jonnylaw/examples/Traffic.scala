@@ -4,6 +4,9 @@ import com.github.jonnylaw.model.POMP._
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
+import akka.stream.scaladsl._
+import java.nio.file.{Path, Paths}
+import akka.util.ByteString
 
 import com.github.jonnylaw.model._
 import com.github.jonnylaw.model.Streaming._
@@ -180,6 +183,8 @@ object FilterCars extends App {
 }
 
 object ForecastCars extends App {
+  implicit val system = ActorSystem("ForecastCars")
+  implicit val materializer = ActorMaterializer()
   // define the model
    val poissonParam: Parameters = LeafParameter(
     GaussianParameter(5.90476244, 0.05428142),
@@ -212,15 +217,17 @@ object ForecastCars extends App {
 
   // calculate last filtered state using the parameters
   val filtered = filter.accFilter(data, data.map(_.t).min)(1000)(meanParams)
-  val lastState = ParticleFilter.multinomialResampling(
-    filtered.last.particles,
-    filtered.last.weights)
+  val lastState = ParticleFilter.multinomialResampling(filtered.last.particles, filtered.last.weights)
 
-  val forecast = forecastData(lastState, times, mod)
+  Source(times).via(forecastFlow(lastState, times.head, mod)).
+    map(f => ByteString(s"$f\n") ).
+    runWith(FileIO.toPath(Paths.get(s"forecastCars.csv")))
 
-  val pw = new PrintWriter("forecastCars.csv")
-  pw.write(forecast.mkString("\n"))
-  pw.close()
+  // val forecast = forecastData(lastState, times, mod)
+
+  // val pw = new PrintWriter("forecastCars.csv")
+  // pw.write(forecast.mkString("\n"))
+  // pw.close()
 }
 
 object PoissonWeekly {

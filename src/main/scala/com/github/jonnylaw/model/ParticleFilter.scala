@@ -280,6 +280,8 @@ object ParticleFilter {
 
     CredibleInterval(ordered(samples.length - index), ordered(index))
   }
+
+  def indentity[A](samples: Vector[A], weights: Vector[LogLikelihood]) = samples
 }
 
 case class Filter(model: Parameters => Model, resamplingScheme: Resample[State]) extends ParticleFilter {

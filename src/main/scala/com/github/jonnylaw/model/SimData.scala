@@ -168,7 +168,6 @@ object SimData {
     loop(start, Vector())
   }
 
-
   /**
     * Forecast data
     * @param t the time of the observation
@@ -185,6 +184,7 @@ object SimData {
     override def toString = s"$t, $obs, ${obsIntervals.toString}, $eta, ${etaIntervals.toString}, ${state.flatten.mkString(", ")}, ${stateIntervals.mkString(", ")}"
   }
 
+  // this is a very inefficient method
   /**
     * Forecast Data given the most recently estimated state
     * Return a vector of Data and credible intervals
@@ -212,6 +212,40 @@ object SimData {
     } yield ForecastOut(t, obs, obsIntervals, meanEta, etaIntervals, statemean, stateIntervals)
   }
 
+  /**
+    * Performs a one step ahead forecast for any time ahead in the future, given a sample of states, time of the state sample
+    * the time to forecast to and a model
+    * @param x0 a sample of states at the same time point, t0
+    * @param t0 the time the sample of states was made
+    * @param t the time to forcast ahead until
+    * @param mod the model to simulate from
+    * @return a tuple, including a ForecastOut object and the vector of states which has been advanced by dt = t - t0
+    */
+  def oneStepForecast(x0: Vector[State], t0: Time, t: Time, mod: Model): (ForecastOut, Vector[State]) = {
+    val nextStep = x0 map (simStep(_, t0, t - t0, mod))
+    val state = nextStep map (_.sdeState.get)
+    val stateIntervals = getAllCredibleIntervals(state, 0.995)
+    val statemean = meanState(state)
+    val etas = state map (x => mod.link(mod.f(x, t)))
+    val meanEta = breeze.stats.mean(etas.map(_.head))
+    val etaIntervals = getOrderStatistic(etas.map(_.head), 0.995)
+    val obs = breeze.stats.mean(etas map (mod.observation(_).draw))
+    val obsIntervals = getOrderStatistic(etas map (mod.observation(_).draw), 0.995)
+
+    (ForecastOut(t, obs, obsIntervals, meanEta, etaIntervals, statemean, stateIntervals), state)
+  }
+
+  /**
+    * Given a stream of times, a model an initial sample of states and the associated time of the state sample
+    * generate a forecast include credible intervals in a stream
+    * @param x0 a vector of state realisations at time t0
+    * @param t0 an initial time which the state was realised at
+    * @param mod the model to simulate from
+    * @return a flow object which can be attached to a Source[Time] and a suitable Sink
+    */
+  def forecastFlow(x0: Vector[State], t0: Time, mod: Model): Flow[Time, ForecastOut, Any] = {
+    Flow[Time].scan(oneStepForecast(x0, t0, t0, mod))((d, t) => oneStepForecast(d._2, d._1.t, t, mod)) map (_._1)
+  }
 
   /**
     * Simulate a single step of an exponential family model
