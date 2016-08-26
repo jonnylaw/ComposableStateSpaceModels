@@ -184,33 +184,32 @@ object SimData {
     override def toString = s"$t, $obs, ${obsIntervals.toString}, $eta, ${etaIntervals.toString}, ${state.flatten.mkString(", ")}, ${stateIntervals.mkString(", ")}"
   }
 
-  // this is a very inefficient method
-  /**
-    * Forecast Data given the most recently estimated state
-    * Return a vector of Data and credible intervals
-    * @param x0 a vector containing realisations from the state, 
-    * this can be from a distribution of Rand[State], by calling .sample(1000) 
-    * or output from a particle filter
-    * @param times a sequence of times to forecast at
-    * @param mod an exponential family model to simulate forward from
-    * @return a sequence of ForecastOut
-    */
-  def forecastData(x0: Vector[State], times: Seq[Time], mod: Model): Seq[ForecastOut] = {
-    val samples = x0 map (simDataInit(_, times, mod))
+  // /**
+  //   * Forecast Data given the most recently estimated state
+  //   * Return a vector of Data and credible intervals
+  //   * @param x0 a vector containing realisations from the state, 
+  //   * this can be from a distribution of Rand[State], by calling .sample(1000) 
+  //   * or output from a particle filter
+  //   * @param times a sequence of times to forecast at
+  //   * @param mod an exponential family model to simulate forward from
+  //   * @return a sequence of ForecastOut
+  //   */
+  // def forecastData(x0: Vector[State], times: Seq[Time], mod: Model): Seq[ForecastOut] = {
+  //   val samples = x0 map (simDataInit(_, times, mod))
 
-    for {
-      sample <- samples.transpose
-      t = sample.head.t
-      state = sample.map(_.sdeState.get)
-      stateIntervals = getAllCredibleIntervals(state, 0.995)
-      statemean = meanState(state)
-      etas = state map (x => mod.link(mod.f(x, t)))
-      meanEta = breeze.stats.mean(etas.map(_.head))
-      etaIntervals = getOrderStatistic(etas.map(_.head), 0.995)
-      obs = breeze.stats.mean(etas map (mod.observation(_).draw))
-      obsIntervals = getOrderStatistic(etas map (mod.observation(_).draw), 0.995)
-    } yield ForecastOut(t, obs, obsIntervals, meanEta, etaIntervals, statemean, stateIntervals)
-  }
+  //   for {
+  //     sample <- samples.transpose
+  //     t = sample.head.t
+  //     state = sample.map(_.sdeState.get)
+  //     stateIntervals = getAllCredibleIntervals(state, 0.995)
+  //     statemean = meanState(state)
+  //     etas = state map (x => mod.link(mod.f(x, t)))
+  //     meanEta = breeze.stats.mean(etas.map(_.head))
+  //     etaIntervals = getOrderStatistic(etas.map(_.head), 0.995)
+  //     obs = breeze.stats.mean(etas map (mod.observation(_).draw))
+  //     obsIntervals = getOrderStatistic(etas map (mod.observation(_).draw), 0.995)
+  //   } yield ForecastOut(t, obs, obsIntervals, meanEta, etaIntervals, statemean, stateIntervals)
+  // }
 
   /**
     * Performs a one step ahead forecast for any time ahead in the future, given a sample of states, time of the state sample

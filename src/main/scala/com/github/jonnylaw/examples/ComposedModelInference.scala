@@ -141,7 +141,7 @@ object FilterOnline extends App {
   val n = 1000
   val bootstrapFilter = Filter(unparamMod, ParticleFilter.multinomialResampling)
 
-  bootstrapFilter.filter(observations, 0.0)(n)(params).
+  observations.via(bootstrapFilter.filter(0.0)(n)(params)).
     drop(1).
     map(a => ByteString(s"$a\n")).
     runWith(FileIO.toFile(new File("OnlineComposedModelFiltered.csv")))

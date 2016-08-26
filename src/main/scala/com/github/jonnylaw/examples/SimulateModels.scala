@@ -104,7 +104,7 @@ object FilterPoissonOnline extends App {
   val pf = Filter(model.model, ParticleFilter.multinomialResampling)
   
   // Use scan to filter a stream, which allows us to output the estimated state as the observations arrive
-  pf.filter(observations, 0.0)(n)(model.p).
+  observations.via(pf.filter(0.0)(n)(model.p)).
     drop(1). // drop the initial state, with no corresponding observation
     map(a => ByteString(s"$a\n")).
     runWith(FileIO.toFile(new File("filteredPoissonOnline.csv")))

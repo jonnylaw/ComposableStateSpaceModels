@@ -53,7 +53,7 @@ trait ParticleFilter {
   def resample: Resample[State]
 
   /**
-    * Step filter
+    * Step filter, perform one step of the particle fiilter
     */
   def stepFilter(s: PfState, y: Data)(p: Parameters): PfState = {
     val dt = y.t - s.t // calculate time between observations
@@ -68,6 +68,34 @@ trait ParticleFilter {
     val ll = s.ll + max + math.log(breeze.stats.mean(w1))
 
     PfState(y.t, Some(y.observation), x1, w1, ll)
+  }
+
+  def stepWithForecast(s: PfState, y: Data)(p: Parameters): (PfState, ForecastOut) = {
+    val mod = unparamMod(p)
+    val dt = y.t - s.t // calculate time between observations
+
+    val unweightedX: Vector[State] = resample(s.particles, s.weights)
+
+    val (x1, eta) = advanceState(unweightedX, dt, y.t)(p).unzip
+
+    val stateIntervals = getAllCredibleIntervals(x1, 0.995)
+    val statemean = meanState(x1)
+    val meanEta = breeze.stats.mean(eta.map(_.head))
+    val etaIntervals = getOrderStatistic(eta.map(_.head), 0.995)
+    val obs = breeze.stats.mean(eta map (mod.observation(_).draw))
+    val obsIntervals = getOrderStatistic(eta map (mod.observation(_).draw), 0.995)
+
+    val fo = ForecastOut(y.t, obs, obsIntervals, meanEta, etaIntervals, statemean, stateIntervals)
+
+    val w = eta map (a => calculateWeights(a, y.observation)(p))
+    val max = w.max
+    val w1 = w map { a => exp(a - max) }
+
+    val ll = s.ll + max + math.log(breeze.stats.mean(w1))
+
+    val pf = PfState(y.t, Some(y.observation), x1, w1, ll)
+
+    (pf, fo)
   }
 
   /**
@@ -101,10 +129,29 @@ trait ParticleFilter {
   /**
     * Run a filter over a stream of data
     */
-  def filter(data: Source[Data, Any], t0: Time)(particles: Int)(p: Parameters): Source[PfState, Any] = {
+  def filter(t0: Time)(particles: Int)(p: Parameters): Flow[Data, PfState, Any] = {
     val initState = initialiseState(p, particles, t0)
 
-    data.scan(initState)(stepFilter(_, _)(p))
+    Flow[Data].scan(initState)(stepFilter(_, _)(p))
+  }
+
+  /**
+    * One step forecast filter, advances the particles ahead to the time of the next observation
+    * transforms them according to the model and calculates the expected observation and 99% 
+    * credible intervals
+    * @param t0 the initial time of the observations
+    * @param particles the number of particles to use in the filter/forecast
+    * @param p the parameters of the model
+    * @return an Akka Stream Flow from Data to ForecastOut
+    */
+  def getOneStepForecast(t0: Time)(particles: Int)(p: Parameters): Flow[Data, ForecastOut, Any] = {
+    val initState = initialiseState(p, particles, t0)
+    val forecastState = oneStepForecast(initState.particles, t0, t0, unparamMod(p))._1
+
+    Flow[Data].
+      scan((initState, forecastState))((s, y) => stepWithForecast(s._1, y)(p)).
+      map { case (_, f) => f }.
+      drop(1) // drop the initial state
   }
 }
 
