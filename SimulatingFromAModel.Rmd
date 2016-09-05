@@ -51,7 +51,7 @@ In order to add additional structure to the model, there is a linear transformat
 \usetikzlibrary{shapes,arrows}
 \usetikzlibrary{backgrounds}
 \usetikzlibrary{positioning}
-\resizebox{12cm}{8cm}{%
+\resizebox{12cm}{8cm}{
   \begin{tikzpicture}[node distance = 2cm, auto]
     \tikzstyle{line} = [draw, -latex]
     \tikzstyle{state} = [draw, circle, text width=1.3cm, align=center]
@@ -126,7 +126,7 @@ A composed model is represented in the directed acyclic graph below:
 \usetikzlibrary{shapes,arrows}
 \usetikzlibrary{backgrounds}
 \usetikzlibrary{positioning}
-\resizebox{12cm}{8cm}{%
+\resizebox{12cm}{8cm}{
   \tikzstyle{line} = [draw, -latex]
   \tikzstyle{state} = [draw, circle, text width=1.5cm, align=center]
   \tikzstyle{detstate} = [draw, double, circle, text width=1.5cm, align=center]
