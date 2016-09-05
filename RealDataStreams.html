@@ -11,9 +11,8 @@
 
 <meta name="author" content="Jonathan Law" />
 
-<meta name="date" content="2016-08-22" />
 
-<title>Adding a Custom Model</title>
+<title>Ingesting Real World Data for Inference</title>
 
 <script src="site_libs/jquery-1.11.3/jquery.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -23,44 +22,6 @@
 <script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
 
 
-<style type="text/css">code{white-space: pre;}</style>
-<style type="text/css">
-div.sourceCode { overflow-x: auto; }
-table.sourceCode, tr.sourceCode, td.lineNumbers, td.sourceCode {
-  margin: 0; padding: 0; vertical-align: baseline; border: none; }
-table.sourceCode { width: 100%; line-height: 100%; }
-td.lineNumbers { text-align: right; padding-right: 4px; padding-left: 4px; color: #aaaaaa; border-right: 1px solid #aaaaaa; }
-td.sourceCode { padding-left: 5px; }
-code > span.kw { color: #0000ff; } /* Keyword */
-code > span.ch { color: #008080; } /* Char */
-code > span.st { color: #008080; } /* String */
-code > span.co { color: #008000; } /* Comment */
-code > span.ot { color: #ff4000; } /* Other */
-code > span.al { color: #ff0000; } /* Alert */
-code > span.er { color: #ff0000; font-weight: bold; } /* Error */
-code > span.wa { color: #008000; font-weight: bold; } /* Warning */
-code > span.cn { } /* Constant */
-code > span.sc { color: #008080; } /* SpecialChar */
-code > span.vs { color: #008080; } /* VerbatimString */
-code > span.ss { color: #008080; } /* SpecialString */
-code > span.im { } /* Import */
-code > span.va { } /* Variable */
-code > span.cf { color: #0000ff; } /* ControlFlow */
-code > span.op { } /* Operator */
-code > span.bu { } /* BuiltIn */
-code > span.ex { } /* Extension */
-code > span.pp { color: #ff4000; } /* Preprocessor */
-code > span.do { color: #008000; } /* Documentation */
-code > span.an { color: #008000; } /* Annotation */
-code > span.cv { color: #008000; } /* CommentVar */
-code > span.at { } /* Attribute */
-code > span.in { color: #008000; } /* Information */
-</style>
-<style type="text/css">
-  pre:not([class]) {
-    background-color: white;
-  }
-</style>
 
 
 <style type="text/css">
@@ -227,30 +188,22 @@ $(document).ready(function () {
 
 
 
-<h1 class="title toc-ignore">Adding a Custom Model</h1>
+<h1 class="title toc-ignore">Ingesting Real World Data for Inference</h1>
 <h4 class="author"><em>Jonathan Law</em></h4>
-<h4 class="date"><em>22 August 2016</em></h4>
+<h4 class="date"><em>5 September 2016</em></h4>
 
 </div>
 
+<div id="TOC">
+<ul>
+<li><a href="#section"></a></li>
+</ul>
+</div>
 
-<p>In order to add a new model, we must specify six functions:</p>
-<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">trait</span> Model {
-  <span class="kw">def</span> observation: Eta =&gt; Rand[Observation]
-  <span class="kw">def</span> <span class="fu">link</span>(x: Gamma): Eta = Vector(x)
-  <span class="kw">def</span> <span class="fu">f</span>(s: State, t: Time): Gamma
-  <span class="kw">def</span> x0: Rand[State]
-  <span class="kw">def</span> stepFunction: (State, TimeIncrement) =&gt; Rand[State]
-  <span class="kw">def</span> dataLikelihood: (Eta, Observation) =&gt; LogLikelihood
-}</code></pre></div>
-<ol style="list-style-type: decimal">
-<li>An <code>observation</code> model, a function from Eta to a monadic distribution <code>Rand</code> with a <code>draw</code> method</li>
-<li>A non-linear linking function if the parameter space is different to the domain of the state space</li>
-<li>A linear function <code>f</code> to transform the state in a deterministic way</li>
-<li>A definition of the initial State, <code>x0</code>, a monadic distribution <code>Rand</code></li>
-<li>A <code>stepFunction</code> to advance the state</li>
-<li>A <code>likelihood</code>, to calculate the likelihood of an observation given a value of the transformed state <code>Eta</code></li>
-</ol>
+<p>When modelling real world data from sensor networks, such as the <a href="http://uoweb1.ncl.ac.uk/">Urban Observatory</a> or the <a href="https://www.netraveldata.co.uk/">NE Open Data Service</a> we can consume the data as it is recorded. In order to consume the data as it arrives, it makes sense to use a <a href="http://www.reactive-streams.org/">reactive stream</a>, <a href="http://akka.io/">Akka Streams</a> are an implementation of reactive streams. Statistical modelling is computationally intensive, so if the number of incoming observations increases due to a variable sampling rate of a sensor then we want to implement a backpressure strategy to reduce or buffer the amount of incoming data. For instance we could drop every other observation if it was determined that this wouldn’t affect the quality of the inference significantly, or we could buffer the extra observations and wait until the sampling rate of the sensor declines again to catch up.</p>
+<div id="section" class="section level1">
+<h1></h1>
+</div>
 
 
 

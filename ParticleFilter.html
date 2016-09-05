@@ -1,331 +1,435 @@
 <!DOCTYPE html>
-<html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 
-<title>Bootstrap Particle Filter</title>
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
 
-<script type="text/javascript">
-window.onload = function() {
-  var imgs = document.getElementsByTagName('img'), i, img;
-  for (i = 0; i < imgs.length; i++) {
-    img = imgs[i];
-    // center an image if it is the only element of its parent
-    if (img.parentElement.childElementCount === 1)
-      img.parentElement.style.textAlign = 'center';
+
+
+
+<title>Particle Filter</title>
+
+<script src="site_libs/jquery-1.11.3/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/readable.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+
+
+<style type="text/css">code{white-space: pre;}</style>
+<style type="text/css">
+div.sourceCode { overflow-x: auto; }
+table.sourceCode, tr.sourceCode, td.lineNumbers, td.sourceCode {
+  margin: 0; padding: 0; vertical-align: baseline; border: none; }
+table.sourceCode { width: 100%; line-height: 100%; }
+td.lineNumbers { text-align: right; padding-right: 4px; padding-left: 4px; color: #aaaaaa; border-right: 1px solid #aaaaaa; }
+td.sourceCode { padding-left: 5px; }
+code > span.kw { color: #0000ff; } /* Keyword */
+code > span.ch { color: #008080; } /* Char */
+code > span.st { color: #008080; } /* String */
+code > span.co { color: #008000; } /* Comment */
+code > span.ot { color: #ff4000; } /* Other */
+code > span.al { color: #ff0000; } /* Alert */
+code > span.er { color: #ff0000; font-weight: bold; } /* Error */
+code > span.wa { color: #008000; font-weight: bold; } /* Warning */
+code > span.cn { } /* Constant */
+code > span.sc { color: #008080; } /* SpecialChar */
+code > span.vs { color: #008080; } /* VerbatimString */
+code > span.ss { color: #008080; } /* SpecialString */
+code > span.im { } /* Import */
+code > span.va { } /* Variable */
+code > span.cf { color: #0000ff; } /* ControlFlow */
+code > span.op { } /* Operator */
+code > span.bu { } /* BuiltIn */
+code > span.ex { } /* Extension */
+code > span.pp { color: #ff4000; } /* Preprocessor */
+code > span.do { color: #008000; } /* Documentation */
+code > span.an { color: #008000; } /* Annotation */
+code > span.cv { color: #008000; } /* CommentVar */
+code > span.at { } /* Attribute */
+code > span.in { color: #008000; } /* Information */
+</style>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
   }
-};
-</script>
-
-
-
+</style>
 
 
 <style type="text/css">
-body, td {
-   font-family: sans-serif;
-   background-color: white;
-   font-size: 13px;
-}
-
-body {
-  max-width: 800px;
-  margin: auto;
-  padding: 1em;
-  line-height: 20px;
-}
-
-tt, code, pre {
-   font-family: 'DejaVu Sans Mono', 'Droid Sans Mono', 'Lucida Console', Consolas, Monaco, monospace;
-}
-
 h1 {
-   font-size:2.2em;
+  font-size: 34px;
 }
-
+h1.title {
+  font-size: 38px;
+}
 h2 {
-   font-size:1.8em;
+  font-size: 30px;
 }
-
 h3 {
-   font-size:1.4em;
+  font-size: 24px;
 }
-
 h4 {
-   font-size:1.0em;
+  font-size: 18px;
 }
-
 h5 {
-   font-size:0.9em;
+  font-size: 16px;
 }
-
 h6 {
-   font-size:0.8em;
+  font-size: 12px;
 }
-
-a:visited {
-   color: rgb(50%, 0%, 50%);
-}
-
-pre, img {
-  max-width: 100%;
-}
-pre {
-  overflow-x: auto;
-}
-pre code {
-   display: block; padding: 0.5em;
-}
-
-code {
-  font-size: 92%;
-  border: 1px solid #ccc;
-}
-
-code[class] {
-  background-color: #F8F8F8;
-}
-
-table, td, th {
-  border: none;
-}
-
-blockquote {
-   color:#666666;
-   margin:0;
-   padding-left: 1em;
-   border-left: 0.5em #EEE solid;
-}
-
-hr {
-   height: 0px;
-   border-bottom: none;
-   border-top-width: thin;
-   border-top-style: dotted;
-   border-top-color: #999999;
-}
-
-@media print {
-   * {
-      background: transparent !important;
-      color: black !important;
-      filter:none !important;
-      -ms-filter: none !important;
-   }
-
-   body {
-      font-size:12pt;
-      max-width:100%;
-   }
-
-   a, a:visited {
-      text-decoration: underline;
-   }
-
-   hr {
-      visibility: hidden;
-      page-break-before: always;
-   }
-
-   pre, blockquote {
-      padding-right: 1em;
-      page-break-inside: avoid;
-   }
-
-   tr, img {
-      page-break-inside: avoid;
-   }
-
-   img {
-      max-width: 100% !important;
-   }
-
-   @page :left {
-      margin: 15mm 20mm 15mm 10mm;
-   }
-
-   @page :right {
-      margin: 15mm 10mm 15mm 20mm;
-   }
-
-   p, h2, h3 {
-      orphans: 3; widows: 3;
-   }
-
-   h2, h3 {
-      page-break-after: avoid;
-   }
+.table th:not([align]) {
+  text-align: left;
 }
 </style>
-
 
 
 </head>
 
 <body>
-<p>The particle filter is a highly flexible filter, used to perform Bayesian inference for non-linear and non-Gaussian state space models. It works by simulating many realisations of the state space in a particle cloud and determining which are the closest fit to observed data by calculating the observation likelihood. This type of simulation can be slow. The <a href="https://en.wikipedia.org/wiki/Kalman_filter">Kalman Filter</a> is an exact solution for calculating the latent state for Gaussian, Dynamic Linear Models. The Kalman Filter is very efficient and accurate as it doesn&#39;t require simulation, but the class of models we consider can&#39;t be solved analytically in closed form. Other filters, such as the Extended and Unscented Kalman Filter have been developed, which apply to non-linear state space models. </p>
 
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img {
+  max-width:100%;
+  height: auto;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+</style>
+
+
+<style type="text/css">
+/* padding for bootstrap navbar */
+body {
+  padding-top: 66px;
+  padding-bottom: 40px;
+}
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h1 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+
+.section h2 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+.section h3 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+.section h4 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+.section h5 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+.section h6 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+</style>
+
+<script>
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark it active
+  menuAnchor.parent().addClass('active');
+
+  // if it's got a parent navbar menu mark it active as well
+  menuAnchor.closest('li.dropdown').addClass('active');
+});
+</script>
+
+
+<div class="container-fluid main-container">
+
+<!-- tabsets -->
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+</script>
+
+<!-- code folding -->
+
+
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Composable POMP Models Documentation</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="SimulatingFromAModel.html">Simulating Data</a>
+</li>
+<li>
+  <a href="AddingACustomModel.html">Adding A Model</a>
+</li>
+<li>
+  <a href="ParticleFilter.html">Particle Filter</a>
+</li>
+<li>
+  <a href="StreamingMCMC.html">MCMC</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div class="fluid-row" id="header">
+
+
+
+<h1 class="title toc-ignore">Particle Filter</h1>
+
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#introduction-to-the-bootstrap-particle-filter">Introduction to the Bootstrap Particle Filter</a></li>
+<li><a href="#filtering-a-stream-of-data">Filtering a Stream of Data</a></li>
+<li><a href="#example-filtering-a-single-model">Example: Filtering a Single Model</a></li>
+</ul>
+</div>
+
+<p>The particle filter is a highly flexible filter, used to perform Bayesian inference for non-linear and non-Gaussian state space models. It works by simulating many realisations of the state space in a particle cloud and determining which are the closest fit to observed data by calculating the observation likelihood. This type of simulation can be slow. The <a href="https://en.wikipedia.org/wiki/Kalman_filter">Kalman Filter</a> is an exact solution for calculating the latent state for Gaussian, Dynamic Linear Models. The Kalman Filter is very efficient and accurate as it doesn’t require simulation, but the class of models we consider can’t be solved analytically in closed form. Other filters, such as the Extended and Unscented Kalman Filter have been developed, which apply to non-linear state space models.</p>
 <p>In our application, it is natural to use a particle filter. The particle filter can operate with observations arriving irregularly, it can handle non-Gaussian observation models and non-linear transformations.</p>
+<div id="introduction-to-the-bootstrap-particle-filter" class="section level2">
+<h2>Introduction to the Bootstrap Particle Filter</h2>
+<p>Note, in this section we motivate and describe a simple application of the bootstrap particle filter to a Partially Observed Markov Process model. If you are already familiar with the bootstrap filter and would like to apply it using the API then please skip this section.</p>
+<p>The bootstrap particle filter () is a simple filter able to estimate the state space of a POMP model. The latent state is governed by a transition kernel which we assume realisations can be simulated from, <span class="math inline">\(\textbf{X}(t_i) \sim p(\textbf{x}(t_i)|\textbf{x}(t_{i-1}))\)</span>. The process is observed through an observation model <span class="math inline">\(Y(t_i) \sim \pi(y(t_i) | \eta(t_i))\)</span>.</p>
+<p>The bootstrap particle filter is used to calculate the unobserved system state by approximating the filtering distribution, <span class="math inline">\(p(\textbf{x}(t_i)| y(t_{0:i}))\)</span>. The algorithm to determine an empirical approximation of the unobserved system state at each observation time is presented below:</p>
+<ol style="list-style-type: decimal">
+<li>Initialise: Simulate <span class="math inline">\(N\)</span> particles from the initial distribution of the state space, <span class="math inline">\(\textbf{x}(t_0)^{(k)} \sim p(\textbf{x}(t_0))\)</span>, and set <span class="math inline">\(i = 1\)</span></li>
+<li>Advance the state particle-cloud until the time of the next observation, <span class="math inline">\(\textbf{x}(t_i)^{(k)} \sim p(\textbf{x}(t_i)^{(k)}|\textbf{x}(t_{i-1})^{(k)})\)</span></li>
+<li>Transform the each particle appropriately for the given observation model, <span class="math inline">\(\eta(t_i)^{(k)} = g(F^T_{t_i} \textbf{x}(t_i)^{(k)})\)</span></li>
+<li>Calculate the weight of each particle, by calculating the likelihood of the observation given each particle: <span class="math inline">\(w^*(t_i)^{(k)} = \pi(y(t_i)|\eta(t_i)^{(k)})\)</span></li>
+<li>Normalise the weights, <span class="math inline">\(w(t_i)^{(k)} = \frac{w^*(t_i)^{(k)}}{\sum_{j=1}^N w^*(t_i)^j}\)</span>, the particles and associated normalised weights forms a weighted sample from the filtering distribution <span class="math inline">\(p(\textbf{x}(t_i)| y(t_{1:i}))\)</span>, <span class="math inline">\(\{\textbf{x}(t_i)^{(k)}, w(t_i)^{(k)} | k = 1,\dots,N \}\)</span></li>
+<li>Resample the state, by sampling with replacement <span class="math inline">\(N\)</span> times from a Multinomial distribution with each category representing a particle and the probability of choosing a particle represented by the associated weights, <span class="math inline">\(w(t_i)^{(k)}\)</span>. This gives an approximate random sample from <span class="math inline">\(p(\textbf{x}(t_i)| y(t_{0:i}))\)</span></li>
+<li>If <span class="math inline">\(i = M\)</span> return the random samples from the filtering distribution <span class="math inline">\(p(\textbf{x}(t_i)| y(t_{0:i}))\)</span> at all time points, else set <span class="math inline">\(i = i + 1\)</span> and go to 2</li>
+</ol>
+<p>A simple illustrative particle filter can be implemented in Scala as follows:</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">trait</span> ParticleFilter {
+    <span class="kw">import</span> math.{exp, log}
+    <span class="kw">import</span> ParticleFilter.<span class="fu">_</span>
 
-<h2>Bootstrap Particle Filter</h2>
+    <span class="kw">val</span> resample: (Vector[State], Vector[LogLikelihood]) =&gt; Vector[State]
+    <span class="kw">val</span> stepFunction: (State, TimeInterval) =&gt; State
+    <span class="kw">val</span> dataLikelihood: (State, Observation) =&gt; LogLikelihood
+    <span class="kw">val</span> mean: Vector[LogLikelihood] =&gt; LogLikelihood = w =&gt; w.<span class="fu">sum</span>/w.<span class="fu">length</span>
 
-<p>First consider a simple model with a one-dimensional state-space and a Poisson observation model. The algorithm for the bootstrap particle filter is presented below. Note that in the package all of this is already implemented in a more sophisticated way, this is merely presented here for illustrative purposes.</p>
+    <span class="kw">def</span> <span class="fu">filterStep</span>(s: FilterState, y: Data): FilterState = {
+        <span class="kw">val</span> dt = y.<span class="fu">time</span> - s.<span class="fu">t0</span>
+  
+        <span class="kw">val</span> x = <span class="fu">resample</span>(s.<span class="fu">particles</span>, s.<span class="fu">weights</span>)
 
-<ul>
-<li>The parameters of the model can be written as a case class, <code>m0</code> and <code>c0</code> represent the parameters of the initial distribution of the state, represented by a draw from a Gaussian distribution. <code>mu</code> and <code>sigma</code> are the parameters of the Markov transition kernel, which is generalised brownian motion</li>
-</ul>
+        <span class="kw">val</span> x1 = s.<span class="fu">particles</span> <span class="fu">map</span> (<span class="fu">stepFunction</span>(_, dt))
+        <span class="kw">val</span> w = x1 <span class="fu">map</span> (<span class="fu">dataLikelihood</span>(_, y.<span class="fu">observation</span>))
 
-<pre><code class="scala">case class Parameters(m0: Double, c0: Double, mu: Double, sigma: Double)
-</code></pre>
-
-<ul>
-<li>Initialise a particle cloud of size <code>n</code> using the initial parameters</li>
-</ul>
-
-<pre><code class="scala">import breeze.stats.distributions.Gaussian
-
-val p = Parameters(0.1, 3.0, 0.1, 1.0)
-val particles = Vector.fill(n)(Gaussian(p.m0, p.c0))
-</code></pre>
-
-<ul>
-<li>Advance the state space (<code>particles</code>) to the time of the next observation according to the Markov transition kernel</li>
-</ul>
-
-<pre><code class="scala">def transition(p: Parameters, dt: TimeInterval): State =&gt; State = {
-    x =&gt; Gaussian(x + m0*dt, math.sqrt(p.sigma * p.sigma * dt)).draw
+        <span class="kw">val</span> ll = s.<span class="fu">ll</span> + <span class="fu">log</span>(<span class="fu">mean</span>(w map exp))
+ 
+        <span class="fu">FilterState</span>(x1, w, y.<span class="fu">time</span>, ll)
+    }
 }
 
-val advanced = particles map (transition(p, dt))
-</code></pre>
+<span class="kw">object</span> ParticleFilter {
+    <span class="kw">type</span> Time = Double
+    <span class="kw">type</span> Observation = Int
+    <span class="kw">type</span> LogLikelihood = Double
+    <span class="kw">type</span> State = Double
+    <span class="kw">type</span> TimeInterval = Double
 
-<p><code>State</code> and <code>TimeInterval</code> are type aliases for <code>Double</code></p>
-
+    <span class="kw">case</span> <span class="kw">class</span> <span class="fu">FilterState</span>(
+        particles: Vector[State], 
+        weights: Vector[LogLikelihood], 
+        t0: Time, 
+        ll: LogLikelihood)
+    
+    <span class="kw">case</span> <span class="kw">class</span> <span class="fu">Data</span>(time: Time, observation: Observation)
+}</code></pre></div>
+<p>This abstract trait we have defined above is a simple shell for a particle filter. In order to implement a concrete class representing a bootstrap filter for a specific model, let’s consider a simple model with a one-dimensional state-space and a Poisson observation model:</p>
+<p><span class="math display">\[
+\begin{align*}
+N(t) &amp;\sim \textrm{Poisson}(\lambda(t)) \\
+\lambda(t)|x(t) &amp;= \exp\{x(t)\} \\
+\textrm{d}X(t) &amp;= \mu + \sigma \textrm{d}W(t)
+\end{align*}
+\]</span></p>
+<p>This Poisson model’s latent state evolves according to generalised Brownian motion and the linking function, <span class="math inline">\(g\)</span>, is the exponential function, since the rate of a poisson distribution, <span class="math inline">\(\lambda(t)\)</span> is always positive. Now we must implement the functions declared in the trait <code>ParticleFilter</code>.</p>
 <ul>
-<li>Calculate the likelihood weights of each particle given the observation</li>
+<li>The parameters of the model can be written as a case class, <code>m0</code> and <code>c0</code> represent the parameters of the initial distribution of the state, represented by a draw from a Gaussian distribution. <code>mu</code> and <code>sigma</code> are the parameters of the Markov transition kernel, which is generalised Brownian motion</li>
 </ul>
-
-<pre><code class="scala">import breeze.stats.distributions.Poisson
-
-def likelihood(y: Observation): State =&gt; LogLikelihood = x =&gt; {
-  Poisson(exp(x)).logProbabilityOf(y)
-}
-
-val weights = advanced map likelihood(y)
-</code></pre>
-
-<p><code>LogLikelihood</code> is an alias for Double</p>
-
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">case</span> <span class="kw">class</span> <span class="fu">Parameters</span>(m0: Double, c0: Double, mu: Double, sigma: Double)</code></pre></div>
 <ul>
-<li>Resample the states according to the likelihood weights, using the <code>Multinomial</code> distribution from Breeze</li>
+<li>Advance the state according to generalised Brownian Motion</li>
 </ul>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">import</span> breeze.<span class="fu">stats</span>.<span class="fu">distributions</span>.<span class="fu">Gaussian</span>
 
-<pre><code class="scala">import breeze.stats.distributions.Multinomial
-
-def resample(x: Vector[State], w: Vector[LogLikelihood]): Vector[State] = {
-  val xInd = Multinomial(DenseVector(w.toArray)).sample(x.length).toVector
-  xInd map ( x(_) )
-}
-
-val resampledState = resample(advanced, weights)
-</code></pre>
-
+<span class="kw">def</span> <span class="fu">stepBrownian</span>(p: Parameters): (TimeInterval, State) =&gt; State = {
+    (x, dt) =&gt; <span class="fu">Gaussian</span>(x + p.<span class="fu">mu</span> * dt, math.<span class="fu">sqrt</span>(p.<span class="fu">sigma</span> * p.<span class="fu">sigma</span> * dt)).<span class="fu">draw</span>
+}</code></pre></div>
 <ul>
-<li><p>Repeat the process for all of the observed data, collecting the resampled particles at each time point. The particles can be used to calculate summary statistics, such as the mean and credible intervals by selecting the appropriate order statistics from the empirical distributions.</p></li>
-<li><p>The marginal likelihood of the path given the observed data and parameters can be calculated by calculating the product of the average of the weights at each time point. This marginal likelihood is used in the [[Particle Marginal Metroplis Hastings|Streaming-MCMC]] algorithm, which can be used to calculate the full joint posterior p(x, t | y).</p></li>
+<li>Calculate the weights of each particle given the observation</li>
 </ul>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">import</span> breeze.<span class="fu">stats</span>.<span class="fu">distributions</span>.<span class="fu">Poisson</span>
 
+<span class="kw">def</span> poissonLikelihood: (State, Observation) =&gt; LogLikelihood = {
+  (x, y) =&gt; <span class="fu">Poisson</span>(<span class="fu">exp</span>(x)).<span class="fu">logProbabilityOf</span>(y)
+}</code></pre></div>
+<ul>
+<li>Resample the states according to the likelihood weights, using Multinomial resampling</li>
+</ul>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">import</span> breeze.<span class="fu">stats</span>.<span class="fu">distributions</span>.<span class="fu">Multinomial</span>
+<span class="kw">import</span> breeze.<span class="fu">linalg</span>.<span class="fu">DenseVector</span>
+
+<span class="kw">def</span> <span class="fu">multinomialResample</span>(x: Vector[State], w: Vector[LogLikelihood]): Vector[State] = {
+  <span class="kw">val</span> xInd = <span class="fu">Multinomial</span>(<span class="fu">DenseVector</span>(w.<span class="fu">toArray</span>)).<span class="fu">sample</span>(x.<span class="fu">length</span>).<span class="fu">toVector</span>
+  xInd <span class="fu">map</span> ( <span class="fu">x</span>(_) )
+}</code></pre></div>
+<ul>
+<li>Now, put all the pieces together in a case class extending the <code>ParticleFilter</code> trait:</li>
+</ul>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala">
+<span class="kw">case</span> <span class="kw">class</span> <span class="fu">PoissonPf</span>(p: Parameters) <span class="kw">extends</span> ParticleFilter {
+  <span class="kw">val</span> stepFunction: (State, TimeIncrement) =&gt; State = <span class="fu">stepBrownian</span>(p)
+  <span class="kw">val</span> dataLikelihood: (State, Observation) =&gt; LogLikelihood = <span class="fu">poissonLikelihood</span>(p)
+  <span class="kw">val</span> resample: (Vector[State], Vector[LogLikelihood]) =&gt; Vector[State] = multinomialResample _
+}</code></pre></div>
+<p>In order to use the particle filter on a collection of data, we must first initialise a particle cloud of size <code>n</code> using the initial parameters and sampling <code>n</code> times from a Gaussian distribution:</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">val</span> p = <span class="fu">Parameters</span>(<span class="fl">0.1</span>, <span class="fl">3.0</span>, <span class="fl">0.1</span>, <span class="fl">1.0</span>)
+<span class="kw">val</span> particles = <span class="fu">Gaussian</span>(p.<span class="fu">m0</span>, p.<span class="fu">c0</span>).<span class="fu">sample</span>(n)</code></pre></div>
+<p>Now, <code>filterStep</code> can be used on a <code>Stream</code> or <code>List</code> of data using <code>scanLeft</code>, the initial state of the particle filter is populated with <code>particles</code> and a vector of weights each equal to 1/n:</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">val</span> data: Stream[Data] = \\ A stream of data
+<span class="kw">val</span> pf = <span class="fu">PoissonPf</span>(p)
+<span class="kw">val</span> init = <span class="fu">FilterState</span>(particles, Vector.<span class="fu">fill</span>(n)(<span class="fl">1.0</span>/n), ll = <span class="fl">0.0</span>, t0 = <span class="fl">0.0</span>)
+
+data.<span class="fu">scanLeft</span>(init)(pf.<span class="fu">filterStep</span>)</code></pre></div>
+<p>The marginal likelihood of the path given the observed data and parameters can be approximated by calculating the product of the average of the weights at each time point. This pseudo-marginal likelihood is used in the [[Particle Marginal Metroplis Hastings|Streaming-MCMC]] algorithm, which can be used to calculate the full joint posterior p(x, t | y). <code>filterStep</code> will calculate this, in conjunction with <code>scanLeft</code>, however, <code>scanLeft</code> emits each successive iteration. If the goal is to simply approximate the log-likelihood of a path, a simpler solution is to use <code>foldLeft</code>:</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala">data.<span class="fu">foldLeft</span>(init)(pf.<span class="fu">filterStep</span>).<span class="fu">ll</span></code></pre></div>
+</div>
+<div id="filtering-a-stream-of-data" class="section level2">
 <h2>Filtering a Stream of Data</h2>
-
 <p>In order to filter information arriving in real-time, given we have access to the marginal posterior distribution of the parameters given the data so far, we simply apply the particle filter to each new observation arriving. However, the particle filter relies on the previous value of the particle cloud and the time difference between each observation since our models allow the possibility of irregularly observed data.</p>
+<p>This means we need to store state in the stream, let’s first consider how to construct a stream of simulated data. We can use <code>Source.unfold</code> from <a href="https://akka.io">Akka streaming</a> which allows us to construct infinite streams, as long as the function returns a <code>Some</code>. The function starts with a zero value, then passes the first value of the tuple inside the <code>Some</code> back into the function. In this way we can easily construct Markov chains as streams.</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">val</span> mod: Model = <span class="co">// a parameterised model</span>
+<span class="kw">val</span> dt = <span class="fl">0.1</span> <span class="co">// the time step for the simulation</span>
+<span class="kw">val</span> d0 = <span class="fu">simStep</span>(mod.<span class="fu">x0</span>.<span class="fu">draw</span>, <span class="fl">0.0</span>, dt, mod)
 
-<p>This means we need to store state in the stream, let&#39;s first consider how to construct a stream of simulated data. We can use <code>Source.unfold</code> from <a href="https://akka.io">Akka streaming</a> which allows us to construct infinite streams, as long as the function returns a <code>Some</code>. The function starts with a zero value, then passes the first value of the tuple inside the <code>Some</code> back into the function. In this way we can easily construct Markov chains as streams.</p>
-
-<pre><code class="scala">val mod: Model = // a parameterised model
-val dt = 0.1 // the time step for the simulation
-val d0 = simStep(mod.x0.draw, 0.0, dt, mod)
-
-val sims = Source.unfold(d0)(x =&gt; Some((simStep(x.sdeState, x.t + dt, dt, mod), x))) 
-</code></pre>
-
-<p>Now we can simulate values from any model as a stream. Now we must apply a particle filter to the stream, assuming we don&#39;t know the values of the latent variables, which of course we do because the data is simulated. In order to keep track of state, we can use a <code>scan</code>.</p>
-
-<pre><code class="scala">val n = 1000
-val t0 = 0.0
-val particleCloud = Vector.fill(n)(mod.x0.draw)
-val initState = Vector(PfState(t0, None, particleCloud, State.zero, IndexedSeq[CredibleInterval]()))
+<span class="kw">val</span> sims = Source.<span class="fu">unfold</span>(d0)(x =&gt; Some((<span class="fu">simStep</span>(x.<span class="fu">sdeState</span>, x.<span class="fu">t</span> + dt, dt, mod), x))) </code></pre></div>
+<p>Now we can simulate values from any model as a stream. Now we must apply a particle filter to the stream, assuming we don’t know the values of the latent variables, which of course we do because the data is simulated. In order to keep track of state, we can use a <code>scan</code>.</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">val</span> n = <span class="dv">1000</span>
+<span class="kw">val</span> t0 = <span class="fl">0.0</span>
+<span class="kw">val</span> particleCloud = Vector.<span class="fu">fill</span>(n)(mod.<span class="fu">x0</span>.<span class="fu">draw</span>)
+<span class="kw">val</span> initState = Vector(<span class="fu">PfState</span>(t0, None, particleCloud, State.<span class="fu">zero</span>, IndexedSeq[CredibleInterval]()))
 
 observations.
-  scan(initState)((d, y) =&gt; filterStep(y, d, mod, 200))
-</code></pre>
-
+  <span class="fu">scan</span>(initState)((d, y) =&gt; <span class="fu">filterStep</span>(y, d, mod, <span class="dv">200</span>))</code></pre></div>
 <p><code>scan</code> accepts a zero value, <code>initState</code> and a function from a single observation, <code>y</code> and the previous state <code>d</code> to calculate the state given the current observation. Using <code>scan</code> in this way, outputs the value of the state as each observation is received.</p>
-
+</div>
+<div id="example-filtering-a-single-model" class="section level2">
 <h2>Example: Filtering a Single Model</h2>
-
 <p>Here we present an example of filtering a model with a Poisson observation model. First we simulate a Poisson model with an Ornstein-Uhlenbeck state space.</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">import</span> model.{LeafParameter, GaussianParameter, OrnsteinParameter}
+<span class="kw">import</span> model.<span class="fu">SimData</span>.<span class="fu">_</span>
+<span class="kw">import</span> model.<span class="fu">POMP</span>.<span class="fu">PoissonModel</span>
+<span class="kw">import</span> model.<span class="fu">StateSpace</span>.<span class="fu">_</span>
 
-<pre><code class="scala">import model.{LeafParameter, GaussianParameter, OrnsteinParameter}
-import model.SimData._
-import model.POMP.PoissonModel
-import model.StateSpace._
-
-val p = LeafParameter(
-  GaussianParameter(-2.0, 1.0),
+<span class="kw">val</span> p = <span class="fu">LeafParameter</span>(
+  <span class="fu">GaussianParameter</span>(-<span class="fl">2.0</span>, <span class="fl">1.0</span>),
   None,
-  OrnsteinParameter(theta = 2.0, alpha = 1.0, sigma = 1.0))
-val mod = PoissonModel(stepOrnstein)
+  <span class="fu">OrnsteinParameter</span>(theta = <span class="fl">2.0</span>, alpha = <span class="fl">1.0</span>, sigma = <span class="fl">1.0</span>))
+<span class="kw">val</span> mod = <span class="fu">PoissonModel</span>(stepOrnstein)
 
 
-val times = (1.0 to 100.0 by 1.0).toList
-val sims = simData(times, mod(p))
-</code></pre>
-
-<p>The figure below shows a simulation from the Poisson model, the state space of the Ornstein-Uhlenbeck process can vary on the entire real line, the parameter space of the Poisson model is \(\mathbb{Z}^+\) as the parameter, \(\lambda(t)\), is the mean of a counting process. The log-link function is used to transform the state space to the appropriate parameter space, \(\lambda(t) = g(x(t)) = \exp(x(t))\)</p>
-
-<pre><code>## Parsed with column specification:
-## cols(
-##   Time = col_double(),
-##   Value = col_double(),
-##   Eta = col_double(),
-##   Gamma = col_double(),
-##   State = col_double()
-## )
-</code></pre>
-
-<p><img src="data:image/png;base64,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AACKaDJ3mAIAANvUsesmOjq6auOhQ4fsEwwAACivjkL/3nvvyQ8YY9evX//www/nzp1r/6gAAEAx1u26ycvLGzp06PHjx+0XEAAAKKtel0AwS09Px5mxAABNixX76AVBOHHixLx58+wcEgAAKKmOXTcWv7t6e3uHh4c786nDAABgAYdXAhDG2HvvvffTTz/pdDofH58VK1YQQo4fP37XXXdZTHnr1q1q2wGcWY27biIjI2t6CT/GgsocP358z549O3fu5Dhux44d7777blxc3C+//FK1oGdnZ1fbDuDMaiz0n3/+eSOGAeBIHh4eubm5J0+e7N69+6hRowYOHLhkyZKkpKTff/89MjJy4cKFZWVloii+8MILGzdulNv79u377LPPXr161cXFZcWKFW3atHH0mwCokXVb9KIofvnll7Vs7AM0Re3bt3/zzTc/+OCDy5cv9+zZ8+mnn37wwQcJIYMGDTp//vzEiRNHjRr1zTff7Ny509y+YcOGwMDAVatWHTt2bNGiRRs3bnT0mwCoUR1H3Vy8eHHFihUFBQXy07y8vIsXL86YMcP+gQE0nnPnzrVr1+7TTz8VRXHr1q1PPPHEm2++Kb/k6+u7YcOG/fv337x5MywszDzLhQsXzp8///jjj+NXLnB+dRxHHxcXV15eHhISkp2dPWbMmNzc3I8++qhxIgNoNGfPnl25cqUkSTzPd+nSpbi4mBAiV/CEhITIyMilS5dGRUXJLfLfkJCQ/v37f/zxx0uWLJk2bZpj4weoXR1H3ej1+hs3bnh4eAwbNmz//v0HDhxYuHDhwYMHGy0+gEYgSdLSpUsPHjzIcZxWq12yZEnr1q2nTp26aNGigICAJUuWuLi4dO7ceffu3Z988sljjz22aNGivn37zp8/Pycnx8/P79lnn42IiHD0mwCoUR2F/o477vjqq68GDBgQHR39/fffM8ZCQkJwhykAgCakjn30ixYtGj58+Pnz58ePHz969GidTte3b9/GiQwAABRR9wlTt27d8vT01Ol0W7ZsuXXrVlxcnLe3d+MEBwAADVdHob/33nvvu+++kSNH6vX6RosJAAAUVMdRN7169Vq+fHnLli0ffPDBn3/+2WQyNU5YAACglHpd6yYzM3P79u3ffvvtyZMnx40bt3r16kaIDAAAFFGv69F7e3sHBweHhYVRSvft22fvmKolSVJ5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" alt="plot of chunk unnamed-chunk-2"/> </p>
-
+<span class="kw">val</span> times = (<span class="fl">1.0</span> to <span class="fl">100.0</span> by <span class="fl">1.0</span>).<span class="fu">toList</span>
+<span class="kw">val</span> sims = <span class="fu">simData</span>(times, <span class="fu">mod</span>(p))</code></pre></div>
+<p>The figure below shows a simulation from the Poisson model, the state space of the Ornstein-Uhlenbeck process can vary on the entire real line, the parameter space of the Poisson model is <span class="math inline">\(\mathbb{Z}^+\)</span> as the parameter, <span class="math inline">\(\lambda(t)\)</span>, is the mean of a counting process. The log-link function is used to transform the state space to the appropriate parameter space, <span class="math inline">\(\lambda(t) = g(x(t)) = \exp(x(t))\)</span></p>
+<p><img src="ParticleFilter_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
 <p>Now we can use the particle filter to estimate the state space, the scala code is given here and is available in the examples in the Github repo.</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala">  <span class="kw">val</span> data = <span class="co">// poisson data</span>
 
-<pre><code class="scala">  val data = // poisson data
-
-  val p = LeafParameter(
-    GaussianParameter(6.0, 1.0),
+  <span class="kw">val</span> p = <span class="fu">LeafParameter</span>(
+    <span class="fu">GaussianParameter</span>(<span class="fl">6.0</span>, <span class="fl">1.0</span>),
     None,
-    OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0))
+    <span class="fu">OrnsteinParameter</span>(theta = <span class="fl">6.0</span>, alpha = <span class="fl">0.05</span>, sigma = <span class="fl">1.0</span>))
 
-  // declare a new filter type including the model, resampling scheme and starting time, t0
-  val filter = Filter(mod.model, ParticleFilter.multinomialResampling, t0 = 0.0)
+  <span class="co">// declare a new filter type including the model, resampling scheme and starting time, t0</span>
+  <span class="kw">val</span> filter = Filter(mod.<span class="fu">model</span>, ParticleFilter.<span class="fu">multinomialResampling</span>, t0 = <span class="fl">0.0</span>)
+  
+  <span class="co">// use the filter to return the state and credible intervals with 1000 particles</span>
+  filter.<span class="fu">filterWithIntervals</span>(data)(<span class="dv">1000</span>)(mod.<span class="fu">p</span>)</code></pre></div>
+<p><img src="ParticleFilter_files/figure-html/unnamed-chunk-3-1.png" width="672" /></p>
+</div>
 
-  // use the filter to return the state and credible intervals with 1000 particles
-  filter.filterWithIntervals(data)(1000)(mod.p)
-</code></pre>
 
-<pre><code>## Parsed with column specification:
-## cols(
-##   Time = col_double(),
-##   Value = col_double(),
-##   PredEta = col_double(),
-##   lowerEta = col_double(),
-##   upperEta = col_double(),
-##   PredState = col_double(),
-##   Lower = col_double(),
-##   Upper = col_double()
-## )
-</code></pre>
 
-<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAfgAAAH4CAMAAACR9g9NAAAC5VBMVEUAAAABAQEDAwMEBAQGBgYHBwcJCQkKCgoLCwsMDAwNDQ0ODg4PDw8QEBARERESEhITExMUFBQVFRUWFhYXFxcYGBgZGRkaGhobGxscHBwdHR0eHh4fHx8gICAhISEiIiIjIyMkJCQlJSUmJiYnJycoKCgpKSkqKiorKyssLCwtLS0uLi4vLy8wMDAxMTEyMjIzMzM0NDQ1NTU2NjY3Nzc4ODg5OTk6Ojo7Ozs8PDw9PT0+Pj4/Pz9AQEBBQUFCQkJDQ0NERERFRUVGRkZHR0dISEhJSUlKSkpLS0tMTExNTU1OTk5PT09QUFBRUVFSUlJTU1NUVFRVVVVWVlZXV1dYWFhZWVlaWlpbW1tcXFxdXV1eXl5fX19gYGBhYWFiYmJjY2NkZGRlZWVmZmZnZ2doaGhpaWlqampra2tsbGxtbW1ubm5vb29wcHBxcXFycnJzc3N0dHR1dXV2dnZ3d3d4eHh5eXl6enp7e3t8fHx9fX1+fn5/f3+AgICBgYGCgoKDg4OEhISFhYWGhoaHh4eIiIiJiYmKioqLi4uMjIyNjY2Ojo6Pj4+QkJCRkZGSkpKTk5OUlJSVlZWWlpaXl5eYmJiZmZmampqbm5ucnJydnZ2enp6fn5+goKChoaGioqKjo6OkpKSlpaWmpqanp6eoqKipqamqqqqrq6usrKytra2urq6vr6+wsLCxsbGysrKzs7O0tLS1tbW2tra3t7e4uLi5ubm6urq7u7u8vLy9vb2+vr6/v7/AwMDBwcHCwsLExMTFxcXGxsbHx8fIyMjJycnKysrMzMzNzc3Pz8/Q0NDR0dHS0tLT09PV1dXW1tbX19fZ2dna2trb29vc3Nzd3d3e3t7f39/g4ODh4eHj4+Pk5OTl5eXm5ubn5+fo6Ojp6enq6urr6+vs7Ozt7e3u7u7v7+/w8PDx8fHy8vLz8/P09PT19fX29vb39/f4+Pj5+fn6+vr7+/v8/Pz9/f3+/v7///8SCt16AAAACXBIWXMAAAsSAAALEgHS3X78AAAgAElEQVR4nO2de1wTV9r4ffd91113dbEYAUWspdQrKioKKqJSLaVFxaK1VCm0ar2jVi1WUcFLVdSiFW8IKlIxRREVjNEkZ7ft28t2991233bXt7u1v+22WsVL5Xb+/k0SkkwmcybnhDOQy/P9fALMmWeePDlfZjKZOZnphIGApFNHFwB0DCA+QAHxAQqID1BAfIDCKP4efWhTszppm1RJ26xO2pZG+tj7LfSxbQfEWwHxyoB4trQgnl9aEM8FEG8FxCsD4tnSgnh+aUE8F0C8FRCvDIhnSwvi+aUF8VwA8VZAvDIgni0tiOeXFsRzAcRbAfHKgHi2tCCeX1oQzwUQbwXES2lpEnO3iZrGRvpYv03b1EAfWu9SgpeJN9K9Dt8yBOKVMW/lEF0obOqxT2/qnQHxbGlBvPu0lIB4PoB4KyBeGRDPlhbEu09LCYjnA4i3AuKVAfFsaUG8+7SUgHg+gHgrqoqn6zHvF0/3OkA8bhWPHCjFgnjltF4insIktohHJKSxIF45bXuKlzemI7p0wWSgj70K4hXT8hTvWPVcxCsY8nvx+VqXJv8R79zpuNlIb8jPxTeN/4XfipcxxFX89Su2tIYjS58d0H3YnC01PiO+pfFNnxcv7tfWNkKv8xFvLFmdkTSsb4+u3SYdME+fWzogIm1N8fk988cGJ22/Zg8r2nrg5CXHYtU75iU9/+IyLxGP8Xqz+Ef1Yn4UHjpdPQ137lKF2dNScueO8nydiEs6aq7U0ceS0hZOCol4JnvtrmMVNecXRQx/IT7isafX1OpenPuebunkdcsGaiYXVNfpzu2fE/Hk2CERj41aVv7e1qyk2IG9g0dlvJmzYKlLh6n5n+BWvDNeu8YzrpouUK3x5w/vznvbgHSmS9pFAwbnHhiRUovSY4rQmgl5qK48u9fq41UmdLKoGl2urLuel736xPnB4XqUk12DCjdUoG1DY4cFd+vW7YlhiTVowxulm+OCgkYmhw8/dDo5uRq9GJnrXWu8M94mXlmUkniT8KZbuOEcKi/VtYoX3pcP765Gh98oQuVZS9G1ZxIuoeXpJah4WSHSZi1BB/r+Lmr0k8G9c3I1T2jiYydMjXxswIq6A0U1qGz5dtO27sFn6rpqLqKpMe+g18PS0YGg0Qjtu+r8rNo9Ow1o0RuX0brni1DhrM2oruQQQutz61Dp8WoQr5jWJv7/FcwZ2jfx1e3nmcVXZC9E7/0uaFve+ImlaHG/+Whb2ATT+a5ddShl9GG0MaUAVWStQ6a3CvRo07ITaFf6W6Vrx44c0u/ZDYKfd/ImBEUsvWhJVLU5MTS7avdzmvCg3wWn6RES78MbzBO+uFcvi1U8lXlVxaOjKZq41/acyMsYExw1femy17KyFi0ruObck7VHSg4W7du2fuW6XCvLFi3JiE3Lnzc8JqpbxNC4pJE9eiXkVAr/IJXnTIbLro50G8eNSc2en9AzYuyMhbvs80+LIstSgwYtPotQjVZWJoh3n5YG4akrlsaOSHwuNnx+dWt/XTu0PD395aysWekx4dn27r+0ckRot4ioAcNixieNGZ2cPCFuSvLgkLGzxzw1aML019YfrbNEGSvyntEMTp0zf9W2o9Z8upLdeTmLNhVXnX5nQ3rI6A1vr56XsalS8v/gNHUFKQDi3adVxtKLpzfPHaZ5duu+grV5ermuOzYtOHbz+zmvIRTR7aldyU/moje6JiHt5MkIRY8sR8WH5bb9+r1rFs2dFv9k9+79YsdFdoscnZQ2e9KgHr2HJb1aLm/Izw/gyNL+4q39py1cPiNGEzY+a5dOdve74irakrEPrQ4fO0rTb9SqVaFz9YyGjKbq0t0FJTSLgHhF2ije2m+ncmeMiIkZotHETF9eaNmOG53Em5B+2yoTGhRyDG1ZWCxMCv8DufOnTTzAbIj9AA5296ECtYqXvCgSASze6eiaNidthCY8aeneoqIDWpO9e2zidQdL0e7wkahu3HQ9qjLJdCSVeJsMsXisZMhSrUwPIHvl4la5ETjiVGJ84LSsKuKdute4a2KPlGWFZ1073iz+woZSlD1gDbpcrrhnpSReUoBZPFO1lPjX0CsVxDtbufpG5MCVl1xtmQ+6bF9ZhVLGH1YU7ka8XAUw5k4ZdcSbDW1edrR1a6td2Dt+j3TbXff2ZlQVFGRAL0w7SSXdWbzlWZRKAPHK2LbJFKE28e7WNYsh/fQnp/cLmTh37Z6ckT2ePSIReOkEKhq10LLCS3buFMBeM+aOEh8Sr+jfIl7Whw1H46lhicKW/UzeaykxzxS4bKB3BM92TCiJl6uWEhCvjES8knmzeCU/rRPX9ufMHh8yX3633IgKY2egOvEgBpJ4UrWUgHhlpOIVzDc1E9dMfdErcUmzF+Xm5q6Y1GPA9MUFx11jdHr0ep/X0YkdFyX/C67iFaulBMQr4yResdORUX4lRqhiWo+BGds2LnoxOTl5Wq7lqIzr7vcLwbvQyZMyx72k4t1VSwmIl9LcIOaO8DCYaRD/4YpBlgsHjlUcT+35cqV0Rp3T1IHnjxoOVcmnsCH/tBLuUEUxo1Lau4+kLR0q3hn7kRZs+0NulbOumi5rfFHEgMiwkLkXXFdjxxpvPFCLZi2odg0Rr/Es1VICa7wyFOLthiTiDQtD80k2reL15UY0MvIYWboZb/kmDR1+Kd6mwjZP9M8gEX8tJejxEYNGyhyAtYmvnj8Docd6nUHkUcitzwLi+cBBvGNPzwmHeN2EsdqTe7eTzlAeGD9NVz1nk7DGE6WLNisgng+eikekD+mu4mtHTyYqNRasQRX5Fcqn0ZwqAPF8UFn8lb0r06OmEdb1yhNo++Ct5r/I4l0qAPF88Fi8WwTxVa+EDEtdsovwgX51SDYyWeeRxMtUAOL5oKL4o6ma6WWEmfo185HecShGXrxsBSCeD2qJNxSM6v3qOeLsfaP3iidlxctXAOL5oI74y8v6DV1/lTCzdvkk6cbfVTyxAhDPBzXEG+b1nLzf9cid/sJFVL15K6pJLpQuIRWvUAGI54MK4vWTYyuQ9Mhd5Rn06mMZqHTSi3KLOItXrADE84G/eF3CWMsQSKNpNUKFRTpUWliJVmrWKy5DaR2DeF5wF39u5FTrV9iMR/oYTGNjtCgj9m10VvmCEM6D4xQB8Xwgi29eOin539JGd+LLpmvmtH5KM+5arfwvIiOeomAQzweyeH06LlknbVQWr00MfaXKNkEciEEUT1UwiOcDWfzGQvyXeGmjknhTbmiW6AsOW0+ziKcuGMTzgSx+yfv4Xn+MG+6LuSU8rspTMeGp/aLJS70OEgJdsaSlpL6ePpYh7b2OT3v7nrSlY66Bs3Ev/oJ+jdcvDMlwOmJzLpt2U4+998qWbU7ri2v81ZfwqTXSRnnxuuPrI8dLv+BC9R4vSksJiOeDwl79ktTU76WNMuJNOY93eyJhh6S1IJ9GvDgtJSCeD23+HH9x0qBi13EW2/rudy/eOS0lIJ4PbRVf3C/N9QzLCXT9svtNvSQtJSCeD20UfyJ0s6vR93vWIrfv8S5pKQHxfGib+MtRb8g4zbN8x1FRvExaSkA8H9ok3jQpleyWLF4+LSUgng9tEv/qULnBFnvqFMWT0lIC4vnQBvG6rHC5yzlW96xUEE9OSwmI54PH4k2b+046I6e2eD4iildKS0nAir+YSp+KAk/F14zt7zKAyhkZ8YppKQHxfPBQfGnkrOuyuvUzbV+GdRHvJi0lgSz+L2EfYBQdNOcmfmUnxhuX0ud2xTPx20KWEdbztETb12ak4t2lpSSAxf8jogb/0L3m1oLJuGoCxkPoz2XL4Il404LwA6QN/Bn7cTwn8RRpKQlc8eMHzsW4bKYQ2Ln57q9/+puGoWRXPBCvTx1C+sJznuiKBlbxdJfFA/HYvfhOK7v8E+d31mg0XW7ip7WFr9OnloFd/D9jJtYRvO/sXSERT5+WlsAV/zTOzMRHM4Vab7Tgosxx1+lTy+BWfEuzmPrm5k9fNZgIlO0XTRiMwo9mOuop4wQaG+ljGdI2qZO2mSHtvSZpi7P4VPzPLp99G2y8nReL8d9/p2H4n/JIfJOYu8LDSOBSjdOkwSD8aKLjLmWcQGMjfWzHp21qoA+tdylBKh7nJbTU9u+c+LUwOfC1Nnl3Ft90093BI8LQK8PoRGRMzHRqM2/qaauATT1mPXI3RscS7YpI/M3JnbvciP2bYjhBvH7VAXQ+Vg/ipagl/p4xtI0XQxOJf3HhfU3zxonKT4hZLoxAXQWIx2ziz2nO0QfLIhIfdBtr8K1fKYaLxB9xfE5ftA7Ey+MTJ2mGXBTEGwYqhjvEXx0QbzsnWxMidwl5EI99RLyp+8zOmcF1iuF28YYcXQG6MP8N8/2A0An5TT19FSAed+Rp2R/K8o/eVA63i38vTPhRNXcOMobHvk94j6evAsRjXzkfX5FhE3xuxzV58V5w/3j60EAWH2tFMZxhr759byPe1rSBLP6jjz768GzCWcVwxxqvfKUDEG/FJ8Rb+DFaMdwuPmmDG+/tc/94bml9UnzL5qGxz9z87oJ1yvabDqn4z3+jGG4Xn1AM4ilQV/x/xzVj7cI/ZlunbL/pkLzHx/znCsVw+vd4EG+Gp/hv9GK+FVq+iPy4pemn7Cd0t9KmJn0i/P75pdEJX9M9m/N7/Ecffan87DbxFF+MA/GYr/jyGDE15qar0wdmfyOs6X8+j0+9KfwuXoM/nEr3bEof5/K1Lk028QeHgXga1N3U/+n/cFNZnCD8u8VLUtcKv5dMmJXOKj7ahq2hafwvyOI3JIF4GtQVfyqrGf9p4B+z8IYyvHuN8PudzfjbSrpl7eL/aMPW0NL4Jlm8XuF2QSDegbrim1cNHxH38feDaz9LmLJ28JeDa+/PHDfjf+iWlW7qm045/l5vFv+oXsyPwkNHgRB25249NT/Sh965o0raux2f9pZLh7XTxY/+d8GsWbOSIix/H0/LbxXvjG2Nn1HqboWHNd6MTxzAiZ23buKJ4bWOBgXxvSpAPA0+If6XP/wcj/8wxtFAFm/aIv8FKhAvwSfEh/4ex37/L+oROG68g3gzPiH+3f/6+9aYMZMUw1vFH90M4qnwCfH4Xw+azhTdVgxvFb80HcRT4RPiZ1U/dBveKn7HLhBPhU+I3xnXLfOKm9HadO/xllAQj31EPMbfHZ4aukAxvFV8ocJtYG1fowDx2GfEP6xbEjZAMVx4zX9NK9d3I31fFsQ7o674G7+JHxV5WdRQn0A9NkMk/vDzXUa//VflpxJe83dzk86Pdu8dxJtRWXw8xh/3FzXUJ1CPzRCJn1LsZmw1pnqPt4WCeNwe4muGabOHfWcegHFz8pTsBOqxGfxvP2YLBfGYr/jCTtPwnzv9GmNNpw9xxnGh5cZvE8bEfawd12QZgLH0IC5LoB6bwV28PRTEY77iH96qx023bmP8061GfO8Rtq7xGGvzrAMwpnyJbyRQj80A8VZ8QLwrreK3WwdgLDuITyZQj80A8VZ8W7xlAMbNSVOWJFGPzeAt3hEK4rHPfI6Xo7lRzF3hYVCi0SPu0oc2NKiSlgWWtAzV1rvEdqh43CKmXniQrnllRhTa1NRCTT19qG+lbW6kj73XLG3pWPFOuNvUi0JhU499elPvjBvx4lAQjwNGvFMoiMeBIt45FMTjABEvCQXxOADEy4SCeOz/4uVCQTz2e/GyoSAe+7t4+VAQj0E8TVpKQDwfOIgnhIJ47N/iSaEgHvu1eGIoiMe+Kf7RzBExn0gbQTxbWl8Ufzqz5dPR0kYX8eTMIB77pvhPv8A3xkgbpeIVMoN47JviMf7EfHmMpp/F/CQ8ron4mcyDhwozJfxEH/rggSppH6qU9j597B2XDmuna+CIOZ6W35I77nNsXhWkd94S3WJM6W5ajxjuvMVwQ69Hj1RJ26BO2kaGtG5uP9Y+4gVqZ8lspiSbeqXMsKnHvrmpX9UnOjpF2ugsXjEziMe+KV4WEM+WFsS7T0sJiOcDiLcC4pUB8WxpQbz7tJSAeD6AeCsgXhkQz5bWP8Urh4J4DOJp0lIC4vkA4q2AeGVAPFtaEO8+LSUgng8g3gqIVwbEs6X1YfEtzWLqhYf9uifNijQ2Kc+XpqWksVGVtE3qpG1mSHvPpcM6VLzCxY8YrgHkBrj4UaP3XfzICdjUs6X14U29MyCeLa1fincTCuIxiKdJSwmI5wOItwLilQHxbGlBvPu0lIB4PoB4KyBeGRDPlhbEu09LCYjnA4i3AuKVAfFsaf1RvLtQEI9BPE1aSkA8H8ji7yXHxt1wacQg3t/FF7+BS5ZJG0E8W1pfFP/5/7W8+6a0EcSzpfVF8Rg/2/XvGDfcF3NLeFy1ct8N9ffcRTinpaS+XpW09zo+7W2XDuuYix/dasDGp6XtsMazpfXFNX7ZcfzhBGkjiGdL64viv4mLi/1M2ugQ7zYziMe+KV4WEM+WFsS7T0sJiOeDp+Ldh4J4DOJp0lIC4vngoXiKUBCPQTxNWkpAPB88E08TCuIxiKdJSwmI5wOItwLilbGKpwoF8RjE06SlBMTzAcRbAfHKgHi2tP4lni4UxGOfFi9zDRyGS8BQAtfAafS6a+C0OFEvPEwtVDQ10cXZ0lLiW2mbG+lj7zVLWzpUvDMs22TY1Pv0pt4ZEM+WFsTzSwviuQDirYB4ZUA8W1oQzy8tiOcCiLcC4pUB8WxpQTy/tCCeCyDeCohXBsSzpQXx/NKCeC4wim+gD21meB0MaVlOXbCkZfg37fi0HGAUD/gLID5AYRLfvHRS8r85F/Bo5oiYTxoioqN38s1rScm/4J3R0dER3MvN11r7Vo0OJsAkXp+OS9ZxLuB0Zsuno/+awTkrxpaUahSMjas5l9s0/hdaa6mq1CsPk/iNhfgv8ZwL+PQLfGNMzajUtG/45rWkVKPghil3OZfb0vim1tq3atRLgEn8kvfxvf7cS/hkeO0HZ/B7z/HNakmpRsH73sPcy12vtfatOh0sC9savxd/wfsfsiV33Ofm3w/6ck5sTqlCwS0jHllz80wqiLeUqkYHE2ASf/UlfGoN5wJqZzVivKkIX0/hm9eSUoWC/zRThXIF8ZZS1ehgAmx79UtSU7/nXMCqPtHRKbeSRo/9im9eS0oVCt5wojU3z6SCeEupanQwAfgcH6CA+AAFxAcoID5AAfEBiv+JT+hk4egvO7oQ78b/xNffvt374u3b/zjd0YV4N/4nXqCPEeMvo/BXcau6x384oksOxig6aM7Nji7Lq/Br8f9R8mOM5psPOv34Q/eaWwsmd3RZXoVfiw9qxGsXYxx2o2wmxvc7MwyD8n/8WnwUxuvzhckb+Z01Gk0X2NaLCAzxRzMxbr7RrqNYvZ3AEP9tsPF2XmxHl+VVBIZ4XNu/c+LXHV2WV+GX4gH3gPgABcQHKCA+QAHxAQqID1BAfIAC4gMUEB+ggPgABcQHKCA+QAHxAQqID1BYxDNc5ovxGk4smZtZbtXS8IghmOUCbV7SGZ4D4h2AeALe8VpBPBdAvAMQT8A7XiuI5wKIdwDiCXjHawXxXADxDkA8Ae94rSCeCyDeAYgn4B2vFcRzAcQ7APEEvOO1gngugHgHIJ6Ad7xWEM8FEO8AxBPwjtcK4rnAKh7RBoN4cRkswSBeHhDPBRDvAMQTAPEiQDwBEC8ugyUYxMsD4rkA4h2AeAIgXgSIJwDixWWwBIN4eUA8F0C8AxBPAMSLAPEEQLy4DJZgEC8PiOcCiHcA4u00N4i5IzwMDWpwR5WsAg/uq5VZtZJlMre/eGdgjRfh32u8MyBeBIgnAOLFZbAEg3h5QDwXQLwDEE8AxIsA8QRAvLgMlmAQLw+I5wKIdwDiCYB4ESCeAIgXl8ESDOLlAfFcAPEOQDwBEC8CxBMA8eIyWIJBvDwgngsg3gGIJwDiRYB4AiBeXAZLsJeKpzUP4sVlsASDeHlAPBdAvAMQTwDEiwDxBEC8uAyWYBAvD4jnAoh3AOIJgHgRIJ4AiBeXwRIM4uUB8VwA8Q5APAEQL8Jvxf/U26UJxIvwW/FLf+XSBOJF+Kv4TzKjhJ8tzWLqhYfJ1EzHz5Rx9sy0ND5iCP75IUNwQyNDMEvJbe2MdhTfOPlfZvGND8TcFh56/QM66inj7Jlpuc+Suf4uQ/C9+wzBLCW3tTNa2k/83iM4yqURNvUi/HRT/3LSlF89I20E8SL8VLwArPGK+K94V0C8CBBPAMSLy2AJBvHygHgugHgHIJ4AiBcB4gmAeHEZLMEgXh4QzwUQ7wDEEwDxIkA8ARAvLoMlGMTLA+K5AOIdgHgCIF5Eh4m/mMqSjAiIdwDiCYB4ER0p/i9hH2AUHTTnJn5lJ8Ybl7JktwHiHfiK+H9E1OAfutfcWjAZV03AeAj15WnEsIunfBoQLy6DJdid+PED52JcNhPj+52b7/76p79pmliy2wDxDtQWjxBV77kT32lll3/i/M4ajabLTfy0tvB1lkrsgHgHKotHiM68O/FP48xMfDRT6IkbLbgoc9x1lkrsgHgH6opHdtqWWdi5+2eXz74NNt7Oi8X477/TsPSHAxDvQFXxCEnME/uR4uNcXkJLbf/OiV8LkwNfYynEgZP4ppuKQ/dBvAhG8Qg5m1dY9dmO3I3RMYXbEYm/OblzlxuxfyPHgngRrSXT7a81IAIKmemqMIZ6eMthkfgXF97XNG+cqPAsGMTbsZZMub9mIImXW5ilM85pzjFEixGJD7qNNfiW65dknSoKTPEyr/oe3e6adbuuJB5JF2j3kzRDLgriDQPJsQErXiLIMqWTynOxKJqtKF66TLuLN3Wf2TkzuI4cG6Di5W3p5Jtb+0fSRCneOtn+p2V/KMs/elMhNiDFk2yRxcugLF6Ct56P9y/x4jVORjxZjx+Jj7VCjvVD8a19bZ1wFa+gx4/Ef/TRRx+eTTgrntvcKOau8DAYDI1UNNCFOTLT0sCS+eEDxdkGO0rzZLniZr7nuHaGyuIt/BgtnpK7Bg7lRXAa2nbZFzJNLJndXAPH5ECYamxybSaiowmyYWAJZr8Gzle/jY+Pf+O7C20R//lvyLF+t6l32sKaN/UMG2Rv2tR/lWD++cdslmUk7/Ex/7mCHOtv4qU9bjQx6Ok48d/oxXyLbeKzn9DdSpua9Aldzzi/x3/00ZcKp2n8S7xrj/uI+PIYMTVCy1ddExIS9gtr/J/P41Nv0vVMwH6ck+lxdcXr1uylC27Dpv67xUtS19ItYxcfbYMc60/i5XpcTfFXloXHRTx9libYY/FZeEMZ3r2Gbhm7+D/aIMf6qHjbkXRRs3yPcxevt/1h2NMr8RCqmxfyOsVTeCDevFef9v3g2s8Spqwd/APVMtJNfdMpcqzviUeG6+IutbUS4Cm++q1Zcb2CCluntoZa/yoflnKdvIyA3tABB3D+d8GsWbOSIsixviXe0pEG5X52hpv4y4tHBk9YvP307tASy/SmsHdb59TFTbzqiKs+77zc1UWa7oOTf8/Scx4j/jg3b93EE8NrybFeL942ms1Bh4jP7zN1+xXLX+sjtMJavKLXYfs8/aQxdba/94QGRyTl2Pf4DXn9xp+4cGDdn1h6zmNE4n/5w8/x+A9jyLHeLt7Sfc5b8g4Qr02M3GOfmD/ocEavEScMdQXFCF0qNqBK/fODTlvnrQ8tNJSuHxlfI/x9dX36iODB1veDdt/Uh/4ex37/L98dgSNnof3F6yMzRLNM00LnlAlllMdNRNeDB1SjMb2OLAvZZJ4zP8LyPnB9Vr8S3Yrw+CWF51qXaXfx7/7X37fGjJlEjvVa8WQ9Kou/lpt0CZmXOll0Hl2yLL48zinMZN6SF1dbizH/OKlDCV3HLpwQOkSLLliqyw0JH19s2ve+dYED8/7A0nMeI96r/9eDpjNFt8mx3ileUY8q4nVHtRbxByqOjc24bHoi7jyaFrMbLYrKFzbnYUdd4neESA7dVEx5MT6uHM3vPhddvngB7Ro/DtUM1+jRuKiDaHWmwgdqjojEz6p+qBzrheLdOeIvviYlqltkeDnSGeJ7hkRFR/dac6bAurtmKjqEtg+NQ1WrliP9kMgLaGHGcXRq5XZ0sMT1kG3t6kJUK1S3rluasECZeXGETpWYM7X7pn5nXLfMK0q+vE+8W01tEH+xDp1etwPVLN+AUOUlI9JdqkM1e7cOSR6RiFYGTyw1JURfFMKKY4bsdyy0s/tyVJa6CpkOlhpRwcKTKDfZvLYrHKt3ndUBQ6++Ozw1dAE51tvEU7hUFm9AV1PjL6OZr1XZxV/elIPQyKgKlNRtLdqZshZVpc9A6KluJSi560pUMCx8dt22HQil9DqYNvSiZSnThl6bLX8cKDOgZ1+mtKtAB4h/WLckbAA51svEC6Uce3p+tYfi9ag8+nGE1uy4ivaln0aZo7ahLQNfQJWJmcJaXHIV6eS2+xcGz25tzu7R6l3gcOjbwn5eWkREcEzYJfky3NoWwS7+xm/iR0VeFjXUJ7gdmyESf/j5LqPf/qtCfu8SL+wjJfd6PUWTdlKhE0niy+PGIt2e0wc35tZaG0r3nkHaQ+8pCSlbPi74Jfu/Q+5Fx5z9IfvOjxp/CZ3ffYhQhlJeKR6Ij8f44/6iBkG8u7EZIvFTipXGVmMvE49QTs+sywi9nxmSUkHsRFnxpnJ0bvXVkjm9ggcnTdC8cNzWTti5u255IzgY1/v5PNHmxelzfGFoxMtKcttBfM0wbfaw714anfD1zclTshPcjs3w4Hw8nXmVxLd+MhZ4vV+r70uv9EzbkpuzbHnuhtMuPW4Wb6w6tO9gSaVA+btb1+QVDhpysfC1IeEvl5ojKjN7Pd3qU178hZFBT85cn9Bntd6p2fkAzu4CRZdcxRd2mob/3OnXGGs6fYgzjgstN36bMCbuY+24puI1+MOpSw/isgS3YzN8TDyyi8+OrLR31fmMSckz09OTp4TucerC2oLU4TwJ4YUAAAxVSURBVMOj+gUFD4iJjuoVFhYWMSQ+dmK/bn2DYl7aZZdxZVavLZY/ZMWfipytP7QoYZn0SF3HjcB5eKseN926jfFPtxrxPfOAA/Maj7E2Dy+ZMCt96pQv8Y0Et2MzfEq8pV9MZxP7jZud2v99mT7bE7rBMVGT8Fjsoj1Fx8pqbC1GVBeSVIdqyyTW3nli4vIdJ6+LxVefNFozhq2S1+NNgy1bxW/H72zG31YuO4hPJrgdm+E74m39kt9rXunWRenye/PH+iy2d/aQyJNo/dJTSLtuOyoe+yqqie2pR5dlF6tbkRYXERy/8F2zTlNxxuiw7n1Cp65b91zfXrsIerxS/P2Z42b8z81JU5YkuR2b4Svibb1S+Vy/fUq9dqb/84IS3fp008aQ5VfQurQD6M0p+ejitk3ItOOc0pLo3KYXBgQNfSHj8Sfm7agwoNNvJCXlHDOSor1JvCd4v3hRl5h2T9TMvqTci7Vjw1KQLimnIqwYsR+5u7x3UdZhqkP2IJ4AL/GODimZ12/Aylr7Xr0cx5NnoMpEzZvnkSk+y9LjHTICxwUQr5DZBafeOJ4d1WdOsdkMSXzOsIXo2HKt8NeB+OCnxg29ZulxLxPv+sJcCXDxtm4wvbNsYdZLUb3Ti1rfbuXEX161A5UXOfb3rh1cav2Qr7p4calkDM6dphwc2OJbO+HahiGRL8zJml/k2MmSii9/6zhalHiQ0OMqi5eUK1mj7fNcOsM5l3NzAIoXdZVFRNHs8JFbpSu4WHxxxhk0Z/J+RIRGvP0JncQ7VSKzyD1M7giXPpLvDKl2585QGYL4RzNHxLgc4VVZvNRZdu+nskpcO90u/ug1lDyvSlmqe/G2EpBDvHKtSFQyLb5za5LTmS2fjpY2qiteIuT9UWNKZU3ZxI8JP+VOqrJ4aRHINy5bzgmC+E+/wDfGSBvVFC+1UtQng7D3bhZ/KbMSnaT5jKQg3rUKEG/mE/NXKx7Vi/lReOgE6mn4iSrKllnnzJX5vbbqCFyp0+kmTC0nzXamrk62Wb6KO3dZSmZ5fWyd4dKieIVhvuJbcsd97tKo3hov+VB8bdpT8qfYLx64ijKe2ID0snOp1niFKmCNx7h2lszXFtQSb/lsdNoxkOZCbEKtq0OT8JYfPqgCHTl21XUmCcvXpN0JtwHiMV7VJzo6RdrooXh3axoyi695XDN+j2Wv2rS572yZt+/ayL6XkPnTvNIhWwmO78dT1QziCdj3vWmCW1+riwpnWpt1pokzr6yKHDh356WjowYUIhcKr6KTrR+23Im3p7VU4S3Xq1crs8eoK15eiw1Hq27ZEOFt21iYOTIoLEdG7PP9HG8EiuIduVurAPEE2iBe2b/zbVhk3TgoCi23/QvUuSxQrUWlor05BfEyVYB4Am0Rr2i+geDdtrhoumLD43lEmSg/ZI3TNFG8bBUgnoDn4gldbUNBvBNHng8PnbSaMLN63RZULhk3LyeeXAWIJ9Am8UrmFXfBTqQnzlt/qKTkdMGo8AXCXpvsye1DpWhdouuOnox4chUgnoRK4hUHnewaG5qZl500MCoqbPgGy7u3nPiFEfmyS7uIVyoZxJPwSLzzRyYZkIL4umcj17obpG7avA5dvCa/vMl5OIsyIJ6EKuKRgvjyQUmuQ5yl4gsGvENY3C6ermQQT6KN4mX7HxHE7x83ZWZGyCqZcS5O4rXrkFHhbKpFPG3JIJ6Ex+IRSXzrDFfxh0NXbViedUROplh8dc90xdETgnj6kkE8ibaKl0qw+3ERf7L3FqJMm3hD/lTSl11sz4W86oaDtGWwBPukeIcksfj33iqqPNnnTaJQi3jdttXIkLiGfMa19SlAPBfaLJ40KlEk/nLU2GGhXVeQvaPKnCxUM3Y61VF4EM8FTuJdRTkkGhOnIYUvIJxdsx4dSVH+frl4uwLiueCZeCSnmiT+lWGKIyd2Td3i7mspTlWAeC54KN49dvE7eitcnn93suXDnZJ4aRUgngvqij+XNydWc4AUUYrq+m1FyuJdqwDxXFBTfF12z8T5O0nXI9P2HmKybRdI4uWqAPFcUE+8YW34FPLlqA6bkOj7EgTxslWAeC6oJd7w1pMj3iXPTu1zRjwpL16+ChDPBXXEGzf3j95J/O6pvg7tdR5hJSeeVAWI54Ia4k1bBg7ZRj7evuPJ5dImV/HkKkA8F1QQf3jQ4K0mmZM0+ot6VLKmCB10HVUjFa9UBYjnAn/xxaG55o28s3j9umtoUNBetPbZnXLLOItXrgLEc4G7+EOhmy2/DdcLWi8Se1lrMA2Oq1IajCUS77YKEM8F3uJt3pFhb+RCdKhrBEI9QsrRecWFHOIpqgDxXOArvjxdYzvbYjCv4YbLrt+PUBJPUwWI5wJP8YcTQ162H5c/SadcJJ6yChDPBX7i62aHrRDJHraJSTx9FSCeC8riW5rF1AsPE4mdj0+pEk1Wjb5GDHXBkpmWpgaG4J8fMgQ3NjEEs5TczFKyTOYOEN8k5q7wMMpTPPbxbc4tBkKkFHtmWhobGIJ/fsiSuZEhmKXkJpaSZTK3v3hnCJt6g3bvxN4rnAdbVMjcak0GcWZaYFPPhbaKv7Y4Kihk6KIrkvfs8fNpxDtlpgXEc6GN4osGjDnocsctPTK+UudevCQzLSCeC20Sr08N3+h6Du6g5TbJ7sS7ZKYFxHOhLeKvjE2U+/LDfMt9YZTFy2SmBcRzoQ3iL8cmKVxvjuWCJSDe48we47l47ZAZcjds2bFaWTwxMy0gngseijcWJvXIkhticym8UEG8UmZaQDwXPBJvyI0csKJGziwy2QbasVypBsR7nNljPBBv2vJUzB75AXUnc+x/uoh3l5kWEM8FZvGmgsGDthPGUZ4JkYq3LOf+xBuI9zSzx7CK3zJw0GbCTfiqjEh0vwiDu7VcmpkWEM8FVvGLtpJGTW8Kc/quFMsFS0C8x5k9hs/5+IVxm9BG5xtBgXhxGSzBXi1efHHZ8vmo8m2XuwYZGLyDeI8ze4xn4s/2iEamY4Ls6whd7J0jlQ7ipWWwBHuzeHRNh85E9UeoX+gRVC7nHRlYqgDxnmb2GI/E6+3nZvSVpKtdqPZaQTwXPBK/OY5g24F6rxXEc8Ej8anr3XoH8U5lsAR7sXi39wPCIN65DJZg7xXv5n6urbcBYqkCxHua2WM8EG/oexTEB5z4ot3VJUPdawfxzmWwBHun+IWx+YhwkkasHcQ7l8ES7J3iKTbyVkC8uAyWYJ8T7xwM4sVlsAT7jnjZYBAvLoMl2CfEk4NBvLgMlmCvF68cDOLFZbAEd6j45qWTkv8tbXQW7yYxiBeXwRLcoeL16bhknbRRLN5tYhAvLoMluEPFbyzEf4mXNraKp0sM4sVlsAR3qPgl7+N7/YWC74u5dZ+BuyzBLJnv1bNUcYchuP4eQ3B7dkZL+4nfuBd/IbvGUwNrvLgMluAOXeOvvoRPrZE2esdrBfFcIO3VL0lN/V7a6B2vFcRzgfVzPDUgXlwGSzCIlwfEcwHEOwDxBLzjtYJ4LoB4ByCeAFP5TBdgZcncwpK5meVyoM0sB0q8ozM8h0U84EeA+ACFXrzsmdq282jmiJhPGiKio3fyzmxJqkrVO6OjoyPUqDlfa+1mlfpaDL142TO1bed0Zsuno/+awT8xtiRVqWpsXM2/5qbxv9BaC1arahH04mXP1LadT7/AN8bUjEpN+4Z3ZktSlapumHKXf80tjW9qrd2sUtVi6MW3nqnlzyfDaz84g997jndeS1KVqt73Hlaj5vVaazer1tcOGNZ4uTO1bacld9zn5t8P+vLPLSRVp+qWEY+s6TnnFcRbClapr8XQi5c9U9t2amc1YrypCF9P4Z3ZklSdqv80U52aBfGWglXqazEMe/VyZ2rbzqo+0dEpt5JGj/2Kd2ZLUnWq3nCiNT3nvIJ4S8Eq9bUY+BwfoID4AAXEByggPkAB8QGKP4pP6GTh6C87uhBvxh/F19++3fvi7dv/ON3RhXgz/iheoI8R4y+j8Fdxq7rHfziiSw7GKDpozs2OLsuL8HPx/1HyY4zmmw86/fhD95pbCyZ3dFlehJ+LD2rEaxdjHHajbCbG9zurckNu38TPxUdhvD5fmLyR31mj0XSBbb2dQBF/NBPj5htqfO3URwkU8d8GG2/nxXZ0WV5EoIjHtf07J37d0WV5EX4qHnAHiA9QQHyAAuIDFBAfoID4AAXEByggPkD5/8Nuq3XmYbd9AAAAAElFTkSuQmCC" alt="plot of chunk unnamed-chunk-3"/> </p>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
 
 </body>
-
 </html>

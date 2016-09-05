@@ -1,206 +1,394 @@
 <!DOCTYPE html>
-<html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 
-<title>Forward Simulation</title>
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
 
-<script type="text/javascript">
-window.onload = function() {
-  var imgs = document.getElementsByTagName('img'), i, img;
-  for (i = 0; i < imgs.length; i++) {
-    img = imgs[i];
-    // center an image if it is the only element of its parent
-    if (img.parentElement.childElementCount === 1)
-      img.parentElement.style.textAlign = 'center';
+
+
+
+<title>Simulating from a Model</title>
+
+<script src="site_libs/jquery-1.11.3/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/readable.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+
+
+<style type="text/css">code{white-space: pre;}</style>
+<style type="text/css">
+div.sourceCode { overflow-x: auto; }
+table.sourceCode, tr.sourceCode, td.lineNumbers, td.sourceCode {
+  margin: 0; padding: 0; vertical-align: baseline; border: none; }
+table.sourceCode { width: 100%; line-height: 100%; }
+td.lineNumbers { text-align: right; padding-right: 4px; padding-left: 4px; color: #aaaaaa; border-right: 1px solid #aaaaaa; }
+td.sourceCode { padding-left: 5px; }
+code > span.kw { color: #0000ff; } /* Keyword */
+code > span.ch { color: #008080; } /* Char */
+code > span.st { color: #008080; } /* String */
+code > span.co { color: #008000; } /* Comment */
+code > span.ot { color: #ff4000; } /* Other */
+code > span.al { color: #ff0000; } /* Alert */
+code > span.er { color: #ff0000; font-weight: bold; } /* Error */
+code > span.wa { color: #008000; font-weight: bold; } /* Warning */
+code > span.cn { } /* Constant */
+code > span.sc { color: #008080; } /* SpecialChar */
+code > span.vs { color: #008080; } /* VerbatimString */
+code > span.ss { color: #008080; } /* SpecialString */
+code > span.im { } /* Import */
+code > span.va { } /* Variable */
+code > span.cf { color: #0000ff; } /* ControlFlow */
+code > span.op { } /* Operator */
+code > span.bu { } /* BuiltIn */
+code > span.ex { } /* Extension */
+code > span.pp { color: #ff4000; } /* Preprocessor */
+code > span.do { color: #008000; } /* Documentation */
+code > span.an { color: #008000; } /* Annotation */
+code > span.cv { color: #008000; } /* CommentVar */
+code > span.at { } /* Attribute */
+code > span.in { color: #008000; } /* Information */
+</style>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
   }
-};
-</script>
-
-
-
+</style>
 
 
 <style type="text/css">
-body, td {
-   font-family: sans-serif;
-   background-color: white;
-   font-size: 13px;
-}
-
-body {
-  max-width: 800px;
-  margin: auto;
-  padding: 1em;
-  line-height: 20px;
-}
-
-tt, code, pre {
-   font-family: 'DejaVu Sans Mono', 'Droid Sans Mono', 'Lucida Console', Consolas, Monaco, monospace;
-}
-
 h1 {
-   font-size:2.2em;
+  font-size: 34px;
 }
-
+h1.title {
+  font-size: 38px;
+}
 h2 {
-   font-size:1.8em;
+  font-size: 30px;
 }
-
 h3 {
-   font-size:1.4em;
+  font-size: 24px;
 }
-
 h4 {
-   font-size:1.0em;
+  font-size: 18px;
 }
-
 h5 {
-   font-size:0.9em;
+  font-size: 16px;
 }
-
 h6 {
-   font-size:0.8em;
+  font-size: 12px;
 }
-
-a:visited {
-   color: rgb(50%, 0%, 50%);
-}
-
-pre, img {
-  max-width: 100%;
-}
-pre {
-  overflow-x: auto;
-}
-pre code {
-   display: block; padding: 0.5em;
-}
-
-code {
-  font-size: 92%;
-  border: 1px solid #ccc;
-}
-
-code[class] {
-  background-color: #F8F8F8;
-}
-
-table, td, th {
-  border: none;
-}
-
-blockquote {
-   color:#666666;
-   margin:0;
-   padding-left: 1em;
-   border-left: 0.5em #EEE solid;
-}
-
-hr {
-   height: 0px;
-   border-bottom: none;
-   border-top-width: thin;
-   border-top-style: dotted;
-   border-top-color: #999999;
-}
-
-@media print {
-   * {
-      background: transparent !important;
-      color: black !important;
-      filter:none !important;
-      -ms-filter: none !important;
-   }
-
-   body {
-      font-size:12pt;
-      max-width:100%;
-   }
-
-   a, a:visited {
-      text-decoration: underline;
-   }
-
-   hr {
-      visibility: hidden;
-      page-break-before: always;
-   }
-
-   pre, blockquote {
-      padding-right: 1em;
-      page-break-inside: avoid;
-   }
-
-   tr, img {
-      page-break-inside: avoid;
-   }
-
-   img {
-      max-width: 100% !important;
-   }
-
-   @page :left {
-      margin: 15mm 20mm 15mm 10mm;
-   }
-
-   @page :right {
-      margin: 15mm 10mm 15mm 20mm;
-   }
-
-   p, h2, h3 {
-      orphans: 3; widows: 3;
-   }
-
-   h2, h3 {
-      page-break-after: avoid;
-   }
+.table th:not([align]) {
+  text-align: left;
 }
 </style>
-
 
 
 </head>
 
 <body>
-<p>In order to test inference algorithms such as the particle filter and the PMMH algorithm, it is useful to simulate data from models. A partially observed Markov process (POMP) model has an observed layer, and hence an observation distribution, along with a linking function (which translates the latent variables into the parameter space of the observation distribution). There is an associated latent layer which isn&#39;t observed and controls the observations of the process, the latent layer is a Markov process, meaning each future realisation of the process is independent of the past realisations given the present realisation. The observation at time <code>t</code> is dependent on the latent state at time <code>t</code>. </p>
 
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img {
+  max-width:100%;
+  height: auto;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+</style>
+
+
+<style type="text/css">
+/* padding for bootstrap navbar */
+body {
+  padding-top: 66px;
+  padding-bottom: 40px;
+}
+/* offset scroll position for anchor links (for fixed navbar)  */
+.section h1 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+
+.section h2 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+.section h3 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+.section h4 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+.section h5 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+.section h6 {
+  padding-top: 71px;
+  margin-top: -71px;
+}
+</style>
+
+<script>
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark it active
+  menuAnchor.parent().addClass('active');
+
+  // if it's got a parent navbar menu mark it active as well
+  menuAnchor.closest('li.dropdown').addClass('active');
+});
+</script>
+
+
+<div class="container-fluid main-container">
+
+<!-- tabsets -->
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+</script>
+
+<!-- code folding -->
+
+
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Composable POMP Models Documentation</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="SimulatingFromAModel.html">Simulating Data</a>
+</li>
+<li>
+  <a href="AddingACustomModel.html">Adding A Model</a>
+</li>
+<li>
+  <a href="ParticleFilter.html">Particle Filter</a>
+</li>
+<li>
+  <a href="StreamingMCMC.html">MCMC</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div class="fluid-row" id="header">
+
+
+
+<h1 class="title toc-ignore">Simulating from a Model</h1>
+
+</div>
+
+<div id="TOC">
+<ul>
+<li><a href="#simulating-the-latent-state">Simulating the Latent State</a><ul>
+<li><a href="#simulating-generalised-brownian-motion">Simulating Generalised Brownian Motion</a><ul>
+<li><a href="#simulating-with-irregular-timesteps">Simulating with irregular timesteps</a></li>
+</ul></li>
+</ul></li>
+<li><a href="#simulating-from-a-fully-specified-model">Simulating from a Fully Specified Model</a><ul>
+<li><a href="#simulate-from-a-single-model">Simulate from a single model</a></li>
+<li><a href="#simulating-from-a-composed-model">Simulating from a Composed Model</a></li>
+<li><a href="#simulating-from-the-log-gaussian-cox-proces">Simulating from the Log-Gaussian Cox-Proces</a></li>
+</ul></li>
+<li><a href="#simulating-from-a-model-as-a-stream">Simulating from a Model as a Stream</a><ul>
+<li><a href="#practicalities-of-working-with-streaming-data">Practicalities of working with streaming data</a></li>
+</ul></li>
+</ul>
+</div>
+
+<p>In order to test inference algorithms such as the particle filter and the PMMH algorithm, it is useful to simulate data from models. A partially observed Markov process (POMP) model has an observed layer, and hence an observation distribution, along with a linking function (which translates the latent variables into the parameter space of the observation distribution). There is an associated latent layer which isn’t observed and controls the observations of the process, the latent layer is a Markov process, meaning each future realisation of the process is independent of the past realisations given the present realisation. The observation at time <span class="math inline">\(t\)</span> is dependent on the latent state at time <span class="math inline">\(t\)</span>.</p>
+<div id="simulating-the-latent-state" class="section level1">
+<h1>Simulating the Latent State</h1>
+<p>The state space of partially observed Markov process (POMP) models are a type of continuous time Markov processes called <a href="https://en.wikipedia.org/wiki/Diffusion_process">diffusion processes</a>. These processes are governed by stochastic differential equations (SDE) and can be simulated recursively from an initial value; since the Markov property ensures the process is only dependent on the the previous realisation of the state.</p>
+<div id="simulating-generalised-brownian-motion" class="section level2">
+<h2>Simulating Generalised Brownian Motion</h2>
+<p>To simulate generalised Brownian motion, governed by the following SDE:</p>
+<p><span class="math display">\[\textrm{d}X(t) = \mu \textrm{d}t + \sigma \textrm{d}W(t),\]</span></p>
+<p>we can use the provided function <code>simSdeStream</code>:</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">val</span> p = <span class="fu">BrownianParameter</span>(mu = <span class="fl">0.1</span>, sigma = <span class="fl">1.0</span>)
+<span class="kw">val</span> initialState = <span class="fu">LeafState</span>(<span class="fu">Gaussian</span>(<span class="fl">6.0</span>, <span class="fl">1.0</span>).<span class="fu">draw</span>)
+
+<span class="kw">val</span> sims = <span class="fu">simSdeStream</span>(
+    x0 = initialState, t0 = <span class="fl">0.0</span>, 
+    totalIncrement = <span class="fl">300.0</span>, precision = <span class="dv">1</span>, <span class="fu">stepBrownian</span>(p)).<span class="fu">toVector</span></code></pre></div>
+<p>First we specify the parameters needed for the for the generalised Brownian motion solution <code>stepBrownian</code>, then we specify the <code>initialState</code>. The function <code>simSdeStream</code> requires the initial time, <code>t0</code>, the total time increment, <code>totalIncrement</code>, the precision, which is translated into a timestep <code>dt = math.pow(10, -precision)</code> and the step function. This will simulate generalised Brownian motion on an even grid.</p>
+<div id="simulating-with-irregular-timesteps" class="section level3">
+<h3>Simulating with irregular timesteps</h3>
+<p>Step functions can be used to simulate on an arbitrary grid, there is a function provided which accepts a list of times, <code>List[Time]</code> which can be used to simulate realisation of a diffusion process with irregular timesteps. <code>Time</code> is a synonym for <code>Double</code>.</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">val</span> p = <span class="fu">BrownianParameter</span>(mu = <span class="fl">0.1</span>, sigma = <span class="fl">1.0</span>)
+<span class="kw">val</span> x0 = <span class="fu">LeafState</span>(<span class="fu">Gaussian</span>(<span class="fl">0.0</span>, <span class="fl">3.0</span>).<span class="fu">draw</span>)
+<span class="kw">val</span> times: List[Time] = (<span class="fl">63.0</span> to <span class="fl">250.5</span> by <span class="fl">0.5</span>).<span class="fu">toList</span>
+
+<span class="fu">simSdeIrregular</span>(x0, times, <span class="fu">stepBrownian</span>(p))</code></pre></div>
+</div>
+</div>
+</div>
+<div id="simulating-from-a-fully-specified-model" class="section level1">
+<h1>Simulating from a Fully Specified Model</h1>
 <p>In order to add additional structure to the model, there is a linear transformation function, <code>f</code> which can be used to add seasonality to the latent variables. The model is represented in the DAG below:</p>
-
-<h2>Forward Simulation</h2>
-
-<p>Here, we simulate from a model with a Bernoulli observation distribution, the parameter of the Bernoulli distribution is <code>p</code>, a probability which must lie between zero and one. The linking function for the Bernoulli model is the logistic function, <code>1.0/(1 + exp(-x))</code>. The parameters are represented by a <code>LeafParameter</code>, this is made clear when [[composing models|Composing-Models]], as parameters of two models combine to form a <code>BranchParameter</code> and a binary tree. </p>
-
+<div class="figure" style="text-align: center">
+<img src="SimulatingFromAModel_files/figure-html/bigdag-1.png" alt="Representation of a POMP model as a Directed Acyclic Graph (DAG)" width="672" />
+<p class="caption">
+Representation of a POMP model as a Directed Acyclic Graph (DAG)
+</p>
+</div>
+<div id="simulate-from-a-single-model" class="section level2">
+<h2>Simulate from a single model</h2>
+<p>Here, we simulate from a model with a Bernoulli observation distribution, the parameter of the Bernoulli distribution is <code>p</code>, a probability which must lie between zero and one. The linking function for the Bernoulli model is the logistic function, <code>1.0/(1 + exp(-x))</code>. The parameters are represented by a <code>LeafParameter</code>, this is made clear when [[composing models|Composing-Models]], as parameters of two models combine to form a <code>BranchParameter</code> and a binary tree.</p>
 <p>The <code>LeafParameter</code> is made from a parameter representing the initial state, an optional scale parameter for observation densities which require this (Normal, Students-T etc) and the parameters of the Markov transition kernel.</p>
-
 <p>The model is declared unparameterised, as a function from <code>Parameters =&gt; Model</code>, it is paired with a step function representing the solution to a Stochastic Differential Equation, in this case, the <a href="https://en.wikipedia.org/wiki/Ornstein%E2%80%93Uhlenbeck_process">Ornstein-Uhlenbeck Process</a>.</p>
-
-<pre><code class="scala">val p = LeafParameter(
-    GaussianParameter(6.0, 1.0),
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">val</span> p = <span class="fu">LeafParameter</span>(
+    <span class="fu">GaussianParameter</span>(<span class="fl">6.0</span>, <span class="fl">1.0</span>),
     None,
-    OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0))
-val mod = BernoulliModel(stepOrnstein)
+    <span class="fu">OrnsteinParameter</span>(theta = <span class="fl">1.0</span>, alpha = <span class="fl">0.05</span>, sigma = <span class="fl">1.0</span>))
+<span class="kw">val</span> mod = <span class="fu">BernoulliModel</span>(stepOrnstein)
 
-val times = (1.0 to 100.0 by 1.0).toList
-val sims = simData(times, mod(p))
-</code></pre>
-
+<span class="kw">val</span> times = (<span class="fl">1.0</span> to <span class="fl">100.0</span> by <span class="fl">1.0</span>).<span class="fu">toList</span>
+<span class="kw">val</span> sims = <span class="fu">simData</span>(times, <span class="fu">mod</span>(p))</code></pre></div>
 <p>Note that any list of times can be supplied to <code>simData</code>, simulation and inference supports irregular observation times.</p>
-
+</div>
+<div id="simulating-from-a-composed-model" class="section level2">
+<h2>Simulating from a Composed Model</h2>
+<p>A composed model is represented in the directed acyclic graph below:</p>
+</div>
+<div id="simulating-from-the-log-gaussian-cox-proces" class="section level2">
 <h2>Simulating from the Log-Gaussian Cox-Proces</h2>
-
 <p>The Log-Gaussian Cox-Process must be simulated from using the <code>simLGCP</code>.</p>
-
-<pre><code class="scala">  val params = LeafParameter(
-    GaussianParameter(1.0, 1.0),
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala">  <span class="kw">val</span> params = <span class="fu">LeafParameter</span>(
+    <span class="fu">GaussianParameter</span>(<span class="fl">1.0</span>, <span class="fl">1.0</span>),
     None,
-    OrnsteinParameter(1.0, 0.1, 0.4))
+    <span class="fu">OrnsteinParameter</span>(<span class="fl">1.0</span>, <span class="fl">0.1</span>, <span class="fl">0.4</span>))
 
-  val mod = LogGaussianCox(stepOrnstein)
+  <span class="kw">val</span> mod = <span class="fu">LogGaussianCox</span>(stepOrnstein)
 
-  val sims = simLGCP(0.0, 3.0, mod(params), 2)
-</code></pre>
+  <span class="kw">val</span> sims = <span class="fu">simLGCP</span>(<span class="fl">0.0</span>, <span class="fl">3.0</span>, <span class="fu">mod</span>(params), <span class="dv">2</span>)</code></pre></div>
+</div>
+</div>
+<div id="simulating-from-a-model-as-a-stream" class="section level1">
+<h1>Simulating from a Model as a Stream</h1>
+<p>In order to test the inference algorithms, it is useful to simulate data from the models, but in the format we expect to receive the real data. <a href="http://akka.io/">Akka Streams</a> provide a suitable way to model real-world streams as they can be used to query web services, databases and read files or simply simulate from models.</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala">  <span class="kw">import</span> model.<span class="fu">Parameters</span>.<span class="fu">_</span>
+  <span class="kw">import</span> model.<span class="fu">POMP</span>.<span class="fu">BernoulliModel</span>
+  <span class="kw">import</span> model.<span class="fu">StateSpace</span>.<span class="fu">stepOrnstein</span>
+  <span class="kw">import</span> model.<span class="fu">SimData</span>.<span class="fu">_</span>
+
+  <span class="kw">import</span> akka.<span class="fu">actor</span>.<span class="fu">ActorSystem</span>
+  <span class="kw">import</span> akka.<span class="fu">stream</span>.<span class="fu">ActorMaterializer</span>
+  <span class="kw">import</span> akka.<span class="fu">stream</span>.<span class="fu">scaladsl</span>.<span class="fu">_</span>
+  <span class="kw">import</span> scala.<span class="fu">concurrent</span>.<span class="fu">ExecutionContext</span>.<span class="fu">Implicits</span>.<span class="fu">global</span>
+
+  <span class="kw">implicit</span> <span class="kw">val</span> system = <span class="fu">ActorSystem</span>(<span class="st">&quot;SimulateBernoulliOnline&quot;</span>)
+  <span class="kw">implicit</span> <span class="kw">val</span> materializer = <span class="fu">ActorMaterializer</span>()
+
+  <span class="kw">val</span> p = <span class="fu">LeafParameter</span>(
+    <span class="fu">GaussianParameter</span>(<span class="fl">6.0</span>, <span class="fl">1.0</span>),
+    None,
+    <span class="fu">OrnsteinParameter</span>(theta = <span class="fl">6.0</span>, alpha = <span class="fl">0.05</span>, sigma = <span class="fl">1.0</span>))
+  
+  <span class="kw">val</span> mod = <span class="fu">BernoulliModel</span>(stepOrnstein)(p)
+
+  <span class="kw">val</span> sims = <span class="fu">simStream</span>(mod, precision = <span class="dv">0</span>, t0 = <span class="fl">0.0</span>)</code></pre></div>
+<p><code>simStream</code> uses the <code>unfold</code> method which constructs an infinite stream starting from a zero value, the stream will terminate if it receives a <code>None</code>, the function signature is:</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">def</span> unfold[S, E](s: S)(f: S =&gt; Option[(S, E)]): Source[E, NotUsed]</code></pre></div>
+<p><code>s</code> represents the zero value, in our case a simulation from the initial state represented by <code>Gaussian(6.0, 1.0)</code>, along with a simulated observation and time, <code>t0 = 0.0</code>. The function <code>f</code> maps to an <code>Option</code> containing a tuple, the first element of the tuple is passed to <code>f</code> for each subsequent iteration, as long as the <code>Option</code> returns <code>Some</code> the stream will iterate.</p>
+<div id="practicalities-of-working-with-streaming-data" class="section level2">
+<h2>Practicalities of working with streaming data</h2>
+<p>Now we can print this infinite stream of simulations to the console, or write them to a file, or use a particle filter to perform inference. However, if we try printing the stream to the console we can’t see the numbers as they fly past, how about throttling the stream:</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala"><span class="kw">import</span> scala.<span class="fu">concurrent</span>.<span class="fu">duration</span>.<span class="fu">_</span>
+
+<span class="kw">val</span> throttled = sims.
+  <span class="fu">zip</span>(Source.<span class="fu">tick</span>(<span class="dv">1</span> second, <span class="dv">1</span> second, ())).
+  map { <span class="kw">case</span> (s,_) =&gt; s }.
+  <span class="fu">runForeach</span>(println)</code></pre></div>
+<p>This pipeline zips a ticking <code>Source</code> of <code>Unit</code>, then discards the unit and prints each observation on a new line. This will print a new observation each second, forever. We can also limit the number of items we generate using <code>take</code>:</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala">throttled.
+  <span class="fu">take</span>(<span class="dv">100</span>).
+  <span class="fu">runForeach</span>(println)</code></pre></div>
+<p>Another option is thinning the stream, discarding every other simulation:</p>
+<div class="sourceCode"><pre class="sourceCode scala"><code class="sourceCode scala">throttled.
+  <span class="fu">zip</span>(Source.<span class="fu">from</span>(<span class="dv">1</span>)).
+  filter { <span class="kw">case</span> (_, i) =&gt; i % <span class="dv">2</span> == <span class="dv">0</span> }.
+  map { <span class="kw">case</span> (a, _) =&gt; a }.
+  <span class="fu">runForeach</span>(println)</code></pre></div>
+<p>The <a href="The-Particle-Filter">particle filter</a> can be applied to a data stream in order to perform statistical inference.</p>
+</div>
+</div>
+
+
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
 
 </body>
-
 </html>

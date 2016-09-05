@@ -1,0 +1,33 @@
+name: "Composable-POMP-Models"
+toc_depth: 2
+navbar:
+  title: Composable POMP Models Documentation
+  left:
+    - text: "Home"
+      href: index.html
+    - text: "Simulating Data"
+      href: SimulatingFromAModel.html
+    - text: "Adding A Model"
+      href: AddingACustomModel.html
+    - text: "Particle Filter"
+      href: ParticleFilter.html
+    - text: "MCMC"
+      href: StreamingMCMC.html
+output: 
+  html_document:
+    theme: readable
+    highlight: haddock
+    fig_caption: true
+    mathjax: default
+    toc: true
+exclude: ["*.csv", "src/*", "*.md", "target/*", "project/*", "Rvisualisation/*", "*.sbt"]
+output_dir: "."
+      
+    
+
+        
+    
+    
+        
+    
+    

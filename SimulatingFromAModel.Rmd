@@ -1,15 +1,103 @@
 ---
 title: "Simulating from a Model"
-author: "Jonathan Law"
-date: "22 August 2016"
-output: html_document
 ---
 
-In order to test inference algorithms such as the particle filter and the PMMH algorithm, it is useful to simulate data from models. A partially observed Markov process (POMP) model has an observed layer, and hence an observation distribution, along with a linking function (which translates the latent variables into the parameter space of the observation distribution). There is an associated latent layer which isn't observed and controls the observations of the process, the latent layer is a Markov process, meaning each future realisation of the process is independent of the past realisations given the present realisation. The observation at time `t` is dependent on the latent state at time `t`. 
+In order to test inference algorithms such as the particle filter and the PMMH algorithm, it is useful to simulate data from models. A partially observed Markov process (POMP) model has an observed layer, and hence an observation distribution, along with a linking function (which translates the latent variables into the parameter space of the observation distribution). There is an associated latent layer which isn't observed and controls the observations of the process, the latent layer is a Markov process, meaning each future realisation of the process is independent of the past realisations given the present realisation. The observation at time $t$ is dependent on the latent state at time $t$. 
+
+# Simulating the Latent State
+
+The state space of partially observed Markov process (POMP) models are a type of continuous time Markov processes called [diffusion processes](https://en.wikipedia.org/wiki/Diffusion_process). These processes are governed by stochastic differential equations (SDE) and can be simulated recursively from an initial value; since the Markov property ensures the process is only dependent on the the previous realisation of the state.
+
+## Simulating Generalised Brownian Motion
+
+To simulate generalised Brownian motion, governed by the following SDE:
+
+$$\textrm{d}X(t) = \mu \textrm{d}t + \sigma \textrm{d}W(t),$$
+
+we can use the provided function `simSdeStream`:
+
+```scala
+val p = BrownianParameter(mu = 0.1, sigma = 1.0)
+val initialState = LeafState(Gaussian(6.0, 1.0).draw)
+
+val sims = simSdeStream(
+    x0 = initialState, t0 = 0.0, 
+    totalIncrement = 300.0, precision = 1, stepBrownian(p)).toVector
+```
+
+First we specify the parameters needed for the for the generalised Brownian motion solution `stepBrownian`, then we specify the `initialState`. The function `simSdeStream` requires the initial time, `t0`, the total time increment, `totalIncrement`, the precision, which is translated into a timestep `dt = math.pow(10, -precision)` and the step function. This will simulate generalised Brownian motion on an even grid.
+
+### Simulating with irregular timesteps
+
+Step functions can be used to simulate on an arbitrary grid, there is a function provided which accepts a list of times, `List[Time]` which can be used to simulate realisation of a diffusion process with irregular timesteps. `Time` is a synonym for `Double`.
+
+```scala
+val p = BrownianParameter(mu = 0.1, sigma = 1.0)
+val x0 = LeafState(Gaussian(0.0, 3.0).draw)
+val times: List[Time] = (63.0 to 250.5 by 0.5).toList
+
+simSdeIrregular(x0, times, stepBrownian(p))
+```
+
+```{r brownianMotionIrregular, echo=FALSE, message=FALSE}
+## 
+```
+
+# Simulating from a Fully Specified Model
 
 In order to add additional structure to the model, there is a linear transformation function, `f` which can be used to add seasonality to the latent variables. The model is represented in the DAG below:
 
-## Forward Simulation
+```{r bigdag, engine = "tikz", fig.cap = "Representation of a POMP model as a Directed Acyclic Graph (DAG)", echo=FALSE, fig.align='center'}
+\usetikzlibrary{shapes,arrows}
+\usetikzlibrary{backgrounds}
+\usetikzlibrary{positioning}
+\resizebox{12cm}{8cm}{%
+  \begin{tikzpicture}[node distance = 2cm, auto]
+    \tikzstyle{line} = [draw, -latex]
+    \tikzstyle{state} = [draw, circle, text width=1.3cm, align=center]
+    \tikzstyle{detstate} = [draw, double, circle, text width=1.3cm, align=center]
+  
+      % Place nodes
+      \node (1) {};
+      \node [state, right of=1] (2) {$\textbf{x}(t_{i-1})$};
+      \node [state, right of=2, node distance=3cm] (3) {$\textbf{x}(t_i)$};
+      \node [state, right of=3, node distance=3cm] (4) {$\textbf{x}(t_{i+1})$};
+      \node [right of=4, align=center, node distance=2cm] (5) {};
+      \node [detstate, below of=2,node distance=3cm] (6) {$\eta(t_{i-1})$};
+      \node [detstate, below of=3,node distance=3cm] (7) {$\eta(t_{i})$};
+      \node [detstate, below of=4, node distance=3cm] (8) {$\eta(t_{i+1})$};
+      \node [state, below of=6, node distance=3cm] (9) {$y(t_{i-1})$};
+      \node [state, below of=7, node distance=3cm] (10) {$y(t_i)$};
+      \node [state, below of=8, node distance=3cm] (11) {$y(t_{i+1})$};
+      
+      % Draw edges 
+      \path [line] (2) -- (3);
+      \path [line] (3) -- (4);
+      \path [line] (1) -- (2);
+      \path [line] (4) -- (5);
+      \path [line] (2) -- (6);
+      \path [line] (3) -- (7);
+      \path [line] (4) -- (8);
+      \path [line] (6) -- (9);
+      \path [line] (7) -- (10);
+      \path [line] (8) -- (11);
+      
+      % label arrows
+      \node [above right=0.1cm and -0.1cm of 2, node distance=1.5cm] {$p(\textbf{x}(t_i)|\textbf{x}(t_{i-1}))$};
+      \node [above right=0.1cm and -0.1cm of 3, node distance=1.5cm] {$p(\textbf{x}(t_{i+1})|\textbf{x}(t_i))$};
+      \node [rectangle, below of=2, node distance=1.5cm, fill=white] {$g(F_{t_{i-1}}^T \textbf{x}(t_{i-1}))$};
+      \node [rectangle, below of=3, node distance=1.5cm, fill=white] {$g(F_{t_i}^T \textbf{x}(t_i))$};
+      \node [rectangle, below of=4, node distance=1.5cm, fill=white] {$g(F_{t_{i+1}}^T \textbf{x}(t_{i+1}))$};
+      \node [rectangle, below of=6, node distance=1.5cm, fill=white] {$\pi(y(t_{i-1})|\eta(t_{i-1}))$};
+      \node [rectangle, below of=7, node distance=1.5cm, fill=white] {$\pi(y(t_i)|\eta(t_{i}))$};
+      \node [rectangle, below of=8, node distance=1.5cm, fill=white] {$\pi(y(t_{i+1})|\eta(t_{i+1}))$};
+      
+  \end{tikzpicture}
+}
+
+```
+
+## Simulate from a single model
 
 Here, we simulate from a model with a Bernoulli observation distribution, the parameter of the Bernoulli distribution is `p`, a probability which must lie between zero and one. The linking function for the Bernoulli model is the logistic function, `1.0/(1 + exp(-x))`. The parameters are represented by a `LeafParameter`, this is made clear when [[composing models|Composing-Models]], as parameters of two models combine to form a `BranchParameter` and a binary tree. 
 
@@ -30,6 +118,73 @@ val sims = simData(times, mod(p))
 
 Note that any list of times can be supplied to `simData`, simulation and inference supports irregular observation times.
 
+## Simulating from a Composed Model
+
+A composed model is represented in the directed acyclic graph below:
+
+```{r composeddag, engine = "tikz", fig.cap = "Representation of a Composed POMP model as a Directed Acyclic Graph (DAG)", echo=FALSE, fig.align='center'}
+\usetikzlibrary{shapes,arrows}
+\usetikzlibrary{backgrounds}
+\usetikzlibrary{positioning}
+\resizebox{12cm}{8cm}{%
+  \tikzstyle{line} = [draw, -latex]
+  \tikzstyle{state} = [draw, circle, text width=1.5cm, align=center]
+  \tikzstyle{detstate} = [draw, double, circle, text width=1.5cm, align=center]
+  
+  \begin{center} 
+  \begin{tikzpicture}[node distance = 2cm, auto]
+      % Place nodes
+      \node (1) {};
+      \node [state, right of=1] (2) {$\textbf{x}^{(2)}(t_{i-1})$};
+      \node [state, right of=2, node distance=3cm] (3) {$\textbf{x}^{(2)}(t_i)$};
+      \node [state, right of=3, node distance=3cm] (4) {$\textbf{x}^{(2)}(t_{i+1})$};
+      \node [right of=4, align=center] (5) {};
+      \node [detstate, below of=2,node distance=3cm] (6) {$\eta(t_{i-1})$};
+      \node [detstate, below of=3,node distance=3cm] (7) {$\eta(t_i)$};
+      \node [detstate, below of=4, node distance=3cm] (8) {$\eta(t_{i+1})$};
+      \node [state, below of=6, node distance=3cm] (9) {$y(t_{i-1})$};
+      \node [state, below of=7, node distance=3cm] (10) {$y(t_i)$};
+      \node [state, below of=8, node distance=3cm] (11) {$y(t_{i+1})$};
+      \node [state, above of=2] (12) {$\textbf{x}^{(1)}(t_{i-1})$};
+      \node [state, right of=12, node distance=3cm] (13) {$\textbf{x}^{(1)}(t_i)$};
+      \node [state, right of=13, node distance=3cm] (14) {$\textbf{x}^{(1)}(t_{i+1})$};
+      \node [right of=14] (15) {};
+      \node [left of=12] (16) {};
+      
+      % Draw edges 
+      \draw [->] (12) to[out=225, in=135] (6);
+      \draw [->] (13) to[out=225, in=135] (7);
+      \draw [->] (14) to[out=225, in=135] (8);
+      \path [line] (2) -- (3);
+      \path [line] (3) -- (4);
+      \path [line] (1) -- (2);
+      \path [line] (4) -- (5);
+      \path [line] (2) -- (6);
+      \path [line] (3) -- (7);
+      \path [line] (4) -- (8);
+      \path [line] (6) -- (9);
+      \path [line] (7) -- (10);
+      \path [line] (8) -- (11);
+      \path [line] (12) -- (13);
+      \path [line] (13) -- (14);
+      \path [line] (14) -- (15);
+      \path [line] (16) -- (12);
+      
+      % label arrows
+      \node [above right=-0.4cm and 0.5cm of 2, node distance=1.5cm, fill=white] {$p_2$};
+      \node [above right=-0.4cm and 0.5cm of 3, node distance=1.5cm, fill=white] {$p_2$};
+      \node [above right=-0.4cm and 0.5cm of 12, node distance=1.5cm, fill=white] {$p_1$};
+      \node [above right=-0.4cm and 0.5cm of 13, node distance=1.5cm, fill=white] {$p_1$};
+      \node [rectangle, below=0.3cm of 2, fill=white] {$g_1(F^{(3)T}_{t_{i-1}} \textbf{x}^{(3)}(t_{i-1}))$};
+      \node [rectangle, below=0.3cm of 3, fill=white] {$g_1(F^{(3)T}_{t_i} \textbf{x}^{(3)}(t_i))$};
+      \node [rectangle, below=0.3cm of 4, fill=white] {$g_1(F^{(3)T}_{t_{i+1}} \textbf{x}^{(3)}_{t_{i+1}})$};
+      \node [rectangle, below of=6, node distance=1.5cm, fill=white] {$\pi_1(y(t_{i-1})|\eta(t_{i-1}))$};
+      \node [rectangle, below of=7, node distance=1.5cm, fill=white] {$\pi_1(y(t_{i})|\eta(t_{i}))$};
+      \node [rectangle, below of=8, node distance=1.5cm, fill=white] {$\pi_1(y(t_{i+1})|\eta(t_{i+1}))$};
+  \end{tikzpicture}
+}
+```
+
 ## Simulating from the Log-Gaussian Cox-Proces
 
 The Log-Gaussian Cox-Process must be simulated from using the `simLGCP`.
@@ -44,3 +199,72 @@ The Log-Gaussian Cox-Process must be simulated from using the `simLGCP`.
 
   val sims = simLGCP(0.0, 3.0, mod(params), 2)
 ```
+
+# Simulating from a Model as a Stream
+
+In order to test the inference algorithms, it is useful to simulate data from the models, but in the format we expect to receive the real data. [Akka Streams](http://akka.io/) provide a suitable way to model real-world streams as they can be used to query web services, databases and read files or simply simulate from models.
+
+```scala
+  import model.Parameters._
+  import model.POMP.BernoulliModel
+  import model.StateSpace.stepOrnstein
+  import model.SimData._
+
+  import akka.actor.ActorSystem
+  import akka.stream.ActorMaterializer
+  import akka.stream.scaladsl._
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  implicit val system = ActorSystem("SimulateBernoulliOnline")
+  implicit val materializer = ActorMaterializer()
+
+  val p = LeafParameter(
+    GaussianParameter(6.0, 1.0),
+    None,
+    OrnsteinParameter(theta = 6.0, alpha = 0.05, sigma = 1.0))
+  
+  val mod = BernoulliModel(stepOrnstein)(p)
+
+  val sims = simStream(mod, precision = 0, t0 = 0.0)
+```
+
+`simStream` uses the `unfold` method which constructs an infinite stream starting from a zero value, the stream will terminate if it receives a `None`, the function signature is:
+
+```scala
+def unfold[S, E](s: S)(f: S => Option[(S, E)]): Source[E, NotUsed]
+```
+
+`s` represents the zero value, in our case a simulation from the initial state represented by `Gaussian(6.0, 1.0)`, along with a simulated observation and time, `t0 = 0.0`. The function `f` maps to an `Option` containing a tuple, the first element of the tuple is passed to `f` for each subsequent iteration, as long as the `Option` returns `Some` the stream will iterate. 
+
+## Practicalities of working with streaming data
+
+Now we can print this infinite stream of simulations to the console, or write them to a file, or use a particle filter to perform inference. However, if we try printing the stream to the console we can't see the numbers as they fly past, how about throttling the stream:
+
+```scala
+import scala.concurrent.duration._
+
+val throttled = sims.
+  zip(Source.tick(1 second, 1 second, ())).
+  map { case (s,_) => s }.
+  runForeach(println)
+```
+
+This pipeline zips a ticking `Source` of `Unit`, then discards the unit and prints each observation on a new line. This will print a new observation each second, forever. We can also limit the number of items we generate using `take`:
+
+```scala
+throttled.
+  take(100).
+  runForeach(println)
+```
+
+Another option is thinning the stream, discarding every other simulation:
+
+```scala
+throttled.
+  zip(Source.from(1)).
+  filter { case (_, i) => i % 2 == 0 }.
+  map { case (a, _) => a }.
+  runForeach(println)
+```
+
+The [particle filter](The-Particle-Filter) can be applied to a data stream in order to perform statistical inference.

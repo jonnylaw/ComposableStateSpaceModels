@@ -18,9 +18,9 @@ trait Model {
 }
 ```
 
-1. An `observation` model, a monadic distribution `Rand` with a `draw` method
+1. An `observation` model, a function from Eta to a monadic distribution `Rand` with a `draw` method
 2. A non-linear linking function if the parameter space is different to the domain of the state space
 3. A linear function `f` to transform the state in a deterministic way
-4. A definition of the initial State, `x0`
+4. A definition of the initial State, `x0`, a monadic distribution `Rand`
 5. A `stepFunction` to advance the state
 6. A `likelihood`, to calculate the likelihood of an observation given a value of the transformed state `Eta`

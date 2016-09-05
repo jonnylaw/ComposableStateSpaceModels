@@ -1,0 +1,10 @@
+---
+title: "Ingesting Real World Data for Inference"
+author: "Jonathan Law"
+date: "5 September 2016"
+output: html_document
+---
+
+When modelling real world data from sensor networks, such as the [Urban Observatory](http://uoweb1.ncl.ac.uk/) or the [NE Open Data Service](https://www.netraveldata.co.uk/) we can consume the data as it is recorded. In order to consume the data as it arrives, it makes sense to use a [reactive stream](http://www.reactive-streams.org/), [Akka Streams](http://akka.io/) are an implementation of reactive streams. Statistical modelling is computationally intensive, so if the number of incoming observations increases due to a variable sampling rate of a sensor then we want to implement a backpressure strategy to reduce or buffer the amount of incoming data. For instance we could drop every other observation if it was determined that this wouldn't affect the quality of the inference significantly, or we could buffer the extra observations and wait until the sampling rate of the sensor declines again to catch up.
+
+# 

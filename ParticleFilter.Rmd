@@ -1,8 +1,5 @@
 ---
 title: "Particle Filter"
-author: "Jonathan Law"
-date: "22 August 2016"
-output: html_document
 ---
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE, background=TRUE, results='hide'}
@@ -18,67 +15,149 @@ The particle filter is a highly flexible filter, used to perform Bayesian infere
 
 In our application, it is natural to use a particle filter. The particle filter can operate with observations arriving irregularly, it can handle non-Gaussian observation models and non-linear transformations.
 
-## Bootstrap Particle Filter
+## Introduction to the Bootstrap Particle Filter
 
-First consider a simple model with a one-dimensional state-space and a Poisson observation model. The algorithm for the bootstrap particle filter is presented below. Note that in the package all of this is already implemented in a more sophisticated way, this is merely presented here for illustrative purposes.
+Note, in this section we motivate and describe a simple application of the bootstrap particle filter to a Partially Observed Markov Process model. If you are already familiar with the bootstrap filter and would like to apply it using the API then please skip this section.
 
-* The parameters of the model can be written as a case class, `m0` and `c0` represent the parameters of the initial distribution of the state, represented by a draw from a Gaussian distribution. `mu` and `sigma` are the parameters of the Markov transition kernel, which is generalised brownian motion
+The bootstrap particle filter (\cite{Gordon1993}) is a simple filter able to estimate the state space of a POMP model. The latent state is governed by a transition kernel which we assume realisations can be simulated from, $\textbf{X}(t_i) \sim p(\textbf{x}(t_i)|\textbf{x}(t_{i-1}))$. The process is observed through an observation model $Y(t_i) \sim \pi(y(t_i) | \eta(t_i))$.
+
+The bootstrap particle filter is used to calculate the unobserved system state by approximating the filtering distribution, $p(\textbf{x}(t_i)| y(t_{0:i}))$. The algorithm to determine an empirical approximation of the unobserved system state at each observation time is presented below:
+
+1. Initialise: Simulate $N$ particles from the initial distribution of the state space, $\textbf{x}(t_0)^{(k)} \sim p(\textbf{x}(t_0))$, and set $i = 1$
+2. Advance the state particle-cloud until the time of the next observation, $\textbf{x}(t_i)^{(k)} \sim p(\textbf{x}(t_i)^{(k)}|\textbf{x}(t_{i-1})^{(k)})$
+3. Transform the each particle appropriately for the given observation model, $\eta(t_i)^{(k)} = g(F^T_{t_i} \textbf{x}(t_i)^{(k)})$
+4. Calculate the weight of each particle, by calculating the likelihood of the observation given each particle: $w^*(t_i)^{(k)} = \pi(y(t_i)|\eta(t_i)^{(k)})$
+5. Normalise the weights, $w(t_i)^{(k)} = \frac{w^*(t_i)^{(k)}}{\sum_{j=1}^N w^*(t_i)^j}$, the particles and associated normalised weights forms a weighted sample from the filtering distribution $p(\textbf{x}(t_i)| y(t_{1:i}))$, $\{\textbf{x}(t_i)^{(k)}, w(t_i)^{(k)} | k = 1,\dots,N \}$
+6. Resample the state, by sampling with replacement $N$ times from a Multinomial distribution with each category representing a particle and the probability of choosing a particle represented by the associated weights, $w(t_i)^{(k)}$. This gives an approximate random sample from $p(\textbf{x}(t_i)| y(t_{0:i}))$
+7. If $i = M$ return the random samples from the filtering distribution $p(\textbf{x}(t_i)| y(t_{0:i}))$ at all time points, else set $i = i + 1$ and go to 2
+
+A simple illustrative particle filter can be implemented in Scala as follows:
+
+```scala
+trait ParticleFilter {
+    import math.{exp, log}
+    import ParticleFilter._
+
+    val resample: (Vector[State], Vector[LogLikelihood]) => Vector[State]
+    val stepFunction: (State, TimeInterval) => State
+    val dataLikelihood: (State, Observation) => LogLikelihood
+    val mean: Vector[LogLikelihood] => LogLikelihood = w => w.sum/w.length
+
+    def filterStep(s: FilterState, y: Data): FilterState = {
+        val dt = y.time - s.t0
+  
+        val x = resample(s.particles, s.weights)
+
+        val x1 = s.particles map (stepFunction(_, dt))
+        val w = x1 map (dataLikelihood(_, y.observation))
+
+        val ll = s.ll + log(mean(w map exp))
+ 
+        FilterState(x1, w, y.time, ll)
+    }
+}
+
+object ParticleFilter {
+    type Time = Double
+    type Observation = Int
+    type LogLikelihood = Double
+    type State = Double
+    type TimeInterval = Double
+
+    case class FilterState(
+        particles: Vector[State], 
+        weights: Vector[LogLikelihood], 
+        t0: Time, 
+        ll: LogLikelihood)
+    
+    case class Data(time: Time, observation: Observation)
+}
+```
+
+This abstract trait we have defined above is a simple shell for a particle filter. In order to implement a concrete class representing a bootstrap filter for a specific model, let's consider a simple model with a one-dimensional state-space and a Poisson observation model:
+
+$$
+\begin{align*}
+N(t) &\sim \textrm{Poisson}(\lambda(t)) \\
+\lambda(t)|x(t) &= \exp\{x(t)\} \\
+\textrm{d}X(t) &= \mu + \sigma \textrm{d}W(t)
+\end{align*}
+$$
+
+This Poisson model's latent state evolves according to generalised Brownian motion and the linking function, $g$, is the exponential function, since the rate of a poisson distribution, $\lambda(t)$ is always positive. Now we must implement the functions declared in the trait `ParticleFilter`.
+
+* The parameters of the model can be written as a case class, `m0` and `c0` represent the parameters of the initial distribution of the state, represented by a draw from a Gaussian distribution. `mu` and `sigma` are the parameters of the Markov transition kernel, which is generalised Brownian motion
 
 ```scala
 case class Parameters(m0: Double, c0: Double, mu: Double, sigma: Double)
 ```
 
-* Initialise a particle cloud of size `n` using the initial parameters
+* Advance the state according to generalised Brownian Motion
 
 ```scala
 import breeze.stats.distributions.Gaussian
 
-val p = Parameters(0.1, 3.0, 0.1, 1.0)
-val particles = Vector.fill(n)(Gaussian(p.m0, p.c0))
-```
-
-* Advance the state space (`particles`) to the time of the next observation according to the Markov transition kernel
-
-```scala
-def transition(p: Parameters, dt: TimeInterval): State => State = {
-    x => Gaussian(x + m0*dt, math.sqrt(p.sigma * p.sigma * dt)).draw
+def stepBrownian(p: Parameters): (TimeInterval, State) => State = {
+    (x, dt) => Gaussian(x + p.mu * dt, math.sqrt(p.sigma * p.sigma * dt)).draw
 }
-
-val advanced = particles map (transition(p, dt))
 ```
 
-`State` and `TimeInterval` are type aliases for `Double`
-
-* Calculate the likelihood weights of each particle given the observation
+* Calculate the weights of each particle given the observation
 
 ```scala
 import breeze.stats.distributions.Poisson
 
-def likelihood(y: Observation): State => LogLikelihood = x => {
-  Poisson(exp(x)).logProbabilityOf(y)
+def poissonLikelihood: (State, Observation) => LogLikelihood = {
+  (x, y) => Poisson(exp(x)).logProbabilityOf(y)
 }
-
-val weights = advanced map likelihood(y)
 ```
 
-`LogLikelihood` is an alias for Double
-
-* Resample the states according to the likelihood weights, using the `Multinomial` distribution from Breeze
+* Resample the states according to the likelihood weights, using Multinomial resampling
 
 ```scala
 import breeze.stats.distributions.Multinomial
+import breeze.linalg.DenseVector
 
-def resample(x: Vector[State], w: Vector[LogLikelihood]): Vector[State] = {
+def multinomialResample(x: Vector[State], w: Vector[LogLikelihood]): Vector[State] = {
   val xInd = Multinomial(DenseVector(w.toArray)).sample(x.length).toVector
   xInd map ( x(_) )
 }
-
-val resampledState = resample(advanced, weights)
 ```
 
-* Repeat the process for all of the observed data, collecting the resampled particles at each time point. The particles can be used to calculate summary statistics, such as the mean and credible intervals by selecting the appropriate order statistics from the empirical distributions.
+* Now, put all the pieces together in a case class extending the `ParticleFilter` trait:
 
-* The marginal likelihood of the path given the observed data and parameters can be calculated by calculating the product of the average of the weights at each time point. This marginal likelihood is used in the [[Particle Marginal Metroplis Hastings|Streaming-MCMC]] algorithm, which can be used to calculate the full joint posterior p(x, t | y).
+```scala
+
+case class PoissonPf(p: Parameters) extends ParticleFilter {
+  val stepFunction: (State, TimeIncrement) => State = stepBrownian(p)
+  val dataLikelihood: (State, Observation) => LogLikelihood = poissonLikelihood(p)
+  val resample: (Vector[State], Vector[LogLikelihood]) => Vector[State] = multinomialResample _
+}
+
+```
+
+In order to use the particle filter on a collection of data, we must first initialise a particle cloud of size `n` using the initial parameters and sampling `n` times from a Gaussian distribution:
+
+```scala
+val p = Parameters(0.1, 3.0, 0.1, 1.0)
+val particles = Gaussian(p.m0, p.c0).sample(n)
+```
+
+Now, `filterStep` can be used on a `Stream` or `List` of data using `scanLeft`, the initial state of the particle filter is populated with `particles` and a vector of weights each equal to 1/n:
+
+```scala
+val data: Stream[Data] = \\ A stream of data
+val pf = PoissonPf(p)
+val init = FilterState(particles, Vector.fill(n)(1.0/n), ll = 0.0, t0 = 0.0)
+
+data.scanLeft(init)(pf.filterStep)
+```
+
+The marginal likelihood of the path given the observed data and parameters can be approximated by calculating the product of the average of the weights at each time point. This pseudo-marginal likelihood is used in the [[Particle Marginal Metroplis Hastings|Streaming-MCMC]] algorithm, which can be used to calculate the full joint posterior p(x, t | y). `filterStep` will calculate this, in conjunction with `scanLeft`, however, `scanLeft` emits each successive iteration. If the goal is to simply approximate the log-likelihood of a path, a simpler solution is to use `foldLeft`:
+
+```scala
+data.foldLeft(init)(pf.filterStep).ll
+```
 
 ## Filtering a Stream of Data
 
@@ -131,9 +210,9 @@ val sims = simData(times, mod(p))
 
 The figure below shows a simulation from the Poisson model, the state space of the Ornstein-Uhlenbeck process can vary on the entire real line, the parameter space of the Poisson model is $\mathbb{Z}^+$ as the parameter, $\lambda(t)$, is the mean of a counting process. The log-link function is used to transform the state space to the appropriate parameter space, $\lambda(t) = g(x(t)) = \exp(x(t))$
 
-```{r, echo=FALSE}
-system("cd ../ && sbt \"run-main examples.SimulatePoisson\"")
-poisson = read_csv("../PoissonSims.csv", 
+```{r, echo=FALSE, message=FALSE}
+system("sbt \"run-main examples.SimulatePoisson\"")
+poisson = read_csv("PoissonSims.csv", 
                 col_names = c("Time", "Value", "Eta", "Gamma", "State"))
 
 p1 = poisson %>%
@@ -166,9 +245,9 @@ Now we can use the particle filter to estimate the state space, the scala code i
   filter.filterWithIntervals(data)(1000)(mod.p)
 ```
 
-```{r, echo = FALSE}
-system("cd ../ && sbt \"run-main examples.FilterPoisson\"")
-poissonFiltered = read_csv("../PoissonFiltered.csv",
+```{r, echo = FALSE, message=FALSE}
+system("sbt \"run-main examples.FilterPoisson\"")
+poissonFiltered = read_csv("PoissonFiltered.csv",
                         col_names = c("Time", "Value", "PredEta", "lowerEta", "upperEta", "PredState", "Lower", "Upper"))
 
 p1 = poisson %>%

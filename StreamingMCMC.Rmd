@@ -1,99 +1,105 @@
 ---
 title: "Streaming MCMC"
-author: "Jonathan Law"
-date: "22 August 2016"
-output: html_document
 ---
 
-Markov Chain Monte Carlo (MCMC) is a method used to sample from an intractable posterior probability distributions. In general it is used to approximate high-dimensional integrals that can't be calculated analytically.
+Markov Chain Monte Carlo (MCMC) is a method used to sample from an intractable posterior probability distribution. In general it is used to approximate high-dimensional integrals that can't be calculated analytically.
 
-In order to estimate the parameters of a Partially Observed Markov Process (POMP) model, we use Particle MCMC methods (see [Doucet et al 2010](http://www.stats.ox.ac.uk/~doucet/andrieu_doucet_holenstein_PMCMC.pdf)). This involves estimating the marginal likelihood of the process using a Particle Filter, then using the likelihood in a [Metropolis hastings](https://en.wikipedia.org/wiki/Metropolis%E2%80%93Hastings_algorithm) algorithm. 
+In order to estimate the parameters of a Partially Observed Markov Process (POMP) model, we use Particle MCMC methods (see [Doucet et al 2010](http://www.stats.ox.ac.uk/~doucet/andrieu_doucet_holenstein_PMCMC.pdf)). This involves estimating the marginal likelihood of the process using a Particle Filter, then using the pseudo-marginal likelihood in a [Metropolis hastings](https://en.wikipedia.org/wiki/Metropolis%E2%80%93Hastings_algorithm) algorithm. 
 
-## A Metropolis Hastings Algorithm
+# The PMMH Algorithm
 
-As an introduction, consider a simple model without latent variables, the observation distribution is Gaussian, and the measurement noise and mean of the observation distribution is unknown. A general [Metropolis-Hastings](https://en.wikipedia.org/wiki/Metropolis%E2%80%93Hastings_algorithm) algorithm to recover the parameter posterior is presented below:
+The Particle Marginal Metropolis-Hastings algorithm (PMMH)~\citep{Andrieu2010} is an offline Markov chain Monte Carlo (MCMC) algorithm which targets the full joint posterior $p(\textbf{x}(t_{0:M}), \theta | y(t_{1:M}))$ of a partially observed Markov process. Consider a POMP model given by,
 
-* Represent the parameters as a case class:
+$$
+\begin{align*}
+Y(t_i)|\eta(t_i) &\sim \pi(y(t_i) | \eta(t_i), \theta), \\
+\eta(t_i)|\textbf{x}(t_i) &= g(F^T_{t_i} \textbf{x}(t_i)), \\
+\textbf{X}(t_i)|\textbf{x}(t_{i-1}) &\sim p(\textbf{x}(t_i) | \textbf{x}(t_{i-1}), \theta), \quad \textbf{x}(t_0) \sim p(\textbf{x}(t_0)|\theta),
+\end{align*}
+$$
+
+where $\theta$ represents the parameters to be estimated using the PMMH algorithm. The parameters include the measurement noise in the observation distribution, $\pi(y(t_i) | \eta(t_i), \theta)$, the parameters of the Markov transition kernel for the system state, $p(\textbf{x}(t_i) | \textbf{x}(t_{i-1}), \theta)$ and the parameters of the initial state distribution $p(\textbf{x}(t_0)|\theta)$. The data, $y(t)$, is observed discretely. In order to simulate a Markov chain which targets the full posterior, $p(\theta, \textbf{x} | y)$, firstly a new set of parameters $\theta^*$ is proposed from a proposal distribution $q(\theta^*|\theta)$. Then the bootstrap particle filter (see Section~\ref{sec:bootstrap}), is run over all of the observed data up to time $t$ using the newly proposed $\theta^*$. The output of running the filter with the new set of parameters, $\theta^*$ is used to estimate the marginal likelihood, $\hat{p}_{\theta^*}(y) = \prod_{i=1}^n \hat{p}_{\theta^*}(y(t_i)|y(t_{i-1}))$ and, optionally, to sample a new proposed system state, $x^*$ from the conditional distribution $p(x^* | \theta^*, y)$. The pair $(\theta^*, x^*)$ are accepted with probability $\text{min}(1, A)$, where $A$ is given by:
+
+$$
+\begin{equation}
+\label{eqn:metropRatio}
+A = \frac{p(\theta^*)\hat{p}_{\theta^*}(y) q(\theta^*|\theta)}{p(\theta)\hat{p}_{\theta}(y)q(\theta|\theta^*)},
+\end{equation}
+$$
+
+the distribution $p(\theta)$, represents the prior distribution over the parameters.
+
+The Metropolis-Hastings Kernel, can be simplified in the case of a symmetric proposal distribution. For a symmetric proposal distribution $q(\theta^*|\theta) = q(\theta|\theta^*)$. Commonly, the proposal is chosen to be a Normal distribution centered at the previously selected parameter, this is know as a random walk proposal, $q(\theta^*|\theta) = \mathcal{N}(\theta, \sigma)$, where $\sigma$ is a parameter controlling the step size of the random walk. If a flat prior distribution is chosen, then the ratio can be simplified further to:
+
+$$
+\begin{equation*}
+A = \frac{\hat{p}_{\theta^*}(y)}{\hat{p}_{\theta}(y)}.
+\end{equation*}
+$$
+
+The full-joint posterior distribution is explored by performing many iterations of the PMMH algorithm, discarding burn-in iterations and possibly thinning the iterations to get less correlated samples from the posterior distribution.
+
+## PMMH As A Stream
+
+The Particle Marginal Metropolis-Hastings algorithm must be applied to a batch of data. Window functions, such as `grouped`, can be applied to a stream of data to aggregate observations into a batch. `grouped` accepts an integer, $n$, and groups each observation into another (finite) stream of size $n$.
+
+The PMMH algorithm can then be applied to the aggregated group using `map`. Iterations from the PMMH algorithm are naturally implemented as a stream. In the Scala standard library there is a method for producing infinite streams from an initial seed:
 
 ```scala
-case class Parameter(mu: Double, sigma: Double)
+def iterate[A](start: A)(f: A => A): Stream[A] 
 ```
 
-* Propose a new set of parameters from a proposal distribution `propParams = propose(params)`, a simple proposal is a random walk around the parameter space:
+`iterate` applies the function `f` to the starting value, then passes on the result to the next evaluation of `f`. For example, to create an infinite stream of natural numbers:
 
 ```scala
-import breeze.stats.distributions.Gaussian
-
-def propose(p: Parameter): Parameter = {
-    Parameter(Gaussian(p.mu, 0.1).draw, p.sigma * math.exp(Gaussian(0, 0.1).draw))
-  }
+val naturalNumbers: Stream[Int] = iterate(1)(a => a + 1)
 ```
 
-This will propose a new parameter in a location around the previous parameter. Not the sigma parameter is proposed as a symmetric perturbation around the current parameter value and as such will always be positive.
+Iterations of an MCMC algorithm can be generated using `iterate`, by starting with an initial value of the required state (at a minimum the likelihood and the initial set of parameters) and applying the Metropolis-Hastings update at each iteration. Inside of each application of `f`, a new value of the parameters is proposed, the marginal likelihood is calculated using the new parameters (using the bootstrap particle filter) and the Metropolis-Hastings update is applied.
 
-* Determine the probability of moving to and from proposed parameters
+An illustrative example of a single step in the PMMH algorithm using the Metropolis Kernel is presented in the code block below. Three important functions are given abstract implementations in the `MetropolisHastings` trait, `proposal`, `prior` and `logLikelihood`. The `proposal: Parameters => Rand[Parameters]` is a function representing the (symmetric) proposal distribution, `Rand` is a representation of a distribution which can be sampled from by calling the method `draw`. `logLikelihood: Parameters => LogLikelihood` is a particle filter, with the observed data and number of particles fixed, which outputs an estimate of the log-likelihood for a given value of the parameters. `prior: Parameters => LogLikelihood` represents the prior distribution over the parameters. These three functions will be implemented in a concrete class extending the `MetropolisHastings` trait and correspond to specific implementation of the PMMH algorithm.
 
 ```scala
-def logTransition(from: Parameter, to: Parameter): Parameter = {
-  Gaussian(from, 0.1).logPdf(to)
+trait MetropolisHastings {
+    import MetropolisHastings._
+    import math._
+    import breeze.stats.distributions.{Rand, Uniform}
+
+    val prior: Parameters => LogLikelihood
+    val proposal: Parameters => Rand[Parameters]
+    val logLikelihood: Parameters => LogLikelihood
+
+    val stepMetrop: MetropState => MetropState = s => {
+        val propParams = proposal(s.params).draw
+        val propll = logLikelihood(propParams)
+        val a = propll + prior(propParams) - s.ll - prior(s.params)
+
+        if (log(Uniform(0, 1).draw) < a)
+            MetropState(propll, propParams)
+        else s
+    }
+}
+
+object MetropolisHastings {
+    type Parameters = Vector[Double]
+    type LogLikelihood = Double
+
+    case class MetropState(ll: LogLikelihood, params: Parameters) 
 }
 ```
 
-* The new parameters are used to calculate the marginal-likelihood of an observation:
+In order to generate a stream of iterations, use `iterate`:
 
 ```scala
-def likelihood(y: Double): Parameter => Double = p => {
-    Gaussian(p.mu, p.sigma).logPdf(y)
-  }
-
-// calculate the likelihood of a list of points
-def allLikelihood(data: List[Double]): Parameter => Double = p => {
-  data.foldLeft(0.0)((l, y) => l + likelihood(y)(p))
-}
+val initState = MetropState(-1e99, initParams)
+val iters = iterate(initState)(stepMetrop)
 ```
 
-* The new parameters are rejected or accepted with probability `a` as in the following expression:
+Where `initParams` are drawn from the prior distribution and the initial value of the log-likelihood is chosen to be very small so the first iteration of the PMMH is accepted.
 
-```scala
-import breeze.stats.distributions.Uniform
-import Stream._
+Built in stream operations can be used to discard burn-in iterations and thin the iterations to reduce auto-correlation between samples. The stream can be written to a file or database at each iteration, so the PMMH algorithm implemented as a stream uses constant memory as the chain size increases.
 
-  def mh(likelihood: Parameter => Double, initParam: Parameter): Stream[Parameter] = {
-
-    Stream.iterate(initParam)(p => {
-      val propParam = propose(p)
-      val a = likelihood(propParam) - likelihood(p) + logTransition(propParams, p) - logTransition(p, propParams)
-      val logu = math.log(Uniform(0, 1).draw
-        
-      if (logu < a) { propParam } else { s }
-    })
-  }
-```
-
-`a` represents the Metropolis-Hastings acceptance ratio, note that the acceptance ratio can been simplified by removing the `logTransition` terms, since the proposal distribution is symmetric. If we now simulate data from a Gaussian distribution with fixed mean and variance, we can recover the mean and variance using this Metropolis-Hastings algorithm:
-
-```scala
-def sims(n: Int, params: Parameter): List[Double] = {
-  List.fill(n)(Gaussian(params.mu, params.sigma).draw)
-}
-
-val p = Parameter(0.0, 1.0)
-val data = sims(100, p)
-
-val iters = mh(allLikelihood(data), p, 0.1).take(10000)
-```
-
-In order to ensure convergence to the correct posterior distribution, the acceptance ratio can be monitored, as a rule of thumb and acceptance ratio of 0.3 is acceptable. In order to control the acceptance ratio, the variance of the proposal distribution can be modified. The full code, with acceptance recording and an adaptive variance for the proposal distribution is in a [gist](https://gist.github.com/jonnylaw/0d01e2b67a5d4499ecd3674f97092aba#file-metropolishastings-scala) and requires [Breeze](https://github.com/scalanlp/breeze) as a dependency in order to simulate from the Gaussian and Uniform distributions.
-
-Common diagnostics are plotted below, including trace-plots, empirical distributions, auto-correlation function and running means. Here we can see the chain mixing well, with low auto-correlation. The distributions are tightly packed around 0.0 and 1.0 as expected.
-
-![MCMC Diagnostics](https://raw.githubusercontent.com/jonnylaw/ComposableStateSpaceModels/master/Figures/MetropolisHastingsOutput.png)
-
-## The PMMH Algorithm
-
-In order to calculate the full-posterior of a latent variable model, we must approximate the marginal-likelihood with an unbiased estimate. It turns out an unbiased estimate of the marginal-likelihood can be obtained from the [[bootstrap particle filter|The-Particle-Filter]].
-
-## MCMC as a Stream
+## Working with a Stream of MCMC Iterations
 
 By default, the iterations from the PMMH algorithm are an Akka stream. Since the parameters are a stream, we can perform streaming operations on parameters, such as thinning:
 
@@ -117,10 +123,6 @@ Sometimes a complex model with many free parameters can require a large amount o
 `fileIO` sink:
 
 ```scala
-import java.io.File
-import akka.stream.scaladsl._
-import akka.util.ByteString
-
 params.
   map{ p => ByteString(s"$p\n") }.
   runWith(FileIO.toFile(new File("output.csv")))
@@ -160,32 +162,25 @@ Now we can read back in the file `LinearMCMC.csv`, parse, drop burnin terms and 
 
 ## PMMH Diagnostics
 
-In practice it is desirable to run multiple chains from different starting values (with different prior distributions), with different proposal distributions or with different number of particles in order to establish whether the chain will converge on the correct posterior distribution (see [Darren's Blog Post](https://darrenjw.wordpress.com/2014/06/08/tuning-particle-mcmc-algorithms/)). Since individual chains are independent, we can run them in parallel, which is easy using [Akka Streams](https://akka.io).
+In practice it is desirable to run multiple chains from different starting values (possibly with different prior distributions), with different proposal distributions or with different number of particles in order to establish whether the chain will converge on the correct posterior distribution. Since individual chains are independent, we can run them in parallel, which is easy using [Akka Streams](https://akka.io).
 
 ```scala
+val params = // initial parameters
+val mll = // a particle filter, function from Parameters => LogLikelihood
 val particles = Vector(100, 200, 500, 1000)
-val params = Vector(p1, p2) // a vector of two sets of parameters
-
-val input = for {
- n <- particles
- p <- params
-} yield (n, p) // cross product, (100, p1), (200, p1), ...
-
 val iterations = 10000
 
-Source(input).
+Source(particles).
   mapAsync(parallism = 4).
-  map { case (particles, params) => 
+  map { p => 
 
-    ParticleMetropolis(mll(particles), params, Parameters.perturb(0.1)).iters.
-      zip(Source(Stream.from(1))).
-      map{ case (x, i) => (i, x.params) }.
-      take(iterations).
-      map{ case (i, p) => ByteString(s"$i, $p\n") }.
-      runWith(FileIO.toFile(new File(s"$fileOut-$iterations-$particles-$chain.csv")))
+    // initialise a PMMH algorithm with different amounts of particles
+    val mh = ParticleMetropolis(mll(particles), params, Parameters.perturb(0.1))
+    runMcmc(mh, s"exampleMCMC-$particles", iterations).run()
+    
   }.
   runWith(Sink.onComplete { _ =>
-    system.shutdown()
+    system.terminate()
   })
 ```
 
