@@ -1,5 +1,6 @@
 # Hidden Folders
-.Rhistory
+**/.Rhistory
+**/*.RData
 .ensime_cache/*
 src/main/resources/*
 
@@ -13,5 +14,13 @@ project/*
 \#*
 *~
 
+# Rmd Stuff
+**/*.rdb
+**/*.rdx
+**/__packages
+
 # Data Files
 *.csv
+
+# other
+**/*.pdf
