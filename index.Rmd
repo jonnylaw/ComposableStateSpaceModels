@@ -22,7 +22,6 @@ Partially observed Markov processes are a type of [State Space Model](https://en
 \usetikzlibrary{shapes,arrows}
 \usetikzlibrary{backgrounds}
 \usetikzlibrary{positioning}
-\resizebox{15cm}{10cm}{%
   \begin{tikzpicture}[node distance = 2cm, auto]
     \tikzstyle{line} = [draw, -latex]
     \tikzstyle{state} = [draw, circle, text width=1.3cm, align=center]
@@ -64,8 +63,6 @@ Partially observed Markov processes are a type of [State Space Model](https://en
       \node [rectangle, below of=8, node distance=1.5cm, fill=white] {$\pi(y(t_{i+1})|\eta(t_{i+1}))$};
       
   \end{tikzpicture}
-}
-
 ```
 
 The distribution, p, represents the Markov transition kernel of the state space. The distribution pi, represents the observation distribution, parameterised by the state space. The function f is a linear deterministic function, which can be used to add cyclic seasonal components to the state space. The function g is the linking-function from a [generalised linear model](https://en.wikipedia.org/wiki/Generalized_linear_model), which transforms the state space into the parameter space of the observation model. Define $\gamma(t) = F^T_t \textbf{x}(t)$ and $\eta(t) = g(\gamma(t))$.
