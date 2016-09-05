@@ -153,7 +153,7 @@ val init = FilterState(particles, Vector.fill(n)(1.0/n), ll = 0.0, t0 = 0.0)
 data.scanLeft(init)(pf.filterStep)
 ```
 
-The marginal likelihood of the path given the observed data and parameters can be approximated by calculating the product of the average of the weights at each time point. This pseudo-marginal likelihood is used in the [[Particle Marginal Metroplis Hastings|Streaming-MCMC]] algorithm, which can be used to calculate the full joint posterior p(x, t | y). `filterStep` will calculate this, in conjunction with `scanLeft`, however, `scanLeft` emits each successive iteration. If the goal is to simply approximate the log-likelihood of a path, a simpler solution is to use `foldLeft`:
+The marginal likelihood of the path given the observed data and parameters can be approximated by calculating the product of the average of the weights at each time point. This pseudo-marginal likelihood is used in the [[Particle Marginal Metroplis Hastings|Streaming-MCMC]] algorithm, which can be used to calculate the full joint posterior $p(x, \theta | y)$. `filterStep` will calculate this, in conjunction with `scanLeft`, however, `scanLeft` emits each successive iteration. If the goal is to simply approximate the log-likelihood of a path, a simpler solution is to use `foldLeft`:
 
 ```scala
 data.foldLeft(init)(pf.filterStep).ll
