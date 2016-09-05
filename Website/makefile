@@ -1,2 +1,0 @@
-website:
-	bash knitWebsite.sh
