@@ -25,6 +25,6 @@ $ sbt
 
 ## Learning about the Library
 
-* For usage examples see the [examples](src/main/scala/examples) directory
+* For usage examples see the [examples](src/main/scala/com/github/jonnylaw/examples) directory
 * For documentation, see the [documentation](https://jonnylaw.github.io/ComposableStateSpaceModels)
 * For in depth discussion see the [paper](https://arxiv.org/abs/1609.00635) on Arxiv
