@@ -44,7 +44,7 @@ object POMP {
             case LeafParameter(stateParam, _, _) =>
               stateParam match {
                 case GaussianParameter(m0, c0) =>
-                  MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+                  MultivariateGaussian(m0, c0) map (LeafState(_))
               }
             case _ => throw new Exception("Incorrect parameters supplied to initial state distribution of student t model")
           }
@@ -105,7 +105,7 @@ object POMP {
             case LeafParameter(stateParam, _, _) =>
               stateParam match {
                 case GaussianParameter(m0, c0) =>
-                  MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+                  MultivariateGaussian(m0, c0) map (LeafState(_))
               }
             case _ => throw new Exception("Incorrect parameters supplied to initial state of seasonal model")
           }
@@ -151,7 +151,7 @@ object POMP {
           case LeafParameter(stateParam, _, _) =>
             stateParam match {
               case GaussianParameter(m0, c0) =>
-                MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+                MultivariateGaussian(m0, c0) map (LeafState(_))
               case _ => throw new Exception("Incorrect initial state parameters in linear model")
             }
           case _ => throw new Exception("Incorrect parameters supplied to initial state of linear model")
@@ -194,7 +194,7 @@ object POMP {
           case LeafParameter(stateParam, _, _  @unchecked) =>
             stateParam match {
               case GaussianParameter(m0, c0) =>
-                MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+                MultivariateGaussian(m0, c0) map (LeafState(_))
               case _ => throw new Exception("Incorrect initial state parameter in poisson model x0")
             }
           case _ => throw new Exception("Incorrect parameters supplied to poisson x0, needed LeafParameter")
@@ -240,7 +240,7 @@ object POMP {
           case LeafParameter(stateParam, _, _ @unchecked) =>
             stateParam match {
               case GaussianParameter(m0, c0) =>
-                MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+                MultivariateGaussian(m0, c0) map (LeafState(_))
             }
         }
 
@@ -279,7 +279,7 @@ object POMP {
             case LeafParameter(stateParam, _, _ @unchecked) =>
               stateParam match {
                 case GaussianParameter(m0, c0) =>
-                  MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+                  MultivariateGaussian(m0, c0) map (LeafState(_))
               }
           }
 
@@ -318,7 +318,7 @@ object POMP {
             case LeafParameter(stateParam, _, _ @unchecked) =>
               stateParam match {
                 case GaussianParameter(m0, c0) =>
-                  MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+                  MultivariateGaussian(m0, c0) map (LeafState(_))
               }
             case _ => throw new Exception("State of single model must receive a Leaf Parameter")
           }
