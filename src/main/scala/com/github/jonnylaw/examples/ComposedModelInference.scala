@@ -10,15 +10,14 @@ import scala.concurrent.duration._
 import akka.util.ByteString
 
 import com.github.jonnylaw.model._
-import com.github.jonnylaw.model.Streaming._
-import com.github.jonnylaw.model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel, studentTModel}
-import com.github.jonnylaw.model.DataTypes._
-import com.github.jonnylaw.model.{State, Model}
-import com.github.jonnylaw.model.SimData._
-import com.github.jonnylaw.model.Utilities._
-import com.github.jonnylaw.model.State._
-import com.github.jonnylaw.model.Parameters._
-import com.github.jonnylaw.model.StateSpace._
+import UnparamModel._
+import Streaming._
+import DataTypes._
+import SimData._
+import Utilities._
+import State._
+import Parameters._
+import StateSpace._
 import java.io.{PrintWriter, File}
 import breeze.stats.distributions.Gaussian
 import breeze.linalg.{DenseVector, diag}
@@ -42,17 +41,17 @@ trait TestModel {
     OrnsteinParameter(DenseVector.fill(6)(1.0), DenseVector.fill(6)(0.1), DenseVector.fill(6)(0.5)))
 
   val params = poissonParams |+| seasonalParams
-  val model = PoissonModel(stepBrownian) |+| SeasonalModel(24, 3, stepOrnstein)
+  val poisson: UnparamModel = PoissonModel(stepBrownian)
+  val seasonal: UnparamModel = SeasonalModel(24, 3, stepOrnstein)
+  val model = poisson |+| seasonal
 }
 
 /**
   * Simulate a poisson model, with seasonal rate parameter
   */
-object SimulateSeasonalPoisson extends App {
-  val mod = new TestModel {}
-
+object SimulateSeasonalPoisson extends App with TestModel {
   val times = (1 to 100).map(_.toDouble).toList
-  val sims = simData(times, mod.model(mod.params))
+  val sims = simData(times, model(params))
 
   val pw = new PrintWriter("seasonalPoissonSims.csv")
   pw.write(sims.mkString("\n"))
@@ -62,8 +61,7 @@ object SimulateSeasonalPoisson extends App {
 /**
   * Filter the simulated seasonal poisson data in a batch
   */
-object FilteringSeasonalPoisson extends App {
-  val mod = new TestModel {}
+object FilteringSeasonalPoisson extends App with TestModel {
 
   // read the data from file and parse it into a Data class 
   val data = scala.io.Source.fromFile("seasonalPoissonSims.csv").getLines.
@@ -72,63 +70,46 @@ object FilteringSeasonalPoisson extends App {
     toVector
 
   // Define the particle filter
-  val filter = Filter(mod.model, ParticleFilter.multinomialResampling)
+  val filter = Filter(model, ParticleFilter.multinomialResampling)
 
   // Run the particle filter over the observed data using 1,000 particles
-  val filtered = filter.filterWithIntervals(data, data.map(_.t).min)(1000)(mod.params)
+  val filtered = filter.filterWithIntervals(data, data.map(_.t).min)(1000)(params)
 
   val pw = new PrintWriter("seasonalPoissonFiltered.csv")
   pw.write(filtered.mkString("\n"))
   pw.close()
 }
 
-object DetermineComposedParams extends App {
+object DetermineComposedParams extends App with TestModel {
   implicit val system = ActorSystem("DeterminePoissonParams")
   implicit val materializer = ActorMaterializer()
-
-  val mod = new TestModel {}
 
   val data = scala.io.Source.fromFile("seasonalPoissonSims.csv").getLines.
     map(a => a.split(",")).
     map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
     toVector
 
-  val filter = Filter(mod.model, ParticleFilter.multinomialResampling)
+  val filter = Filter(model, ParticleFilter.multinomialResampling)
   val mll = filter.llFilter(data, data.map(_.t).min)(200) _
 
-  val iters = ParticleMetropolis(mll, mod.params, Parameters.perturb(0.05)).iters
+  val iters = ParticleMetropolis(mll, params, Parameters.perturb(0.05)).iters
 
   val pw = new PrintWriter("SeasonalPoissonParamsLol.csv")
   pw.write(iters.sample(10000).mkString("\n"))
   pw.close()
 }
 
-object FilterOnline extends App {
+object FilterOnline extends App with TestModel {
   implicit val system = ActorSystem("StreamingPoisson")
   implicit val materializer = ActorMaterializer()
 
-  // define the model
-  val poissonParams: Parameters = LeafParameter(
-    GaussianParameter(0.3, 0.5),
-    None,
-    BrownianParameter(0.1, 1.0))
-  val seasonalParams: Parameters = LeafParameter(
-    GaussianParameter(DenseVector.fill(6)(0.3),
-      diag(DenseVector.fill(6)(0.5))),
-    None,
-    OrnsteinParameter(DenseVector.fill(6)(0.3), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.1)))
-
-  val params = poissonParams |+| seasonalParams
-  val unparamMod = PoissonModel(stepBrownian) |+| SeasonalModel(24, 3, stepOrnstein)
-  val mod = unparamMod(params)
-
   // we can simulate from the process as a stream
-  val initialObservation = simStep(mod.x0.draw, 0.0, 1.0, mod)
+  val initialObservation = simStep(model(params).x0.draw, 0.0, 1.0, model(params))
   val dt = 0.1 // specify the time step of the process
 
   // unfold holds onto the first item in the Some Tuple and uses it in the next application of the anonymous function
   val observations = Source.unfold(initialObservation){d =>
-    Some((simStep(d.sdeState.get, d.t + dt, dt, mod), d))
+    Some((simStep(d.sdeState.get, d.t + dt, dt, model(params)), d))
   }.
     take(100)
 
@@ -139,7 +120,7 @@ object FilterOnline extends App {
 
   // particles and initial state for particle filter
   val n = 1000
-  val bootstrapFilter = Filter(unparamMod, ParticleFilter.multinomialResampling)
+  val bootstrapFilter = Filter(model, ParticleFilter.multinomialResampling)
 
   observations.via(bootstrapFilter.filter(0.0)(n)(params)).
     drop(1).

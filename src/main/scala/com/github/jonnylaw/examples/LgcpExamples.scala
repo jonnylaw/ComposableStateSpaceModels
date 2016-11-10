@@ -10,16 +10,14 @@ import scala.concurrent.duration._
 import akka.util.ByteString
 
 import com.github.jonnylaw.model._
-import com.github.jonnylaw.model.Streaming._
-import com.github.jonnylaw.model.ParticleFilter._
-import com.github.jonnylaw.model.POMP.{PoissonModel, SeasonalModel, LinearModel, LogGaussianCox, BernoulliModel}
-import com.github.jonnylaw.model.DataTypes._
-import com.github.jonnylaw.model.{State, Model}
-import com.github.jonnylaw.model.SimData._
-import com.github.jonnylaw.model.Utilities._
-import com.github.jonnylaw.model.State._
-import com.github.jonnylaw.model.Parameters._
-import com.github.jonnylaw.model.StateSpace._
+import Streaming._
+import ParticleFilter._
+import DataTypes._
+import Model._
+import Utilities._
+import State._
+import Parameters._
+import StateSpace._
 import java.io.{PrintWriter, File}
 import breeze.stats.distributions.Gaussian
 import breeze.linalg.{DenseVector, diag}

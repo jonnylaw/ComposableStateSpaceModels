@@ -1,7 +1,6 @@
 package com.github.jonnylaw.model
 
-import com.github.jonnylaw.model.POMP._
-import com.github.jonnylaw.model.DataTypes._
+import DataTypes._
 import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}
 import breeze.linalg.{diag, DenseVector}
 import breeze.numerics.{exp, sqrt}

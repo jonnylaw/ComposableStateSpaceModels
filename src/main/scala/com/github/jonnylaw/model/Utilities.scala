@@ -1,11 +1,10 @@
 package com.github.jonnylaw.model
 
-import com.github.jonnylaw.model.POMP._
-import com.github.jonnylaw.model.DataTypes._
+import DataTypes._
 import breeze.linalg.DenseVector
 import breeze.numerics.{exp, log}
 import breeze.stats.distributions.Multinomial
-import com.github.jonnylaw.model.Parameters._
+import Parameters._
 import Stream._
 
 object Utilities {
@@ -64,9 +63,7 @@ object Utilities {
     * @param b another vector
     * @return the elementwise sum of the two vectors
     */
-  def addVectors(
-    a: Vector[Double],
-    b: Vector[Double]): Vector[Double] = {
+  def addVectors(a: Vector[Double], b: Vector[Double]): Vector[Double] = {
     def loop(a: Vector[Double], b: Vector[Double], sum: Vector[Double]): Vector[Double] = a match {
       case IndexedSeq() => sum
       case x +: IndexedSeq() => sum :+ (b.head + x)

@@ -1,17 +1,16 @@
 package com.github.jonnylaw.model
 
-import com.github.jonnylaw.model.POMP._
-import com.github.jonnylaw.model.Utilities._
-import com.github.jonnylaw.model.DataTypes._
-import com.github.jonnylaw.model.State._
-import com.github.jonnylaw.model.SimData._
-import scala.language.higherKinds._
+import Utilities._
+import DataTypes._
+import State._
+import SimData._
+import ParticleFilter._
 
+import scala.language.higherKinds._
 import breeze.stats.distributions.{Rand, Uniform, Multinomial}
 import breeze.stats.distributions.Rand._
 import breeze.numerics.exp
 import breeze.linalg.DenseVector
-import ParticleFilter._
 
 import akka.stream.scaladsl.Source
 import akka.stream.scaladsl._
@@ -55,7 +54,7 @@ trait ParticleFilter {
   /**
     * Step filter, perform one step of the particle fiilter
     */
-  def stepFilter(s: PfState, y: Data)(p: Parameters): PfState = {
+  def stepFilter(p: Parameters)(s: PfState, y: Data): PfState = {
     val dt = y.t - s.t // calculate time between observations
 
     val unweightedX: Vector[State] = resample(s.particles, s.weights)
@@ -103,7 +102,7 @@ trait ParticleFilter {
     */
   def llFilter(data: Vector[Data], t0: Time)(particles: Int)(p: Parameters): LogLikelihood = {
     val initState = initialiseState(p, particles, t0)
-    data.foldLeft(initState)(stepFilter(_, _)(p)).ll
+    data.foldLeft(initState)(stepFilter(p)).ll
   }
 
   /**
@@ -113,7 +112,7 @@ trait ParticleFilter {
   def accFilter(data: Vector[Data], t0: Time)(particles: Int)(p: Parameters): Vector[PfState] = {
     val initState = initialiseState(p, particles, t0)
 
-    val x = data.scanLeft(initState)(stepFilter(_, _)(p))
+    val x = data.scanLeft(initState)(stepFilter(p))
 
     x.tail
   }
@@ -132,7 +131,7 @@ trait ParticleFilter {
   def filter(t0: Time)(particles: Int)(p: Parameters): Flow[Data, PfState, Any] = {
     val initState = initialiseState(p, particles, t0)
 
-    Flow[Data].scan(initState)(stepFilter(_, _)(p))
+    Flow[Data].scan(initState)(stepFilter(p))
   }
 
   /**
@@ -362,7 +361,7 @@ case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[Sta
 
   def calcWeight(x: State, dt: TimeIncrement, t: Time)(p: Parameters): (State, Eta) = {
       val mod = unparamMod(p)
-      val x1 = simSdeStream(x, t - dt, dt, precision, mod.stepFunction)
+      val x1 = Model.simSdeStream(x, t - dt, dt, precision, mod.stepFunction)
       val transformedState = x1 map (a => mod.f(a.state, a.time))
 
       (x1.last.state, Vector(transformedState.last, transformedState.map(x => exp(x) * dt).sum))

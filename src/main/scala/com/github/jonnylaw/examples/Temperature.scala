@@ -1,7 +1,5 @@
 package com.github.jonnylaw.examples
 
-import com.github.jonnylaw.model.POMP._
-
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl._
@@ -9,11 +7,11 @@ import java.nio.file.{Path, Paths}
 import akka.util.ByteString
 
 import com.github.jonnylaw.model._
-import com.github.jonnylaw.model.Streaming._
-import com.github.jonnylaw.model.DataTypes._
-import com.github.jonnylaw.model.SimData._
-import com.github.jonnylaw.model.Parameters._
-import com.github.jonnylaw.model.StateSpace._
+import Streaming._
+import DataTypes._
+import SimData._
+import Parameters._
+import StateSpace._
 import java.io.PrintWriter
 import breeze.linalg.{DenseVector, diag}
 import cats.implicits._
@@ -50,19 +48,17 @@ trait TemperatureModel {
   val weeklyParams = linearParam |+| seasonalParamDaily |+| seasonalParamWeekly
   val dailyParams = linearParam |+| seasonalParamDaily
 
-  val poisson = LinearModel(stepBrownian)
-  val daily = SeasonalModel(24, 3, stepOrnstein)
-  val weekly = SeasonalModel(24*7, 3, stepOrnstein)
-  val weeklyMod = poisson |+| daily |+| weekly
-  val dailyMod = poisson |+| daily
+  val drift: UnparamModel = LinearModel(stepBrownian)
+  val daily: UnparamModel = SeasonalModel(24, 3, stepOrnstein)
+  val weekly: UnparamModel = SeasonalModel(24*7, 3, stepOrnstein)
+  val weeklyMod = drift |+| daily |+| weekly
+  val dailyMod = drift |+| daily
 }
 
-object SimTemperatureModel extends App {
-  val temp = new TemperatureModel {}
+object SimTemperatureModel extends App with TemperatureModel {
+  val model = weeklyMod(weeklyParams)
 
-  val model = temp.weeklyMod(temp.weeklyParams)
-
-  val sims = simData(temp.data.map(_.t).sorted, model)
+  val sims = simData(data.map(_.t).sorted, model)
 
   val pw = new PrintWriter("SimTemperature.csv")
   pw.write(sims.mkString("\n"))
@@ -88,77 +84,67 @@ object DedupData extends App {
   pw.close()
 }
 
-object TemperatureModelGetParameters {
-  def main(args: Array[String]): Unit = {
+object TemperatureModelGetParameters extends App with TemperatureModel {
     implicit val system = ActorSystem("FitTemperature")
     implicit val materializer = ActorMaterializer()
 
-    val temp = new TemperatureModel {}
-
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
-    val filter = Filter(temp.dailyMod, ParticleFilter.multinomialResampling)
-    val mll = filter.llFilter(temp.data, temp.data.map(_.t).min)(particles) _
+    val filter = Filter(dailyMod, ParticleFilter.multinomialResampling)
+    val mll = filter.llFilter(data, data.map(_.t).min)(particles) _
 
     runPmmhToFile(s"Temperature-$delta-$particles", 4,
-      temp.dailyParams, mll, Parameters.perturb(delta), iters)
-  }
+      dailyParams, mll, Parameters.perturb(delta), iters)
 }
 
-object WeeklyTempModelGetParams {
-  def main(args: Array[String]) = {
+object WeeklyTempModelGetParams extends App with TemperatureModel {
     implicit val system = ActorSystem("FitTemperatureWeekly")
     implicit val materializer = ActorMaterializer()
 
-    val temp = new TemperatureModel {}
-
-    val data: Vector[Data] = scala.io.Source.fromFile("WeeklyTemperature.csv").getLines.toVector.
+    override val data = scala.io.Source.fromFile("WeeklyTemperature.csv").getLines.toVector.
       drop(1).
       map(a => a.split(",")).
       map(rs => Data(rs(5).toDouble, rs(4).toDouble, None, None, None))
 
     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
-    val filter = Filter(temp.weeklyMod, ParticleFilter.multinomialResampling)
-    val mll = filter.llFilter(data, temp.data.map(_.t).min)(particles) _
+    val filter = Filter(weeklyMod, ParticleFilter.multinomialResampling)
+    val mll = filter.llFilter(data, data.map(_.t).min)(particles) _
 
     runPmmhToFile(s"Temperature-$delta-$particles", 4,
-      temp.weeklyParams, mll, Parameters.perturb(delta), iters)
-  }
+      weeklyParams, mll, Parameters.perturb(delta), iters)
 }
 
-object FilterTemperatureModel extends App {
-  val temp = new TemperatureModel {
-    override val data = scala.io.Source.fromFile("TestTemperature.csv").getLines.toVector.
-      drop(1).
-      take(2000).
-      map(a => a.split(",")).
-      map(rs => Data(rs(5).toDouble, rs(4).toDouble, None, None, None))
-  }
-  val meanParams: Parameters = temp.dailyParams
-  val mod = temp.dailyMod(meanParams)
+object FilterTemperatureModel extends App with TemperatureModel {
+  override val data = scala.io.Source.fromFile("TestTemperature.csv").getLines.toVector.
+    drop(1).
+    take(2000).
+    map(a => a.split(",")).
+    map(rs => Data(rs(5).toDouble, rs(4).toDouble, None, None, None))
 
-  val filter = Filter(temp.dailyMod, ParticleFilter.multinomialResampling)
+  val meanParams: Parameters = dailyParams
+  val mod = dailyMod(meanParams)
 
-  val filtered = filter.filterWithIntervals(temp.data, temp.data.map(_.t).min)(1000)(meanParams)
+  val filter = Filter(dailyMod, ParticleFilter.multinomialResampling)
+
+  val filtered = filter.filterWithIntervals(data, data.map(_.t).min)(1000)(meanParams)
 
   val pw = new PrintWriter("TemperatureFiltered.csv")
   pw.write(filtered.mkString("\n"))
   pw.close()
 }
 
-object ForecastTemperatureModel extends App {
+object ForecastTemperatureModel extends App with TemperatureModel {
   implicit val system = ActorSystem("ForecastTemperature")
   implicit val materializer = ActorMaterializer()
 
-  val temp = new TemperatureModel {}
-  val meanParams: Parameters = temp.dailyParams
-  val mod = temp.dailyMod(meanParams)
+  val meanParams: Parameters = dailyParams
+  val mod = dailyMod(meanParams)
 
-  val filter = Filter(temp.dailyMod, ParticleFilter.multinomialResampling)
+  val filter = Filter(dailyMod, ParticleFilter.multinomialResampling)
 
   // calculate last filtered state using the parameters
-  val filtered = filter.accFilter(temp.data, temp.data.map(_.t).min)(1000)(meanParams)
+  val filtered = filter.accFilter(data, data.map(_.t).min)(1000)(meanParams)
   val lastState = ParticleFilter.multinomialResampling(filtered.last.particles, filtered.last.weights)
 
   val times: Vector[Time] = scala.io.Source.fromFile("TestTemperature.csv").getLines.toVector.
@@ -173,21 +159,19 @@ object ForecastTemperatureModel extends App {
     onComplete(_ => system.terminate)
 }
 
-object OneStepForecastTemperature extends App {
+object OneStepForecastTemperature extends App with TemperatureModel {
   implicit val system = ActorSystem("ForecastTemperature")
   implicit val materializer = ActorMaterializer()
 
-  val temp = new TemperatureModel {}
-
-  val data = scala.io.Source.fromFile("TestTemperature.csv").getLines.toVector.
+  override val data = scala.io.Source.fromFile("TestTemperature.csv").getLines.toVector.
     drop(1).
     take(2000).
     map(a => a.split(",")).
     map(rs => Data(rs(5).toDouble, rs(4).toDouble, None, None, None)).
     sortBy(_.t)
 
-  val filter = Filter(temp.dailyMod, ParticleFilter.multinomialResampling)
-  val forecast = filter.getOneStepForecast(data.map(_.t).min)(5000)(temp.dailyParams)
+  val filter = Filter(dailyMod, ParticleFilter.multinomialResampling)
+  val forecast = filter.getOneStepForecast(data.map(_.t).min)(5000)(dailyParams)
 
   Source(data).via(forecast).
     drop(1).

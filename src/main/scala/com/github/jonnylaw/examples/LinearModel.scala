@@ -11,11 +11,10 @@ import akka.stream.ClosedShape
 import java.nio.file.{Path, Paths}
 
 import com.github.jonnylaw.model._
-import com.github.jonnylaw.model.POMP.LinearModel
-import com.github.jonnylaw.model.DataTypes._
-import com.github.jonnylaw.model.SimData._
-import com.github.jonnylaw.model.StateSpace._
-import com.github.jonnylaw.model.Streaming._
+import DataTypes._
+import SimData._
+import StateSpace._
+import Streaming._
 import java.io.{PrintWriter, File}
 
 trait LinearModel {

@@ -10,21 +10,19 @@ import scala.concurrent.duration._
 import akka.util.ByteString
 
 import com.github.jonnylaw.model._
-import com.github.jonnylaw.model.UnparamModel._
-import com.github.jonnylaw.model.Streaming._
-import com.github.jonnylaw.model.POMP.{PoissonModel, SeasonalModel, LinearModel, BernoulliModel, studentTModel}
-import com.github.jonnylaw.model.DataTypes._
-import com.github.jonnylaw.model.{State, Model}
-import com.github.jonnylaw.model.SimData._
-import com.github.jonnylaw.model.Utilities._
-import com.github.jonnylaw.model.State._
-import com.github.jonnylaw.model.Parameters._
-import com.github.jonnylaw.model.StateSpace._
+import UnparamModel._
+import Streaming._
+import DataTypes._
+import SimData._
+import Utilities._
+import State._
+import Parameters._
+import StateSpace._
 import java.io.{PrintWriter, File}
 import breeze.linalg.{DenseVector, diag}
 import cats.implicits._
 
-object SeasStudentT extends App {
+trait TModel {
   val tparams: Parameters = LeafParameter(
     GaussianParameter(0.0, 3.0),
     Some(0.3),
@@ -36,9 +34,14 @@ object SeasStudentT extends App {
 
   val p = tparams |+| seasParams
 
-  val unparamMod = studentTModel(stepOrnstein, 5) |+| SeasonalModel(24, 3, stepOrnstein)
-  val mod = unparamMod(p)
+  val st: UnparamModel = studentTModel(stepOrnstein, 5)
+  val seasonal: UnparamModel = SeasonalModel(24, 3, stepOrnstein)
 
+  val unparamMod = st |+| seasonal
+  val mod = unparamMod(p)
+}
+
+object SeasStudentT extends App with TModel {
   val times = (1 to 7*24).map(_.toDouble).toList
   val sims = simData(times, mod)
 
@@ -47,20 +50,7 @@ object SeasStudentT extends App {
   pw.close()
 }
 
-object GetSeasTParams extends App {
-  val tparams: Parameters = LeafParameter(
-    GaussianParameter(0.0, 3.0),
-    Some(0.3),
-    OrnsteinParameter(3.0, 1.0, 0.5))
-  val seasParams: Parameters = LeafParameter(
-    GaussianParameter(DenseVector.fill(6)(0.0), diag(DenseVector.fill(6)(3.0))),
-    None,
-    OrnsteinParameter(DenseVector.fill(6)(2.0), DenseVector.fill(6)(0.5), DenseVector.fill(6)(0.3)))
-
-  val p = tparams |+| seasParams
-
-  val unparamMod = studentTModel(stepOrnstein, 5) |+| SeasonalModel(24, 3, stepOrnstein)
-
+object GetSeasTParams extends App with TModel {
   /**
     * Parse the timestamp and observations from the simulated data
     */

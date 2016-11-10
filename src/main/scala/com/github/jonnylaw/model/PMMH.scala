@@ -4,7 +4,6 @@ import breeze.stats.distributions.{Uniform, Rand, MultivariateGaussian, Process,
 import breeze.stats.distributions.Rand._
 import breeze.stats.distributions.MarkovChain._
 import breeze.linalg.DenseMatrix
-import com.github.jonnylaw.model.POMP._
 import akka.stream.scaladsl.Source
 import akka.stream.scaladsl._
 import Stream._

@@ -1,13 +1,12 @@
 package com.github.jonnylaw.model
 
-import breeze.linalg.DenseVector
-import breeze.numerics.{exp, log}
-import breeze.stats.distributions.{Gaussian, Uniform, Exponential, Rand}
-import com.github.jonnylaw.model.POMP._
-import com.github.jonnylaw.model.Utilities._
-import com.github.jonnylaw.model.DataTypes._
-import com.github.jonnylaw.model.State._
-import com.github.jonnylaw.model.ParticleFilter._
+import Utilities._
+import DataTypes._
+import State._
+import ParticleFilter._
+import Stream._
+import ParticleFilter._
+
 import breeze.linalg.linspace
 import breeze.stats.distributions.Rand._
 
@@ -17,37 +16,11 @@ import akka.stream.scaladsl.Source
 import java.io.File
 import akka.stream.scaladsl._
 import akka.util.ByteString
-import Stream._
-import com.github.jonnylaw.model.ParticleFilter._
-
+import breeze.linalg.DenseVector
+import breeze.numerics.{exp, log}
+import breeze.stats.distributions.{Gaussian, Uniform, Exponential, Rand}
 
 object SimData {
-  /**
-    * Simulate a diffusion process as a stream
-    * @param x0 the starting value of the stream
-    * @param t0 the starting time of the stream
-    * @param totalIncrement the ending time of the stream
-    * @param precision the step size of the stream 10e(-precision)
-    * @param stepFun the stepping function to use to generate the SDE Stream
-    * @return a lazily evaluated stream of Sde
-    */
-  def simSdeStream(
-    x0: State,
-    t0: Time,
-    totalIncrement: TimeIncrement,
-    precision: Int,
-    stepFun: (State, TimeIncrement) => Rand[State]): Stream[Sde] = {
-
-    val deltat: TimeIncrement = Math.pow(10, -precision)
-
-    // define a recursive stream from t0 to t = t0 + totalIncrement stepping by 10e-precision
-    lazy val stream: Stream[Sde] = (Stream.cons(Sde(t0, x0),
-      stream map (x => Sde(x.time + deltat, stepFun(x.state, deltat).draw)))).
-      takeWhile (s => s.time <= t0 + totalIncrement)
-
-    stream
-  }
-
   /**
     * Simulates a diffusion process at any specified times
     * @param x0 the initial state
@@ -71,56 +44,6 @@ object SimData {
   }
 
   /**
-    * Simulate the log-Gaussian Cox-Process using thinning
-    * @param start the starting time of the process
-    * @param the end time of the process
-    * @param mod the model to simulate from. In a composition, the LogGaussianCox must be the left-hand model
-    * @param precision an integer specifying the timestep between simulating the latent state, 10e-precision
-    * @return a vector of Data specifying when events happened
-    */
-  def simLGCP(
-    start: Time,
-    end: Time,
-    mod: Model,
-    precision: Int): Vector[Data] = {
-
-    // generate an SDE Stream
-    val stateSpace = simSdeStream(mod.x0.draw, start, end - start, precision, mod.stepFunction)
-
-    // Calculate the upper bound of the stream
-    val upperBound = stateSpace.map(s => mod.f(s.state, s.time)).
-      map(exp(_)).max
-
-    def loop(lastEvent: Time, eventTimes: Vector[Data]): Vector[Data] = {
-      // sample from an exponential distribution with the upper bound as the parameter
-      val t1 = lastEvent + Exponential(upperBound).draw
-
-      if (t1 > end) {
-        eventTimes
-      } else {
-        // drop the elements we don't need from the stream, then calculate the hazard near that time
-        val statet1 = stateSpace.takeWhile(s => s.time <= t1) 
-        val hazardt1 = statet1.map(s => mod.f(s.state, s.time)).last
-
-        val stateEnd = statet1.last.state
-        val gamma = mod.f(stateEnd, t1)
-        val eta = mod.link(gamma)
-
-        if (Uniform(0,1).draw <= exp(hazardt1)/upperBound) {
-          loop(t1, Data(t1, true, Some(eta), Some(gamma), Some(statet1.last.state)) +: eventTimes)
-         } else {
-          loop(t1, eventTimes)
-        }
-      }
-    }
-    loop(start, stateSpace.map{ s => {
-      val gamma = mod.f(s.state, s.time)
-      val eta = mod.link(gamma)
-      Data(s.time, false, Some(eta), Some(gamma), Some(s.state)) }}.toVector
-    )
-  }
-
-  /**
     * Generates a vector of event times from the Log-Gaussian Cox-Process
     * by thinning an exponential process, returns the value of the state space at the event times only
     * @param start the start time of the process
@@ -137,7 +60,7 @@ object SimData {
     precision: Int): Vector[Data] = {
 
     // generate an SDE Stream
-    val stateSpace = simSdeStream(mod.x0.draw, start, end - start, precision, mod.stepFunction)
+    val stateSpace = Model.simSdeStream(mod.x0.draw, start, end - start, precision, mod.stepFunction)
 
     // Calculate the upper bound of the stream
     val upperBound = stateSpace.map(s => mod.f(s.state, s.time)).

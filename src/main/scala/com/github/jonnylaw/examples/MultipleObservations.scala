@@ -8,18 +8,16 @@ import akka.stream.scaladsl._
 import akka.util.ByteString
 
 import com.github.jonnylaw.model._
-import com.github.jonnylaw.model.Streaming._
-import com.github.jonnylaw.model.POMP._
-import com.github.jonnylaw.model.StateSpace._
-import com.github.jonnylaw.model.DataTypes._
-import com.github.jonnylaw.model.{State, Model}
-import com.github.jonnylaw.model.SimData._
+import Streaming._
+import StateSpace._
+import DataTypes._
+import SimData._
 
-import com.github.jonnylaw.model.State._
-import com.github.jonnylaw.model.Parameters._
+import State._
+import Parameters._
 import scala.concurrent.{duration, Await}
 import scala.concurrent.duration._
-import com.github.jonnylaw.model.Utilities._
+import Utilities._
 import breeze.stats.distributions.MarkovChain._
 import breeze.stats.{mean, variance}
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
@@ -52,9 +50,9 @@ object MultipleObservations {
     // compose the parameters and models together
     // note the models must be composed in the same order as the parameters
     val p = poissonParam |+| seasonalParamDaily |+| seasonalParamWeekly
-    val poisson = PoissonModel(stepBrownian)
-    val daily = SeasonalModel(24, 3, stepBrownian)
-    val weekly = SeasonalModel(24*7, 3, stepBrownian)
+    val poisson: UnparamModel = PoissonModel(stepBrownian)
+    val daily: UnparamModel = SeasonalModel(24, 3, stepBrownian)
+    val weekly: UnparamModel = SeasonalModel(24*7, 3, stepBrownian)
     val poissonMod = poisson |+| daily |+| weekly
 
     // record observations at every other integer time point from 1 to 100

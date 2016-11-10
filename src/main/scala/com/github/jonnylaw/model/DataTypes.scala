@@ -6,33 +6,6 @@ import scala.util.parsing.json.JSONObject
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
 
 object DataTypes {
-  import com.github.jonnylaw.model.POMP._
-
-  /**
-    * A description containing the modelled quantities and observations
-    * @param sdeState = x_t = p(x_t | x_t-1), the latent state (Optional)
-    * @param gamma = f(x_t), the latent state transformed by the linear transformation (Optional)
-    * @param eta = g(gamma), the latent state transformed by the linking-function (Optional)
-    * @param observation = pi(eta), the observation
-    * @param t, the time of the observation
-    */
-  case class Data(
-    t: Time,
-    observation: Observation,
-    eta: Option[Eta],
-    gamma: Option[Gamma],
-    sdeState: Option[State]) {
-
-    import Data._
-
-    override def toString = {
-      if (!sdeState.isEmpty) {
-        s"$t, $observation, ${eta.get.head}, ${gamma.get}, " + sdeState.get.flatten.mkString(", ")
-      } else {
-        t + ", " + observation
-      }
-    }
-  }
 
   /**
     * Given a sorted set of data, removes duplicate sequential entries 
@@ -89,4 +62,3 @@ object DataTypes {
     override def toString = time + "," + state.toString
   }
 }
-
