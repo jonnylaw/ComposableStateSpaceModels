@@ -143,7 +143,7 @@ object SimData {
     * @param mod the model to simulate from
     * @return a tuple, including a ForecastOut object and the vector of states which has been advanced by dt = t - t0
     */
-  def oneStepForecast(x0: Vector[State], t0: Time, t: Time, mod: Model): (ForecastOut, Vector[State]) = {
+  def oneStepForecast(x0: Seq[State], t0: Time, t: Time, mod: Model): (ForecastOut, Seq[State]) = {
     val nextStep = x0 map (simStep(_, t0, t - t0, mod))
     val state = nextStep map (_.sdeState.get)
     val stateIntervals = getAllCredibleIntervals(state, 0.995)
@@ -165,7 +165,7 @@ object SimData {
     * @param mod the model to simulate from
     * @return a flow object which can be attached to a Source[Time] and a suitable Sink
     */
-  def forecastFlow(x0: Vector[State], t0: Time, mod: Model): Flow[Time, ForecastOut, Any] = {
+  def forecastFlow(x0: Seq[State], t0: Time, mod: Model): Flow[Time, ForecastOut, Any] = {
     Flow[Time].scan(oneStepForecast(x0, t0, t0, mod))((d, t) => oneStepForecast(d._2, d._1.t, t, mod)) map (_._1)
   }
 

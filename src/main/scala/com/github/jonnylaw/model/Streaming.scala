@@ -54,7 +54,7 @@ object Streaming {
       val out = FileIO.toPath(Paths.get(s"./$file.csv"))
       val bcast = builder.add(Broadcast[MetropState](2))
       
-      mh.itersAkka ~> bcast
+      mh.iters ~> bcast
       bcast ~> monitorStream(1000, 1) ~> Sink.ignore
 
       bcast ~> Flow[MetropState].take(iters) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
@@ -95,7 +95,7 @@ object Streaming {
       val out = Sink.ignore
       val bcast = builder.add(Broadcast[MetropState](2))
       
-      mh.itersAkka ~> bcast
+      mh.iters ~> bcast
       bcast ~> monitorPilot(iters/10, 1) ~> Sink.ignore
 
       bcast ~> Flow[MetropState].take(iters) ~> Flow[MetropState].map(p => ByteString(s"$p\n")) ~> out
@@ -115,7 +115,7 @@ object Streaming {
 
     Source(1 to chains).
       mapAsync(parallelism = 4){ chain =>
-        val iters = ParticleMetropolis(mll, initParams, perturb).itersAkka
+        val iters = ParticleMetropolis(mll, initParams, perturb).iters
 
         println(s"""Running chain $chain, $iterations iterations""")
 

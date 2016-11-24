@@ -2,8 +2,9 @@ package com.github.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
+import scala.concurrent.ExecutionContext.Implicits.global
+import akka.NotUsed
 import akka.stream.scaladsl.Source
-import java.io.{File, PrintWriter}
 import akka.stream.scaladsl._
 import scala.concurrent.{duration, Await}
 import scala.concurrent.duration._
@@ -18,10 +19,10 @@ import Utilities._
 import State._
 import Parameters._
 import StateSpace._
-import java.io.{PrintWriter, File}
+import java.nio.file.Paths
+
 import breeze.stats.distributions.Gaussian
 import breeze.linalg.{DenseVector, diag}
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import breeze.numerics.exp
 import cats.implicits._
@@ -51,83 +52,72 @@ trait TestModel {
   */
 object SimulateSeasonalPoisson extends App with TestModel {
   val times = (1 to 100).map(_.toDouble).toList
-  val sims = simData(times, model(params))
 
-  val pw = new PrintWriter("seasonalPoissonSims.csv")
-  pw.write(sims.mkString("\n"))
-  pw.close()
-}
+  implicit val system = ActorSystem("SimulateSeasonalPoisson")
+  implicit val materializer = ActorMaterializer()
 
-/**
-  * Filter the simulated seasonal poisson data in a batch
-  */
-object FilteringSeasonalPoisson extends App with TestModel {
-
-  // read the data from file and parse it into a Data class 
-  val data = scala.io.Source.fromFile("seasonalPoissonSims.csv").getLines.
-    map(a => a.split(",")).
-    map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
-    toVector
-
-  // Define the particle filter
-  val filter = Filter(model, ParticleFilter.multinomialResampling)
-
-  // Run the particle filter over the observed data using 1,000 particles
-  val filtered = filter.filterWithIntervals(data, data.map(_.t).min)(1000)(params)
-
-  val pw = new PrintWriter("seasonalPoissonFiltered.csv")
-  pw.write(filtered.mkString("\n"))
-  pw.close()
+  Source(times).
+    via(model(params).simPompModel(0.0)).
+    map(s => ByteString(s + "\n")).
+    runWith(FileIO.toPath(Paths.get("seasonalPoissonSims.csv"))).
+    onComplete(_ => system.terminate)
 }
 
 object DetermineComposedParams extends App with TestModel {
   implicit val system = ActorSystem("DeterminePoissonParams")
   implicit val materializer = ActorMaterializer()
 
-  val data = scala.io.Source.fromFile("seasonalPoissonSims.csv").getLines.
+  val data = FileIO.fromPath(Paths.get("SeasonalPoissonSims.csv")).
+    via(Framing.delimiter(
+      ByteString("\n"),
+      maximumFrameLength = 256,
+      allowTruncation = true)).
+    map(_.utf8String).
     map(a => a.split(",")).
-    map(rs => Data(rs(0).toDouble, rs(1).toDouble, None, None, None)).
-    toVector
+    map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None))
 
   val filter = Filter(model, ParticleFilter.multinomialResampling)
-  val mll = filter.llFilter(data, data.map(_.t).min)(200) _
 
-  val iters = ParticleMetropolis(mll, params, Parameters.perturb(0.05)).iters
 
-  val pw = new PrintWriter("SeasonalPoissonParamsLol.csv")
-  pw.write(iters.sample(10000).mkString("\n"))
-  pw.close()
+  data.
+    take(100).
+    grouped(100).
+    map(d => {
+      val mll = filter.llFilter(d.toVector, d.map(_.t).min)(200) _
+      ParticleMetropolis(mll, params, Parameters.perturb(0.05)).
+        iters.
+        take(10000).
+        map(s => ByteString(s + "\n")).
+        runWith(FileIO.toPath(Paths.get("LinearModelBreezeSingleSite.csv"))).
+        onComplete(_ => system.terminate)
+    }).
+    runWith(Sink.ignore)
+
 }
 
 object FilterOnline extends App with TestModel {
   implicit val system = ActorSystem("StreamingPoisson")
   implicit val materializer = ActorMaterializer()
 
-  // we can simulate from the process as a stream
-  val initialObservation = simStep(model(params).x0.draw, 0.0, 1.0, model(params))
-  val dt = 0.1 // specify the time step of the process
-
-  // unfold holds onto the first item in the Some Tuple and uses it in the next application of the anonymous function
-  val observations = Source.unfold(initialObservation){d =>
-    Some((simStep(d.sdeState.get, d.t + dt, dt, model(params)), d))
-  }.
-    take(100)
+  // we can simulate from the process as an Akka stream
+  // 0.1 is the time increment between observations
+  val observations: Source[Data, NotUsed] = model(params).simRegular(0.1)
 
   // write the observations to a file
   observations.
+    take(100).
     map(a => ByteString(s"$a\m")).
-    runWith(FileIO.toFile(new File("OnlineComposedModel.csv")))
+    runWith(FileIO.toPath(Paths.get("OnlineComposedModel.csv")))
 
   // particles and initial state for particle filter
   val n = 1000
   val bootstrapFilter = Filter(model, ParticleFilter.multinomialResampling)
 
-  observations.via(bootstrapFilter.filter(0.0)(n)(params)).
+  // run the bootstrap particle filter
+  observations.
+    via(bootstrapFilter.filter(0.0)(n)(params)).
     drop(1).
     map(a => ByteString(s"$a\n")).
-    runWith(FileIO.toFile(new File("OnlineComposedModelFiltered.csv")))
-
-  Thread.sleep(25000) // sleep for 25 seconds
-
-  system.shutdown
+    runWith(FileIO.toPath(Paths.get("OnlineComposedModelFiltered.csv"))).
+    onComplete(_ => system.shutdown)
 }

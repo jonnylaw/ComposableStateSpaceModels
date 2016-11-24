@@ -10,7 +10,7 @@ sealed trait State {
   import State._
 
   def map(f: DenseVector[Double] => DenseVector[Double]): State = State.map(this)(f)
-  def flatten: Vector[Double] = State.flatten(this)
+  def flatten: Seq[Double] = State.flatten(this)
   def head: Double = State.head(this)
   def isEmpty: Boolean = State.isEmpty(this)
   override def toString: String = this.flatten.mkString(", ")
@@ -88,7 +88,7 @@ object State {
     * @param w their associated weights
     * @return the weighted mean
     */
-  def weightedMean(x: Seq[State], w: Vector[Double]): State = {
+  def weightedMean(x: Seq[State], w: Seq[Double]): State = {
 
     val normalisedWeights = w map (_ / w.sum)
     val st = x.zip(normalisedWeights) map {
@@ -103,7 +103,7 @@ object State {
     st.reduceLeft((a: State, b: State) => addStates(a,b))
   }
 
-  def weightedMean2(x: Seq[State], w: Vector[Double]): State = {
+  def weightedMean2(x: Seq[State], w: Seq[Double]): State = {
     val normaliseWeights = w map (_ / w.sum)
 
     x.zip(normaliseWeights).
@@ -115,7 +115,7 @@ object State {
     *  Calculate the mean of a state
     */
   def meanState(x: Seq[State]): State = {
-    weightedMean(x, Vector.fill(x.length)(1))
+    weightedMean(x, Seq.fill(x.length)(1))
   }
 
   /**
@@ -168,9 +168,9 @@ object State {
       case (BranchState(l, r), BranchState(l1, r1)) => BranchState(addStates(l, l1), addStates(r, r1))
     }
 
-  def flatten(s: State): Vector[Double] =
+  def flatten(s: State): Seq[Double] =
     s match {
-      case LeafState(x) => x.data.toVector
+      case LeafState(x) => x.data
       case BranchState(ls, rs) => flatten(ls) ++ flatten(rs)
     }
 }

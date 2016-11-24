@@ -4,6 +4,7 @@ import breeze.stats.distributions.{Uniform, Rand, MultivariateGaussian, Process,
 import breeze.stats.distributions.Rand._
 import breeze.stats.distributions.MarkovChain._
 import breeze.linalg.DenseMatrix
+import breeze.numerics._
 import akka.stream.scaladsl.Source
 import akka.stream.scaladsl._
 import Stream._
@@ -55,40 +56,6 @@ trait MetropolisHastings {
   def logLikelihood: Parameters => LogLikelihood
 
   /**
-    * Generic metropolis-hastings step, which can be used with the usual acceptance ratio
-    * or simplified to the metropolis ratio by specifying the log-transition of the parameters 
-    * to be zero
-    */
-  def mhStep: MetropState => MetropState = p => {
-    val propParams = proposal(p.params).draw
-    val propll = logLikelihood(propParams)
-    val a = prior.logPdf(propParams) + propll + logTransition(propParams, p.params) - p.ll - logTransition(p.params, propParams) - prior.logPdf(propParams)
-
-    if (math.log(Uniform(0,1).draw) < a) {
-      MetropState(propll, propParams, p.accepted + 1)
-    } else {
-      p
-    }
-  }
-
-  /**
-    * Generates an akka stream of MetropState, containing the current parameters, 
-    * count of accepted moves and the current pseudo marginal log-likelihood
-    * Unfortunately for an unknown reason this isn't working
-    */
-  def itersAkka: Source[MetropState, Any] = {
-    val initState = MetropState(-1e99, initialParams, 0)
-    Source.unfold(initState)(s => Some((mhStep(s), s)))
-  }
-
-  /**
-    * Return an akka stream of the parameters
-    */
-  def paramsAkka: Source[Parameters, Any] = {
-    itersAkka map (_.params)
-  }
-
-  /**
     * A single step of the metropolis hastings algorithm to be 
     * used with breeze implementation of Markov Chain.
     * This is a slight alteration to the implementation in breeze, 
@@ -100,8 +67,9 @@ trait MetropolisHastings {
     for {
       propParams <- proposal(p.params)
       propll = logLikelihood(propParams)
-      a = propll - p.ll + logTransition(propParams, p.params) - logTransition(p.params, propParams)
-      prop = if (math.log(Uniform(0,1).draw) < a) {
+      a = propll + logTransition(propParams, p.params) + prior.logPdf(propParams) - logTransition(p.params, propParams) - p.ll - prior.logPdf(p.params)
+      u <- Uniform(0, 1)
+      prop = if (log(u) < a) {
         MetropState(propll, propParams, p.accepted + 1)
       } else {
         p
@@ -114,44 +82,16 @@ trait MetropolisHastings {
     * Calling .sample(n) on this will create a single site metropolis hastings, 
     * proposing parameters only from the initial supplied parameter values
     */
-  def iters: Process[MetropState] = {
+  def markovIters: Process[MetropState] = {
     val initState = MetropState(-1e99, initialParams, 0)
     MarkovChain(initState)(mhStepRand)
   }
 
   /**
-    * Returns iterations from the MCMC algorithm in a vector
-    * using sampleStep, sampleStep 
-    */
-  def itersSeq(n: Int): Seq[MetropState] = {
-    MetropolisHastings.sampleStep(n, iters)
-  }
-
-  /**
     * Use the same step for iterations in a stream
     */
-  def itersStream: Source[MetropState, Any] = {
-    val initState = MetropState(-1e99, initialParams, 0)
-    Source.unfold(initState)(s => Some((mhStepRand(s).draw, s)))
-  }
-}
-
-object MetropolisHastings {
-  /**
-    * This steps a Process object, when the method step is called on a Process object
-    * another Process is returned as well as a realisation from the process. Then we must use
-    * the newly returned Process object to call step on again in order to draw a sequence of random
-    * numbers
-    * @param n the number of random numbers to draw from the process
-    * @param its a process object, returned by a particle metropolis-hastings class when iters 
-    * method is called
-    * @return a sequence of realisations from the Process object
-    */
-  def sampleStep[T](n: Int, its: Process[T]): Seq[T] = {
-    (1 to n).scanLeft(its.step)((d, _) => {
-        val draw = d._2.step
-        draw
-      }).map(_._1)
+  def iters: Source[MetropState, Any] = {
+    Source.fromIterator(() => markovIters.steps)
   }
 }
 

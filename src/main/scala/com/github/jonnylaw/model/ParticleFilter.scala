@@ -24,8 +24,8 @@ import akka.stream.scaladsl._
 case class PfState(
   t: Time,
   observation: Option[Observation],
-  particles: Vector[State],
-  weights: Vector[LogLikelihood],
+  particles: Seq[State],
+  weights: Seq[LogLikelihood],
   ll: LogLikelihood) {
 
    override def toString = observation match {
@@ -43,11 +43,11 @@ trait ParticleFilter {
     */
   val unparamMod: Parameters => Model
   def initialiseState(p: Parameters, particles: Int, t0: Time): PfState = {
-      val state = Vector.fill(particles)(unparamMod(p).x0.draw)
-      PfState(t0, None, state, Vector.fill(particles)(1.0), 0.0)
+      val state = Seq.fill(particles)(unparamMod(p).x0.draw)
+      PfState(t0, None, state, Seq.fill(particles)(1.0), 0.0)
   }
 
-  def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)]
+  def advanceState(x: Seq[State], dt: TimeIncrement, t: Time)(p: Parameters): Seq[(State, Eta)]
   def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood
   def resample: Resample[State]
 
@@ -57,7 +57,7 @@ trait ParticleFilter {
   def stepFilter(p: Parameters)(s: PfState, y: Data): PfState = {
     val dt = y.t - s.t // calculate time between observations
 
-    val unweightedX: Vector[State] = resample(s.particles, s.weights)
+    val unweightedX: Seq[State] = resample(s.particles, s.weights)
 
     val (x1, eta) = advanceState(unweightedX, dt, y.t)(p).unzip
     val w = eta map (a => calculateWeights(a, y.observation)(p))
@@ -73,7 +73,7 @@ trait ParticleFilter {
     val mod = unparamMod(p)
     val dt = y.t - s.t // calculate time between observations
 
-    val unweightedX: Vector[State] = resample(s.particles, s.weights)
+    val unweightedX: Seq[State] = resample(s.particles, s.weights)
 
     val (x1, eta) = advanceState(unweightedX, dt, y.t)(p).unzip
 
@@ -100,7 +100,7 @@ trait ParticleFilter {
   /**
     * Calculate the log-likelihood
     */
-  def llFilter(data: Vector[Data], t0: Time)(particles: Int)(p: Parameters): LogLikelihood = {
+  def llFilter(data: Seq[Data], t0: Time)(particles: Int)(p: Parameters): LogLikelihood = {
     val initState = initialiseState(p, particles, t0)
     data.foldLeft(initState)(stepFilter(p)).ll
   }
@@ -109,7 +109,7 @@ trait ParticleFilter {
     * Run a filter over a vector of data and return a vector of PfState
     * Containing the raw particles and associated weights at each time step
     */
-  def accFilter(data: Vector[Data], t0: Time)(particles: Int)(p: Parameters): Vector[PfState] = {
+  def accFilter(data: Seq[Data], t0: Time)(particles: Int)(p: Parameters): Seq[PfState] = {
     val initState = initialiseState(p, particles, t0)
 
     val x = data.scanLeft(initState)(stepFilter(p))
@@ -121,7 +121,7 @@ trait ParticleFilter {
     * Filter the data, but get a vector containing the mean eta, eta intervals, mean state, 
     * and credible intervals of the state
     */
-  def filterWithIntervals(data: Vector[Data], t0: Time)(particles: Int)(p: Parameters): Vector[PfOut] = {
+  def filterWithIntervals(data: Seq[Data], t0: Time)(particles: Int)(p: Parameters): Seq[PfOut] = {
     accFilter(data, t0)(particles)(p).map(getIntervals(unparamMod(p)))
   }
 
@@ -155,7 +155,7 @@ trait ParticleFilter {
 }
 
 object ParticleFilter {
-  type Resample[A] = (Vector[A], Vector[LogLikelihood]) => Vector[A]
+  type Resample[A] = (Seq[A], Seq[LogLikelihood]) => Seq[A]
 
   /**
     * Transforms PfState into PfOut, including eta, eta intervals and state intervals
@@ -186,8 +186,8 @@ object ParticleFilter {
     * @param prob a vector of probabilities corresponding to the probability of sampling that integer
     * @return a vector containing the samples
     */
-  def sample(n: Int, prob: DenseVector[Double]): Vector[Int] = {
-    Multinomial(prob).sample(n).toVector
+  def sample(n: Int, prob: DenseVector[Double]): Seq[Int] = {
+    Multinomial(prob).sample(n).toSeq
   }
 
   /**
@@ -195,12 +195,12 @@ object ParticleFilter {
     * @param prob a vector of unnormalised probabilities
     * @return a vector of normalised probabilities
     */
-  def normalise(prob: Vector[Double]): Vector[Double] = {
+  def normalise(prob: Seq[Double]): Seq[Double] = {
     prob map (_/prob.sum)
   }
 
-  def cumsum(x: Vector[Double]): Vector[Double] = {
-    val sums = x.foldLeft(Vector(0.0))((acc: Vector[Double], num: Double) => (acc.head + num) +: acc)
+  def cumsum(x: Seq[Double]): Seq[Double] = {
+    val sums = x.foldLeft(Seq(0.0))((acc: Seq[Double], num: Double) => (acc.head + num) +: acc)
     sums.reverse.tail
   }
 
@@ -208,28 +208,32 @@ object ParticleFilter {
     * Multinomial Resampling, sample from a categorical distribution with probabilities
     * equal to the particle weights 
     */
-  def multinomialResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]): Vector[A] = {
+  def multinomialResampling[A](particles: Seq[A], weights: Seq[LogLikelihood]): Seq[A] = {
     val indices = sample(particles.size, DenseVector(weights.toArray))
     indices map { particles(_) }
+  }
+
+  def effectiveSampleSize(weights: Seq[LogLikelihood]): Int = {
+    math.floor(1 / (weights, weights).zipped.map(_ * _).sum).toInt
   }
 
   /**
     * Produces a histogram output of a vector of Data
     */
-  def hist(x: Vector[Int]): Unit = {
+  def hist(x: Seq[Int]): Unit = {
     val h = x.
       groupBy(identity).
-      toVector.map{ case (n, l) => (n, l.length) }.
+      toSeq.map{ case (n, l) => (n, l.length) }.
       sortBy(_._1)
 
-    h foreach { case (n, count) => println(s"$n: ${Vector.fill(count)("#").mkString("")}") }
+    h foreach { case (n, count) => println(s"$n: ${Seq.fill(count)("#").mkString("")}") }
   }
 
   /**
     * Return the value x such that, F(p) = x, where F is the empirical cumulative distribution function over
     * the particles
     */
-  def invecdf[A](ecdf: Vector[(A, LogLikelihood)], p: Double): A = {
+  def invecdf[A](ecdf: Seq[(A, LogLikelihood)], p: Double): A = {
     ecdf.
       filter{ case (_, w) => w > p }.
       map{ case (x, _) => x }.head
@@ -239,10 +243,10 @@ object ParticleFilter {
     * Stratified resampling
     * Sample n ORDERED uniform random numbers (one for each particle) using a linear transformation of a U(0,1) RV
     */
-  def stratifiedResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]): Vector[A] = {
+  def stratifiedResampling[A](particles: Seq[A], weights: Seq[LogLikelihood]): Seq[A] = {
     // generate n uniform random numbers
     val n = weights.length
-    val u = (1 to n).map(k => (k - 1 + Uniform(0,1).draw) / n).toVector
+    val u = (1 to n).map(k => (k - 1 + Uniform(0,1).draw) / n).toSeq
     val ecdf = particles.zip(cumsum(normalise(weights)))
 
     u map (invecdf(ecdf, _))
@@ -252,10 +256,10 @@ object ParticleFilter {
     * Systematic Resampling
     * Sample n ORDERED numbers (one for each particle), reusing the same U(0,1) variable
     */
-  def systematicResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]): Vector[A] = {
+  def systematicResampling[A](particles: Seq[A], weights: Seq[LogLikelihood]): Seq[A] = {
     val n = weights.length
     val u = Uniform(0,1).draw
-    val k = (1 to n).map(a => (a - 1 + u) / n).toVector
+    val k = (1 to n).map(a => (a - 1 + u) / n).toSeq
     val ecdf = particles.zip(cumsum(normalise(weights)))
 
     k map (invecdf(ecdf, _))
@@ -266,14 +270,14 @@ object ParticleFilter {
     * Select particles in proportion to their weights, ie particle xi appears ki = n * wi times
     * Resample m (= n - total allocated particles) particles according to w = n * wi - ki using other resampling technique
     */
-  def residualResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]): Vector[A] = {
+  def residualResampling[A](particles: Seq[A], weights: Seq[LogLikelihood]): Seq[A] = {
     val n = weights.length
     val normalisedWeights = normalise(weights)
     val ki = normalisedWeights.
       map (w => math.floor(w * n).toInt)
 
     val indices = ki.zipWithIndex.
-      map { case (n, i) => Vector.fill(n)(i) }.
+      map { case (n, i) => Seq.fill(n)(i) }.
       flatten
     val x = indices map { particles(_) }
     val m = n - indices.length
@@ -294,7 +298,7 @@ object ParticleFilter {
   }
 
   /**
-    * Traverse method for Rand and Vector
+    * Traverse method for Rand and Seq
     */
   def traverse[A,B](l: Seq[A])(f: A => Rand[B]): Rand[Seq[B]] = {
     l.foldRight(always(Seq[B]()))((a, mlb) => map2(f(a), mlb)(_ +: _))
@@ -308,7 +312,7 @@ object ParticleFilter {
   }
 
   /**
-    * ReplicateM, fills a Vector with the monad (Rand[A]) and sequences it
+    * ReplicateM, fills a Seq with the monad (Rand[A]) and sequences it
     */
   def replicateM[A](n: Int, fa: Rand[A]): Rand[Seq[A]] = {
     sequence(Seq.fill(n)(fa))
@@ -327,14 +331,14 @@ object ParticleFilter {
     CredibleInterval(ordered(samples.length - index), ordered(index))
   }
 
-  def indentity[A](samples: Vector[A], weights: Vector[LogLikelihood]) = samples
+  def indentity[A](samples: Seq[A], weights: Seq[LogLikelihood]) = samples
 }
 
 case class Filter(model: Parameters => Model, resamplingScheme: Resample[State]) extends ParticleFilter {
   
   val unparamMod = model
 
-  def advanceState(states: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)] = {
+  def advanceState(states: Seq[State], dt: TimeIncrement, t: Time)(p: Parameters): Seq[(State, Eta)] = {
     val mod = unparamMod(p)
 
     for {
@@ -364,10 +368,10 @@ case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[Sta
       val x1 = Model.simSdeStream(x, t - dt, dt, precision, mod.stepFunction)
       val transformedState = x1 map (a => mod.f(a.state, a.time))
 
-      (x1.last.state, Vector(transformedState.last, transformedState.map(x => exp(x) * dt).sum))
+      (x1.last.state, Seq(transformedState.last, transformedState.map(x => exp(x) * dt).sum))
   }
 
-  def advanceState(x: Vector[State], dt: TimeIncrement, t: Time)(p: Parameters): Vector[(State, Eta)] = {
+  def advanceState(x: Seq[State], dt: TimeIncrement, t: Time)(p: Parameters): Seq[(State, Eta)] = {
     x map (calcWeight(_, dt, t)(p))
   }
 

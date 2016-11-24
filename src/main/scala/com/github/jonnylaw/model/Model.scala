@@ -27,7 +27,7 @@ case class Data(
   t: Time,
   observation: Observation,
   eta: Option[Eta],
-  gamma: Option[Gamma],
+  gamma: Option[Zeta],
   sdeState: Option[State]) {
 
   import Data._
@@ -51,12 +51,12 @@ trait Model { self =>
     * The linking-function, transforms the state space into the parameter space of the 
     * observation distribution using a possibly non-linear transformation
     */
-  def link(x: Gamma): Eta = Vector(x)
+  def link(x: Zeta): Eta = Vector(x)
   /**
     * The Linear, deterministic transformation function. f is used to add seasonal factors or
     * other time depending linear transformations
     */ 
-  def f(s: State, t: Time): Gamma
+  def f(s: State, t: Time): Zeta
   /**
     * Distribution over the initial state of the hidden state which realisations 
     * can be simulated from
@@ -228,11 +228,8 @@ case class studentTModel(stepFun: StepFunction, df: Int) extends UnparamModel {
     new Model {
 
       def observation = x => p match {
-        case LeafParameter(_,v,_) => v match {
-          case Some(scale) => new Rand[Observation] {
-            def draw = StudentsT(df).draw*scale + x.head
-          }
-        }
+        case LeafParameter(_,Some(v),_) => 
+          StudentsT(df) map (a => a * v + x.head)
         case _ => throw new Exception("Incorrect parameters supplied to Student-t model observation, expected LeafParameter")
       }
 
@@ -242,7 +239,7 @@ case class studentTModel(stepFun: StepFunction, df: Int) extends UnparamModel {
         case LeafParameter(stateParam, _, _) =>
           stateParam match {
             case GaussianParameter(m0, c0) =>
-              MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+              MultivariateGaussian(m0, c0) map (LeafState(_))
           }
         case _ => throw new Exception("Incorrect parameters supplied to initial state distribution of student t model")
       }
@@ -299,7 +296,7 @@ case class SeasonalModel(period: Int, harmonics: Int, stepFun: StepFunction) ext
         case LeafParameter(stateParam, _, _) =>
           stateParam match {
             case GaussianParameter(m0, c0) =>
-              MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+              MultivariateGaussian(m0, c0) map (LeafState(_))
           }
         case _ => throw new Exception("Incorrect parameters supplied to initial state of seasonal model")
       }
@@ -345,7 +342,7 @@ case class LinearModel(stepFun: StepFunction) extends UnparamModel {
         case LeafParameter(stateParam, _, _) =>
           stateParam match {
             case GaussianParameter(m0, c0) =>
-              MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+              MultivariateGaussian(m0, c0) map (LeafState(_))
             case _ => throw new Exception("Incorrect initial state parameters in linear model")
           }
         case _ => throw new Exception("Incorrect parameters supplied to initial state of linear model")
@@ -388,7 +385,7 @@ case class PoissonModel(stepFun: StepFunction) extends UnparamModel {
         case LeafParameter(stateParam, _, _  @unchecked) =>
           stateParam match {
             case GaussianParameter(m0, c0) =>
-              MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+              MultivariateGaussian(m0, c0) map (LeafState(_))
             case _ => throw new Exception("Incorrect initial state parameter in poisson model x0")
           }
         case _ => throw new Exception("Incorrect parameters supplied to poisson x0, needed LeafParameter")
@@ -412,13 +409,9 @@ case class BernoulliModel(stepFun: StepFunction) extends UnparamModel {
   def apply(params: Parameters) =
     new Model {
 
-      def observation = p => new Rand[Observation] {
-        def draw = {
-          scala.util.Random.nextDouble < p.head
-        }
-      }
+      def observation = p => Uniform(0, 1) map (_ < p.head)
 
-      override def link(x: Gamma) = {
+      override def link(x: Zeta) = {
         if (x > 6) {
           Vector(1.0)
         } else if (x < -6) {
@@ -434,7 +427,7 @@ case class BernoulliModel(stepFun: StepFunction) extends UnparamModel {
         case LeafParameter(stateParam, _, _ @unchecked) =>
           stateParam match {
             case GaussianParameter(m0, c0) =>
-              MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+              MultivariateGaussian(m0, c0) map (LeafState(_))
           }
       }
 
@@ -472,7 +465,7 @@ case class LogGaussianCox(stepFun: StepFunction) extends UnparamModel {
         case LeafParameter(stateParam, _, _ @unchecked) =>
           stateParam match {
             case GaussianParameter(m0, c0) =>
-              MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+              MultivariateGaussian(m0, c0) map (LeafState(_))
           }
       }
 
@@ -510,7 +503,7 @@ case class negativeBinomial(stepFun: StepFunction) extends UnparamModel {
         case LeafParameter(stateParam, _, _ @unchecked) =>
           stateParam match {
             case GaussianParameter(m0, c0) =>
-              MultivariateGaussian(m0, sqrt(c0)) map (LeafState(_))
+              MultivariateGaussian(m0, c0) map (LeafState(_))
           }
         case _ => throw new Exception("State of single model must receive a Leaf Parameter")
       }

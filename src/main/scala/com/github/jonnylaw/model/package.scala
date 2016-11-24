@@ -3,8 +3,8 @@ package com.github.jonnylaw
 import breeze.stats.distributions.Rand
 
 package object model {
-  type Eta = Vector[Double]
-  type Gamma = Double
+  type Eta = Seq[Double]
+  type Zeta = Double
   type Observation = Double
   type Time = Double
   type TimeIncrement = Double

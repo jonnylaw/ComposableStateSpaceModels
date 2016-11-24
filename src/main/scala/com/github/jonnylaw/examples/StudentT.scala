@@ -2,12 +2,10 @@ package com.github.jonnylaw.examples
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.Source
-import java.io.{File, PrintWriter}
+import java.nio.file.Paths
 import akka.stream.scaladsl._
-import scala.concurrent.{duration, Await}
-import scala.concurrent.duration._
 import akka.util.ByteString
+import scala.concurrent.ExecutionContext.Implicits.global
 
 import com.github.jonnylaw.model._
 import UnparamModel._
@@ -42,28 +40,47 @@ trait TModel {
 }
 
 object SeasStudentT extends App with TModel {
-  val times = (1 to 7*24).map(_.toDouble).toList
-  val sims = simData(times, mod)
+  implicit val system = ActorSystem("SimulateSeasT")
+  implicit val materializer = ActorMaterializer()
 
-  val pw = new PrintWriter("seastdistSims.csv")
-  pw.write(sims.mkString("\n"))
-  pw.close()
+  val times = (1 to 7*24).map(_.toDouble).toList
+
+  // simulate from the Student T POMP model, simulating states and observations at the times above
+  Source(times).
+    via(mod.simPompModel(0.0)).
+    map(s => ByteString(s + "\n")).
+    runWith(FileIO.toPath(Paths.get("seastdistSims.csv"))).
+    onComplete(_ => system.terminate)
 }
 
 object GetSeasTParams extends App with TModel {
-  /**
-    * Parse the timestamp and observations from the simulated data
-    */
-  val data = scala.io.Source.fromFile("seastdistSims.csv").getLines.
+  implicit val system = ActorSystem("SeasTPmmh")
+  implicit val materializer = ActorMaterializer()
+
+  // read the data in as a stream
+  val data = FileIO.fromPath(Paths.get("seastdistsims.csv")).
+    via(Framing.delimiter(
+      ByteString("\n"),
+      maximumFrameLength = 256,
+      allowTruncation = true)).
+    map(_.utf8String).
     map(a => a.split(",")).
-    map(rs => rs map (_.toDouble)).
-    map(rs => Data(rs.head, rs(1), None, None, None))
+    map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None))
 
   val filter = Filter(unparamMod, ParticleFilter.multinomialResampling)
-  val mll = filter.llFilter(data.toVector.sortBy(_.t), 0.0)(200) _
-  val iters = ParticleMetropolis(mll, p, Parameters.perturb(0.1)).iters
 
-  val pw = new PrintWriter("seastMCMC.csv")
-  pw.write(iters.sample(10000).mkString("\n"))
-  pw.close()
+  data.
+    take(168).
+    grouped(168).
+    map(d => {
+      val mll = filter.llFilter(d.toVector, d.map(_.t).min)(200) _
+
+      ParticleMetropolis(mll, p, Parameters.perturb(0.05)).
+        iters.
+        take(10000).
+        map(s => ByteString(s + "\n")).
+        runWith(FileIO.toPath(Paths.get("seastMCMC.csv"))).
+        onComplete(_ => system.terminate)
+    }).
+    runWith(Sink.ignore)
 }
