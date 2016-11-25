@@ -27,19 +27,29 @@ case class Data(
   t: Time,
   observation: Observation,
   eta: Option[Eta],
-  gamma: Option[Zeta],
+  zeta: Option[Zeta],
   sdeState: Option[State]) {
 
   import Data._
 
   override def toString = {
     if (!sdeState.isEmpty) {
-      s"$t, $observation, ${eta.get.head}, ${gamma.get}, " + sdeState.get.flatten.mkString(", ")
+      s"$t, $observation, ${eta.get.head}, ${zeta.get}, " + sdeState.get.flatten.mkString(", ")
     } else {
       t + ", " + observation
     }
   }
 }
+
+/**
+  * Credible intervals from a set of samples in a distribution
+  * @param lower the lower interval
+  * @param upper the upper interval
+  */
+case class CredibleInterval(lower: Double, upper: Double) {
+  override def toString = lower + ", " + upper
+}
+
 
 trait Model { self =>
   /**
@@ -216,7 +226,7 @@ object Model {
   }
 }
 
-sealed trait UnparamModel extends (Parameters => Model)
+trait UnparamModel extends (Parameters => Model)
 
 /**
   * Generalised student t model

@@ -21,7 +21,6 @@ trait LinearModel {
   val unparamMod = LinearModel(stepBrownian)
   val p = LeafParameter(GaussianParameter(0.1, 1.0), Some(1.0), BrownianParameter(-0.2, 1.0))
   val mod = unparamMod(p)
-  val times = (0.0 to 1.0 by 0.01).toList
   val filter = Filter(unparamMod, ParticleFilter.multinomialResampling)
 
   case class Config(delta: Seq[Double] = Seq(0.1, 0.2), particles: Seq[Int] = Seq(200, 500), iterations: Int = 10000)
@@ -47,11 +46,11 @@ trait LinearModel {
   * Simulate from the linear model
   */
 object SimLinear extends App with LinearModel {
-  implicit val system = ActorSystem("Simulate Linear Model")
+  implicit val system = ActorSystem("SimulateLinearModel")
   implicit val materializer = ActorMaterializer()
 
-  Source(times).
-    via(mod.simPompModel(0.0)).
+  mod.simRegular(1.0).
+    take(1000).
     map(s => ByteString(s + "\n")).
     runWith(FileIO.toPath(Paths.get("LinearModelSims.csv"))).
     onComplete(_ => system.terminate)
@@ -82,7 +81,7 @@ object BreezeMCMC extends App with LinearModel {
           map(a => a.split(",")).
           map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None))
 
-        val mll: (Vector[Data], Int) => Parameters => LogLikelihood = (data, n) => filter.llFilter(data, times.min)(n) _
+        val mll: (Vector[Data], Int) => Parameters => LogLikelihood = (data, n) => filter.llFilter(data, 0.0)(n) _
         
         data.
           take(100).

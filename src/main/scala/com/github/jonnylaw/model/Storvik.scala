@@ -8,6 +8,8 @@ import breeze.stats._
 import akka.stream._
 import scaladsl._
 import akka.NotUsed
+import State._
+import Parameters._
 
 sealed trait SufficientStatistics
 
@@ -15,7 +17,6 @@ sealed trait SufficientStatistics
   * The Gamma distribution is conjugate to the normal distribution with unknown precision (1 / variance)
   */
 case class GammaStatistics(dist: Gamma) extends SufficientStatistics
-
 
 /**
   * State for the Storvik Filter
@@ -28,10 +29,17 @@ case class StorvikState(
   stats: Seq[SufficientStatistics], 
   ess: Int) {
 
-//  override def toString = s"$time, ${state.data.mkString(", ")}, $stateIntervals, ${params.mkString(", ")}, ${paramIntervals.mkString(", ")}, $ess"
+ override def toString = {
+   val state_mean = meanState(state).flatten.mkString(", ")
+   val state_intervals = getAllCredibleIntervals(state, 0.975).mkString(", ")
+   val mean_params = getMeanParams(p)
+//   val param_intervals = getParameterIntervals(p).mkString(", ")
+
+   s"$t, $state_mean, $state_intervals, $mean_params, $ess"
+ }
 }
 
-// Eventially this will extend the particle filter trait and (initially) 
+// Eventually this will extend the particle filter trait and (initially) 
 // two particle filters will be available: Storvik and Bootstrap etc.
 case class StorvikGamma(
   mod: UnparamModel, 
@@ -40,16 +48,13 @@ case class StorvikGamma(
   hyperParams: Gamma) {
 
   def init(p: Parameters): StorvikState = {
-    val initState = Seq.fill(n)(mod(p).x0.draw)
+    val initState = mod(p).x0.sample(n)
 
     val initEta = for {
       x <- initState
       zeta = mod(p).f(x, 0.0)
       eta = mod(p).link(zeta)
     } yield eta
-
-    // dimension of the observations
-    val d = initEta.head.size
 
     StorvikState(0.0, initState, initEta, Seq.fill(n)(p), Seq.fill(n)(GammaStatistics(hyperParams)), 0)
   }
@@ -64,12 +69,12 @@ case class StorvikGamma(
     GammaStatistics(Gamma(shape, 1.0 / scale))
   }
 
-  def filterStep(p: Parameters): (StorvikState, Data) => StorvikState = (s, d) => {
+  def stepFilter(p: Parameters): (StorvikState, Data) => StorvikState = (s, d) => {
     // propose parameters from a known distribution, using the vector of sufficient statistics
     val params = s.stats map ((x: SufficientStatistics) => propose(x).draw)
 
     // advance the state particles, according to p(x(t) | x(t-1), theta)
-    val advancedParticles = s.state.zip(params) map { case (x, p) => mod(p).stepFunction(x, d.t).draw }
+    val advancedParticles = s.state.zip(params) map { case (x, p) => mod(p).stepFunction(x, d.t - s.t).draw }
 
     // transform the particles to the parameter space of the observation distribution
     val eta = for {
@@ -102,5 +107,9 @@ case class StorvikGamma(
       map { case ((e, e1), stat: GammaStatistics) => updateStats(stat.dist, e, e1) }
 
     StorvikState(d.t, resampledState, resampledEta, resampledParams, stats, ess)
+  }
+
+  def filter(p: Parameters): Flow[Data, StorvikState, NotUsed] = {
+    Flow[Data].scan(init(p))(stepFilter(p))
   }
 }

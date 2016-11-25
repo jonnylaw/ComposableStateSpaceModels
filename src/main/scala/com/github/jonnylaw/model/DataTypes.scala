@@ -20,15 +20,6 @@ object DataTypes {
   }
 
   /**
-    * Credible intervals from a set of samples in a distribution
-    * @param lower the lower interval
-    * @param upper the upper interval
-    */
-  case class CredibleInterval(lower: Double, upper: Double) {
-    override def toString = lower + ", " + upper
-  }
-
-  /**
     * A class representing a return type for the particle filter, containing the state and associated credible intervals
     * @param time the time of the process
     * @param observation an optional observation, note discretely observed processes cannot be seen at all time points continuously

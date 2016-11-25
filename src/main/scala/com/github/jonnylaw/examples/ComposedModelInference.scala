@@ -51,10 +51,10 @@ trait TestModel {
   * Simulate a poisson model, with seasonal rate parameter
   */
 object SimulateSeasonalPoisson extends App with TestModel {
-  val times = (1 to 100).map(_.toDouble).toList
-
   implicit val system = ActorSystem("SimulateSeasonalPoisson")
   implicit val materializer = ActorMaterializer()
+
+  val times = (1 to 100).map(_.toDouble).toList
 
   Source(times).
     via(model(params).simPompModel(0.0)).
@@ -92,7 +92,6 @@ object DetermineComposedParams extends App with TestModel {
         onComplete(_ => system.terminate)
     }).
     runWith(Sink.ignore)
-
 }
 
 object FilterOnline extends App with TestModel {

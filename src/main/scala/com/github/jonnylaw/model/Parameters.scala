@@ -2,18 +2,26 @@ package com.github.jonnylaw.model
 
 import breeze.linalg.{DenseMatrix, DenseVector, diag}
 import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}
-import breeze.numerics.exp
+import breeze.numerics._
 import cats._
 
 sealed trait Parameters {
-  override def toString = Parameters.flatten(this).mkString(", ")
+
   def length: Int = Parameters.length(this)
+
   def isEmpty: Boolean = Parameters.isEmpty(this)
+
   def perturb(delta: Double): Rand[Parameters] =
     Parameters.perturb(delta)(this)
+
   def perturbIndep(delta: Vector[Double]): Rand[Parameters] =
     Parameters.perturbIndep(delta)(this)
+
   def proposeIdent: Rand[Parameters] = Parameters.proposeIdent(this)
+
+  override def toString = Parameters.flatten(this).mkString(", ")
+
+  def map(f: Double => Double): Parameters = Parameters.map(this)(f)
 }
 
 case class LeafParameter(initParams: StateParameter, scale: Option[Double], sdeParam: SdeParameter) extends Parameters
@@ -21,8 +29,15 @@ case class BranchParameter(left: Parameters, right: Parameters) extends Paramete
 case object EmptyParameter extends Parameters
 
 object Parameters {
-  implicit def parameterMonoid = new Monoid[Parameters] {
-    override def combine(p1: Parameters, p2: Parameters): Parameters = Parameters.combine(p1, p2)
+  implicit def composeParameterMonoid = new Monoid[Parameters] {
+    override def combine(lp: Parameters, rp: Parameters): Parameters =
+    if (lp.isEmpty) {
+      rp
+    } else if (rp.isEmpty) {
+      lp
+    } else {
+      BranchParameter(lp, rp)
+    }
     override def empty: Parameters = EmptyParameter
   }
 
@@ -31,16 +46,32 @@ object Parameters {
   }
 
   /**
-    * A method to combine parameters
+    * Combine two sets of parameters by summing them and preserving the structure of the individual trees
     */
-  def combine(lp: Parameters, rp: Parameters): Parameters =
-    if (lp.isEmpty) {
-      rp
-    } else if (rp.isEmpty) {
-      lp
-    } else {
-      BranchParameter(lp, rp)
+    def sum(lp: Parameters, rp: Parameters): Parameters = (lp, rp) match {
+      case (x: LeafParameter, y: LeafParameter) =>
+        val scale = for {
+          left <- x.scale
+          right <- y.scale
+        } yield left + right
+        LeafParameter(x.initParams.sum(y.initParams), scale, x.sdeParam.sum(y.sdeParam))
+      case (x: BranchParameter, y: BranchParameter) =>
+        BranchParameter(sum(x.left, y.left), sum(x.right, y.right))
+      case (_, _) => throw new Exception("Can't sum different shaped parameters")
     }
+
+  def map(p: Parameters)(f: Double => Double): Parameters = p match {
+    case LeafParameter(init, scale, sde) =>
+      LeafParameter(init map f, scale map f, sde map f)
+    case BranchParameter(lp, rp) =>
+      BranchParameter(map(lp)(f), map(rp)(f))
+  }
+
+  def getMeanParams(p: Seq[Parameters]): Parameters = {
+    p.reduce(sum).map(_ / p.size)
+  }
+
+  def getParameterIntervals(p: Seq[Parameters], interval: Double): Seq[CredibleInterval] = ???
 
   /**
     * Checks to see if a parameter is empty
@@ -150,30 +181,44 @@ object Parameters {
 
 sealed trait StateParameter {
   def length: Int = StateParameter.length(this)
+
   def flatten: Vector[Double] = StateParameter.flatten(this)
+
   def perturb(delta: Double): Rand[StateParameter]
+
   def perturbIndep(delta: Vector[Double]): Rand[StateParameter]
+
+  def sum(s: StateParameter): StateParameter
+
+  def map(f: Double => Double): StateParameter
 }
 
 case class GaussianParameter(m0: DenseVector[Double], c0: DenseMatrix[Double]) extends StateParameter {
+
   def perturb(delta: Double): Rand[GaussianParameter] = {
-    new Rand[GaussianParameter] {
-      def draw = {
-        GaussianParameter(
-          m0 map (Gaussian(_, delta).draw),
-          c0 mapValues (x => x * exp(Gaussian(0, delta).draw)))
-      }
-    }
+    for {
+      m0_innov <- Gaussian(0.0, delta)
+      new_m0 = m0 mapValues (_ + m0_innov)
+      c0_innov <- Gaussian(0.0, delta)
+      new_c0 = c0 mapValues (_ * exp(c0_innov))
+    } yield GaussianParameter(new_m0, new_c0)
   }
 
   def perturbIndep(delta: Vector[Double]): Rand[GaussianParameter] = {
-    new Rand[GaussianParameter] {
-      def draw = {
-        GaussianParameter(
-          DenseVector(m0.data.zip(delta.take(m0.length)) map { case (x, d) => Gaussian(x, d).draw }),
-          diag(DenseVector(diag(c0).toArray.zip(delta.drop(m0.length)) map { case (x, d) => x * exp(Gaussian(0, d).draw) })))
-      }
-    }
+    for {
+      innov <- MultivariateGaussian(DenseVector.zeros[Double](delta.size), diag(DenseVector(delta.toArray)))
+      new_m0 = m0 + innov(0 to m0.length - 1)
+      new_c0 = diag(c0.mapValues(log(_))) + innov(m0.length to delta.size - 1)
+    } yield GaussianParameter(new_m0, diag(new_c0) mapValues (exp(_)))
+  }
+
+  def sum(x: StateParameter): GaussianParameter = x match {
+    case s: GaussianParameter =>
+      GaussianParameter(s.m0 + m0, s.c0 + c0)
+  }
+
+  def map(f: Double => Double): GaussianParameter = {
+    GaussianParameter(m0 mapValues f, c0 mapValues f)
   }
 }
 
@@ -195,6 +240,8 @@ sealed trait SdeParameter {
   def flatten: Vector[Double] = SdeParameter.flatten(this)
   def perturb(delta: Double): Rand[SdeParameter]
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter]
+  def sum(s: SdeParameter): SdeParameter
+  def map(f: Double => Double): SdeParameter
 }
 
 object SdeParameter {
@@ -228,6 +275,15 @@ case class BrownianParameter(mu: DenseVector[Double], sigma: DenseMatrix[Double]
       }
     }
   }
+
+  def sum(x: SdeParameter): BrownianParameter = x match {
+    case s: BrownianParameter =>
+      BrownianParameter(s.mu + mu, s.sigma + sigma)
+  }
+
+  def map(f: Double => Double): BrownianParameter = {
+    BrownianParameter(mu mapValues f, sigma mapValues f)
+  }
 }
 
 object BrownianParameter {
@@ -239,17 +295,13 @@ object BrownianParameter {
   }
 }
 case class OrnsteinParameter(theta: DenseVector[Double], alpha: DenseVector[Double], sigma: DenseVector[Double]) extends SdeParameter {
-
   def perturb(delta: Double): Rand[OrnsteinParameter] = {
-    new Rand[OrnsteinParameter] {
-      def draw = {
-        // alpha and sigme are non-negative, propose on log-scale
-        OrnsteinParameter(
-          theta map (Gaussian(_, delta).draw),
-          alpha map (x => x * exp(Gaussian(0, delta).draw)),
-          sigma map (x => x * exp(Gaussian(0, delta).draw)))
-      }
-    }
+    for {
+      innov <- Gaussian(0.0, delta)
+      new_theta = theta mapValues (_ + innov)
+      new_alpha = alpha mapValues (a => log(a) + innov)
+      new_sigma = sigma mapValues (s => log(s) + innov)
+    } yield OrnsteinParameter(new_theta, new_alpha mapValues (exp(_)), new_sigma mapValues (exp(_)))
   }
 
   def perturbIndep(delta: Vector[Double]): Rand[OrnsteinParameter] = {
@@ -264,6 +316,14 @@ case class OrnsteinParameter(theta: DenseVector[Double], alpha: DenseVector[Doub
     }
   }
 
+  def sum(x: SdeParameter): OrnsteinParameter = x match {
+    case s: OrnsteinParameter =>
+      OrnsteinParameter(s.theta + theta, s.alpha + alpha, s.sigma + sigma)
+  }
+
+  def map(f: Double => Double): OrnsteinParameter = {
+    OrnsteinParameter(theta mapValues f, alpha mapValues f, sigma mapValues f)
+  }
 }
 
 object OrnsteinParameter {
@@ -277,16 +337,26 @@ object OrnsteinParameter {
 
 case class StepConstantParameter(a: DenseVector[Double]) extends SdeParameter {
   def perturb(delta: Double): Rand[StepConstantParameter] = {
-    new Rand[StepConstantParameter] {
-      def draw = StepConstantParameter(
-        a map (Gaussian(_, delta).draw))
-    }
+    for {
+      innov <- Gaussian(0.0, delta)
+      new_a = a mapValues (_ + innov)
+    } yield StepConstantParameter(new_a)
   }
 
   def perturbIndep(delta: Vector[Double]): Rand[StepConstantParameter] = {
-    new Rand[StepConstantParameter] {
-      def draw = StepConstantParameter(DenseVector(a.data.zip(delta) map { case (x, d) => Gaussian(x, d).draw }))
-    }
+    for {
+      innov <- MultivariateGaussian(DenseVector.zeros[Double](delta.size), diag(DenseVector(delta.toArray)))
+      new_a = a + innov
+    } yield StepConstantParameter(new_a)
+  }
+
+  def sum(x: SdeParameter): StepConstantParameter = x match {
+    case s: StepConstantParameter =>
+      StepConstantParameter(a + s.a)
+  }
+
+  def map(f: Double => Double): StepConstantParameter = {
+    StepConstantParameter(a mapValues f)
   }
 }
 
