@@ -15,6 +15,7 @@ sealed trait State {
   def isEmpty: Boolean = State.isEmpty(this)
   override def toString: String = this.flatten.mkString(", ")
 }
+
 case class LeafState(data: DenseVector[Double]) extends State
 case class BranchState(left: State, right: State) extends State
 

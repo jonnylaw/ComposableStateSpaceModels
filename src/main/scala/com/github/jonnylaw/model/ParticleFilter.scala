@@ -3,7 +3,6 @@ package com.github.jonnylaw.model
 import Utilities._
 import DataTypes._
 import State._
-import SimData._
 import ParticleFilter._
 
 import scala.language.higherKinds._
@@ -11,6 +10,7 @@ import breeze.stats.distributions.{Rand, Uniform, Multinomial}
 import breeze.stats.distributions.Rand._
 import breeze.numerics.exp
 import breeze.linalg.DenseVector
+import cats.implicits._
 
 import akka.stream.scaladsl.Source
 import akka.stream.scaladsl._
@@ -41,26 +41,29 @@ trait ParticleFilter {
     * Abstract function representing an unparameterised model, can be a single model or 
     * a model composition
     */
-  val unparamMod: Parameters => Model
-  def initialiseState(p: Parameters, particles: Int, t0: Time): PfState = {
-      val state = Seq.fill(particles)(unparamMod(p).x0.draw)
-      PfState(t0, None, state, Seq.fill(particles)(1.0), 0.0)
+  val mod: Model
+
+  def initialiseState(particles: Int, t0: Time): PfState = {
+    val state = Seq.fill(particles)(mod.x0.draw)
+    PfState(t0, None, state, Seq.fill(particles)(1.0), 0.0)
   }
 
-  def advanceState(x: Seq[State], dt: TimeIncrement, t: Time)(p: Parameters): Seq[(State, Eta)]
-  def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood
+  def advanceState(x: Seq[State], dt: TimeIncrement, t: Time): Seq[(State, Eta)]
+
+  def calculateWeights(x: Eta, y: Observation): LogLikelihood
+
   def resample: Resample[State]
 
   /**
     * Step filter, perform one step of the particle fiilter
     */
-  def stepFilter(p: Parameters)(s: PfState, y: Data): PfState = {
+  def stepFilter(s: PfState, y: Data): PfState = {
     val dt = y.t - s.t // calculate time between observations
 
     val unweightedX: Seq[State] = resample(s.particles, s.weights)
 
-    val (x1, eta) = advanceState(unweightedX, dt, y.t)(p).unzip
-    val w = eta map (a => calculateWeights(a, y.observation)(p))
+    val (x1, eta) = advanceState(unweightedX, dt, y.t).unzip
+    val w = eta map (a => calculateWeights(a, y.observation))
     val max = w.max
     val w1 = w map { a => exp(a - max) }
 
@@ -69,13 +72,12 @@ trait ParticleFilter {
     PfState(y.t, Some(y.observation), x1, w1, ll)
   }
 
-  def stepWithForecast(s: PfState, y: Data)(p: Parameters): (PfState, ForecastOut) = {
-    val mod = unparamMod(p)
+  def stepWithForecast(s: PfState, y: Data): (PfState, ForecastOut) = {
     val dt = y.t - s.t // calculate time between observations
 
     val unweightedX: Seq[State] = resample(s.particles, s.weights)
 
-    val (x1, eta) = advanceState(unweightedX, dt, y.t)(p).unzip
+    val (x1, eta) = advanceState(unweightedX, dt, y.t).unzip
 
     val stateIntervals = getAllCredibleIntervals(x1, 0.995)
     val statemean = meanState(x1)
@@ -86,7 +88,7 @@ trait ParticleFilter {
 
     val fo = ForecastOut(y.t, obs, obsIntervals, meanEta, etaIntervals, statemean, stateIntervals)
 
-    val w = eta map (a => calculateWeights(a, y.observation)(p))
+    val w = eta map (a => calculateWeights(a, y.observation))
     val max = w.max
     val w1 = w map { a => exp(a - max) }
 
@@ -100,19 +102,19 @@ trait ParticleFilter {
   /**
     * Calculate the log-likelihood
     */
-  def llFilter(data: Seq[Data], t0: Time)(particles: Int)(p: Parameters): LogLikelihood = {
-    val initState = initialiseState(p, particles, t0)
-    data.foldLeft(initState)(stepFilter(p)).ll
+  def llFilter(data: Seq[Data], t0: Time)(particles: Int): LogLikelihood = {
+    val initState = initialiseState(particles, t0)
+    data.foldLeft(initState)(stepFilter).ll
   }
 
   /**
     * Run a filter over a vector of data and return a vector of PfState
     * Containing the raw particles and associated weights at each time step
     */
-  def accFilter(data: Seq[Data], t0: Time)(particles: Int)(p: Parameters): Seq[PfState] = {
-    val initState = initialiseState(p, particles, t0)
+  def accFilter(data: Seq[Data], t0: Time)(particles: Int): Seq[PfState] = {
+    val initState = initialiseState(particles, t0)
 
-    val x = data.scanLeft(initState)(stepFilter(p))
+    val x = data.scanLeft(initState)(stepFilter)
 
     x.tail
   }
@@ -121,17 +123,17 @@ trait ParticleFilter {
     * Filter the data, but get a vector containing the mean eta, eta intervals, mean state, 
     * and credible intervals of the state
     */
-  def filterWithIntervals(data: Seq[Data], t0: Time)(particles: Int)(p: Parameters): Seq[PfOut] = {
-    accFilter(data, t0)(particles)(p).map(getIntervals(unparamMod(p)))
+  def filterWithIntervals(data: Seq[Data], t0: Time)(particles: Int): Seq[PfOut] = {
+    accFilter(data, t0)(particles).map(getIntervals(mod))
   }
 
   /**
     * Run a filter over a stream of data
     */
-  def filter(t0: Time)(particles: Int)(p: Parameters): Flow[Data, PfState, Any] = {
-    val initState = initialiseState(p, particles, t0)
+  def filter(t0: Time)(particles: Int): Flow[Data, PfState, Any] = {
+    val initState = initialiseState(particles, t0)
 
-    Flow[Data].scan(initState)(stepFilter(p))
+    Flow[Data].scan(initState)(stepFilter)
   }
 
   /**
@@ -143,12 +145,12 @@ trait ParticleFilter {
     * @param p the parameters of the model
     * @return an Akka Stream Flow from Data to ForecastOut
     */
-  def getOneStepForecast(t0: Time)(particles: Int)(p: Parameters): Flow[Data, ForecastOut, Any] = {
-    val initState = initialiseState(p, particles, t0)
-    val forecastState = oneStepForecast(initState.particles, t0, t0, unparamMod(p))._1
+  def getOneStepForecast(t0: Time)(particles: Int): Flow[Data, ForecastOut, Any] = {
+    val initState = initialiseState(particles, t0)
+    val forecastState = oneStepForecast(initState.particles.toList, t0, t0, mod).draw._1
 
     Flow[Data].
-      scan((initState, forecastState))((s, y) => stepWithForecast(s._1, y)(p)).
+      scan((initState, forecastState))((s, y) => stepWithForecast(s._1, y)).
       map { case (_, f) => f }.
       drop(1) // drop the initial state
   }
@@ -288,37 +290,6 @@ object ParticleFilter {
   }
 
   /**
-    * map2 implementation for Rand
-    */
-  def map2[A,B,C](ma: Rand[A], mb: Rand[B])(f: (A, B) => C): Rand[C] = {
-    for {
-      a <- ma
-      b <- mb
-    } yield f(a, b)
-  }
-
-  /**
-    * Traverse method for Rand and Seq
-    */
-  def traverse[A,B](l: Seq[A])(f: A => Rand[B]): Rand[Seq[B]] = {
-    l.foldRight(always(Seq[B]()))((a, mlb) => map2(f(a), mlb)(_ +: _))
-  }
-
-  /**
-    * Sequence, Traverse with the identity
-    */
-  def sequence[A](l: Seq[Rand[A]]): Rand[Seq[A]] = {
-    traverse(l)(a => a)
-  }
-
-  /**
-    * ReplicateM, fills a Seq with the monad (Rand[A]) and sequences it
-    */
-  def replicateM[A](n: Int, fa: Rand[A]): Rand[Seq[A]] = {
-    sequence(Seq.fill(n)(fa))
-  }
-
-    /**
     * Gets credible intervals for a vector of doubles
     * @param samples a vector of samples from a distribution
     * @param interval the upper interval of the required credible interval
@@ -332,15 +303,41 @@ object ParticleFilter {
   }
 
   def indentity[A](samples: Seq[A], weights: Seq[LogLikelihood]) = samples
+
+  /**
+    * Forecast data
+    * @param t the time of the observation
+    * @param obs an observation of the process
+    * @param obsIntervals the upper and lower credible intervals of the observation
+    * @param eta the transformed latent state
+    * @param etaIntervals the credible intervals of the transformed latent state
+    * @param state the untransformed latent state
+    * @param stateIntervals the intervals of the latent state
+    */
+  case class ForecastOut(t: Time, obs: Observation, obsIntervals: CredibleInterval, eta: Double, etaIntervals: CredibleInterval,
+    state: State, stateIntervals: IndexedSeq[CredibleInterval]) {
+
+    override def toString = s"$t, $obs, ${obsIntervals.toString}, $eta, ${etaIntervals.toString}, ${state.flatten.mkString(", ")}, ${stateIntervals.mkString(", ")}"
+  }
+
+  def oneStepForecast(x0: List[State], t0: Time, t: Time, mod: Model): Rand[(ForecastOut, Seq[State])] = {
+    for {
+      x1 <- x0 traverse (mod.stepFunction(_, t - t0))
+      stateIntervals = getAllCredibleIntervals(x1, 0.995)
+      statemean = meanState(x1)
+      etas = x1 map (x => mod.link(mod.f(x, t)))
+      meanEta = breeze.stats.mean(etas.map(_.head))
+      etaIntervals = getOrderStatistic(etas.map(_.head), 0.995)
+      obs = breeze.stats.mean(etas map (mod.observation(_).draw))
+      obsIntervals = getOrderStatistic(etas map (mod.observation(_).draw), 0.995)
+    } yield
+      (ForecastOut(t, obs, obsIntervals, meanEta, etaIntervals, statemean, stateIntervals), x1)
+  }
 }
 
-case class Filter(model: Parameters => Model, resamplingScheme: Resample[State]) extends ParticleFilter {
+case class Filter(mod: Model, resamplingScheme: Resample[State]) extends ParticleFilter {
   
-  val unparamMod = model
-
-  def advanceState(states: Seq[State], dt: TimeIncrement, t: Time)(p: Parameters): Seq[(State, Eta)] = {
-    val mod = unparamMod(p)
-
+  def advanceState(states: Seq[State], dt: TimeIncrement, t: Time): Seq[(State, Eta)] = {
     for {
       x <- states
       x1 = mod.stepFunction(x, dt).draw
@@ -348,8 +345,7 @@ case class Filter(model: Parameters => Model, resamplingScheme: Resample[State])
     } yield (x1, eta)
   }
 
-  def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood = {
-    val mod = unparamMod(p)
+  def calculateWeights(x: Eta, y: Observation): LogLikelihood = {
     mod.dataLikelihood(x, y)
   }
 
@@ -359,24 +355,20 @@ case class Filter(model: Parameters => Model, resamplingScheme: Resample[State])
 /**
   * In order to calculate Eta in the LGCP model, we need to merge the advance state and transform state functions
   */
-case class FilterLgcp(model: Parameters => Model, resamplingScheme: Resample[State], precision: Int) extends ParticleFilter {
+case class FilterLgcp(mod: Model, resamplingScheme: Resample[State], precision: Int) extends ParticleFilter {
 
-  val unparamMod = model
+  def calcWeight(x: State, dt: TimeIncrement, t: Time): (State, Eta) = {
+    val x1 = Model.simSdeStream(x, t - dt, dt, precision, mod.stepFunction)
+    val transformedState = x1 map (a => mod.f(a.state, a.time))
 
-  def calcWeight(x: State, dt: TimeIncrement, t: Time)(p: Parameters): (State, Eta) = {
-      val mod = unparamMod(p)
-      val x1 = Model.simSdeStream(x, t - dt, dt, precision, mod.stepFunction)
-      val transformedState = x1 map (a => mod.f(a.state, a.time))
-
-      (x1.last.state, Seq(transformedState.last, transformedState.map(x => exp(x) * dt).sum))
+    (x1.last.state, Seq(transformedState.last, transformedState.map(x => exp(x) * dt).sum))
   }
 
-  def advanceState(x: Seq[State], dt: TimeIncrement, t: Time)(p: Parameters): Seq[(State, Eta)] = {
-    x map (calcWeight(_, dt, t)(p))
+  def advanceState(x: Seq[State], dt: TimeIncrement, t: Time): Seq[(State, Eta)] = {
+    x map (calcWeight(_, dt, t))
   }
 
-  def calculateWeights(x: Eta, y: Observation)(p: Parameters): LogLikelihood = {
-    val mod = unparamMod(p)
+  def calculateWeights(x: Eta, y: Observation): LogLikelihood = {
     mod.dataLikelihood(x, y)
   }
 
