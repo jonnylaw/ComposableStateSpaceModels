@@ -2,7 +2,7 @@ package com.github.jonnylaw
 
 import breeze.stats.distributions.Rand
 import breeze.stats.distributions.Rand._
-import cats.{Monad, Applicative, Traverse}
+import cats.{Monad, Applicative, Traverse, Eval}
 
 package object model {
   type Eta = Seq[Double]
@@ -23,5 +23,13 @@ package object model {
       case Right(b) => always(b)
       case Left(b) => tailRecM(b)(f)
     }
+  }
+
+  implicit def randTraverse = new Traverse[Rand] {
+    def traverse[G[_], A, B](fa: Rand[A])(f: A => G[B])(implicit ev: Applicative[G]): G[Rand[B]] = ???
+
+    def foldLeft[A, B](fa: Rand[A], b: B)(f: (B, A) => B): B = ???
+    def foldRight[A, B](fa: Rand[A], lb: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = ???
+
   }
 }

@@ -16,8 +16,8 @@ import StateSpace._
 
 
 import java.nio.file.Paths
-import scala.util.Try
-import breeze.stats.distributions.Gaussian
+import scala.util.{Try, Success, Failure}
+import breeze.stats.distributions._
 import breeze.linalg.{DenseVector, diag}
 import breeze.numerics.exp
 import cats.implicits._
@@ -78,6 +78,7 @@ object FilterSeasonalPoisson extends App with TestModel {
     observations = mod.simRegular(0.1)
     bootstrapFilter = Filter(mod, ParticleFilter.multinomialResampling)
   } yield observations.
+    take(100).
     via(bootstrapFilter.filter(0.0)(n)).
     drop(1).
     map(a => ByteString(s"$a\n")).
@@ -88,35 +89,40 @@ object FilterSeasonalPoisson extends App with TestModel {
     onComplete(_ => system.shutdown)
 }
 
-// object DetermineComposedParams extends App with TestModel {
-//   implicit val system = ActorSystem("DeterminePoissonParams")
-//   implicit val materializer = ActorMaterializer()
+object DetermineComposedParams extends App with TestModel {
+  implicit val system = ActorSystem("DeterminePoissonParams")
+  implicit val materializer = ActorMaterializer()
 
-//   val data = FileIO.fromPath(Paths.get("SeasonalPoissonSims.csv")).
-//     via(Framing.delimiter(
-//       ByteString("\n"),
-//       maximumFrameLength = 256,
-//       allowTruncation = true)).
-//     map(_.utf8String).
-//     map(a => a.split(",")).
-//     map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None))
-  
-//   data.
-//     take(100).
-//     grouped(100).
-//     map(d => {
+  val data = FileIO.fromPath(Paths.get("seasonalPoissonSims.csv")).
+    via(Framing.delimiter(
+      ByteString("\n"),
+      maximumFrameLength = 256,
+      allowTruncation = true)).
+    map(_.utf8String).
+    map(a => a.split(",")).
+    map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None))
 
-//       val mll: Parameters => Try[LogLikelihood] = p => for {
-//         mod <- model(p)
-//         filter = Filter(mod, ParticleFilter.multinomialResampling)
-//       } yield filter.llFilter(d.toVector, d.map(_.t).min)(200)
+  data.
+    take(100).
+    grouped(100).
+    map(d => {
 
-//       ParticleMetropolis(mll, params, Parameters.perturb(0.05)).
-//         iters.
-//         take(10000).
-//         map(s => ByteString(s + "\n")).
-//         runWith(FileIO.toPath(Paths.get("LinearModelBreezeSingleSite.csv"))).
-//         onComplete(_ => system.terminate)
-//     }).
-//     runWith(Sink.ignore)
-// }
+      val mll: Parameters => LogLikelihood = p => {
+        val res: Try[LogLikelihood] = for {
+          mod <- model(p)
+          filter = Filter(mod, ParticleFilter.multinomialResampling)
+        } yield filter.llFilter(d.toVector, d.map(_.t).min)(200)
+
+        res.get
+      }
+
+      ParticleMetropolis(mll, params, Parameters.perturb(0.05)).
+        iters.
+        take(1000).
+        map(s => ByteString(s + "\n")).
+        runWith(FileIO.toPath(Paths.get("SeasonalPoissonParams.csv"))).
+        onComplete(_ => system.terminate)
+
+    }).
+    runWith(Sink.ignore)
+}

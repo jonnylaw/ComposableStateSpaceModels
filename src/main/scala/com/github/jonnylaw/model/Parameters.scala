@@ -67,6 +67,12 @@ case class BranchParameter(left: Parameters, right: Parameters) extends Paramete
   def perturbIndep(delta: Array[Double]): Rand[Parameters] = ???
 }
 
+case object EmptyParameter extends Parameters {
+  def perturb(delta: Double): Rand[Parameters] = ???
+  def perturbIndep(delta: Array[Double]): Rand[Parameters] = ???
+  def sum(that: Parameters): Try[Parameters] = ???
+}
+
 object Parameters {
   def leafParameter(
     initParams: StateParameter,
@@ -79,6 +85,8 @@ object Parameters {
   def branchParameter(lp: Parameters, rp: Parameters): Parameters = {
     BranchParameter(lp, rp)
   }
+
+  def emptyParameter: Parameters = EmptyParameter
 
   /**
     * A monoid to compose parameter values

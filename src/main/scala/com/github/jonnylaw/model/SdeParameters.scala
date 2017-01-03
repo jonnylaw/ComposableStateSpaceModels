@@ -5,6 +5,7 @@ import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}
 import cats._
 import cats.implicits._
 import scala.util.{Try, Success, Failure}
+import breeze.numerics.exp
 
 sealed trait SdeParameter {
   def sum(that: SdeParameter): Try[SdeParameter]
@@ -21,7 +22,16 @@ case class BrownianParameter(
     case _ => Failure(throw new Exception(s"Can't sum Brownianparameter with $that"))
   }
 
-  def perturb(delta: Double): Rand[SdeParameter] = ???
+  def perturb(delta: Double): Rand[SdeParameter] = {
+    for {
+      innov <- MultivariateGaussian(
+        DenseVector.zeros[Double](2 * mu.length),
+        diag(DenseVector.fill(2 * mu.length)(delta)))
+      m = mu + innov(0 to mu.length - 1)
+      s = diag(sigma) :* exp(innov(mu.length to -1))
+    } yield SdeParameter.brownianParameter(m, diag(s))
+  }
+
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???
 }
 
@@ -42,7 +52,17 @@ case class OrnsteinParameter(
     case _ => Failure(throw new Exception(s"Can't sum OrnsteinParameter with $that"))
   }
 
-  def perturb(delta: Double): Rand[SdeParameter] = ???
+  def perturb(delta: Double): Rand[SdeParameter] = {
+    for {
+      innov <- MultivariateGaussian(
+        DenseVector.zeros[Double](3 * theta.length),
+        diag(DenseVector.fill(3 * theta.length)(delta)))
+      t = theta + innov(0 to theta.length - 1)
+      a = alpha :* exp(innov(theta.length to 2 * theta.length - 1))
+      s = sigma :* exp(innov(2 * theta.length to -1))
+    } yield SdeParameter.ornsteinParameter(t, a, s)
+  }
+
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???
 }
 
@@ -54,7 +74,12 @@ case class StepConstantParameter(a: DenseVector[Double]) extends SdeParameter {
     case _ => Failure(throw new Exception(s"Can't sum StepConstantParameter with $that"))
   }
 
-  def perturb(delta: Double): Rand[SdeParameter] = ???
+  def perturb(delta: Double): Rand[SdeParameter] = {
+    for {
+      a <- MultivariateGaussian(a, diag(DenseVector.fill(a.length)(delta)))
+    } yield SdeParameter.stepConstantParameter(a)
+  }
+
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???
 
 }

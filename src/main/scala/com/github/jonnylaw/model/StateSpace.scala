@@ -6,7 +6,7 @@ import breeze.linalg.{diag, DenseVector}
 import breeze.numerics.{exp, sqrt}
 
 object StateSpace {
-    /**
+  /**
     * Steps all the states using the identity
     * @param p a Parameter
     * @return a function from state, dt => State
