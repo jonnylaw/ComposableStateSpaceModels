@@ -13,6 +13,8 @@ package object model {
   type LogLikelihood = Double
   type StepFunction = (SdeParameter) => (State, TimeIncrement) => Rand[State]
 
+  type Attempt[A] = Either[Throwable, A]
+
   implicit def bool2obs(b: Boolean): Observation = if (b) 1.0 else 0.0
   implicit def obs2bool(o: Observation): Boolean = if (o == 0.0) false else true
 
@@ -25,11 +27,11 @@ package object model {
     }
   }
 
-  implicit def randTraverse = new Traverse[Rand] {
-    def traverse[G[_], A, B](fa: Rand[A])(f: A => G[B])(implicit ev: Applicative[G]): G[Rand[B]] = ???
+  // implicit def randTraverse = new Traverse[Rand] {
+  //   def traverse[G[_], A, B](fa: Rand[A])(f: A => G[B])(implicit ev: Applicative[G]): G[Rand[B]] = ???
 
-    def foldLeft[A, B](fa: Rand[A], b: B)(f: (B, A) => B): B = ???
-    def foldRight[A, B](fa: Rand[A], lb: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = ???
+  //   def foldLeft[A, B](fa: Rand[A], b: B)(f: (B, A) => B): B = ???
+  //   def foldRight[A, B](fa: Rand[A], lb: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = ???
 
-  }
+  // }
 }

@@ -14,9 +14,7 @@ import State._
 import Parameters._
 import StateSpace._
 
-
 import java.nio.file.Paths
-import scala.util.{Try, Success, Failure}
 import breeze.stats.distributions._
 import breeze.linalg.{DenseVector, diag}
 import breeze.numerics.exp
@@ -58,9 +56,7 @@ object SimulateSeasonalPoisson extends App with TestModel {
       runWith(FileIO.toPath(Paths.get("seasonalPoissonSims.csv")))
   }
 
-  res.
-    get.
-    onComplete(_ => system.terminate)
+  res.right.map(_.onComplete(_ => system.terminate))
 }
 
 object FilterSeasonalPoisson extends App with TestModel {
@@ -70,9 +66,6 @@ object FilterSeasonalPoisson extends App with TestModel {
   // number of particles for the particle filter
   val n = 1000
 
-  // the for comprehension is used since the parameterised model is a Try[Model]
-  // we can simulate from the process as an Akka stream
-  // 0.1 is the time increment between observations
   val res = for {
     mod <- model(params)
     observations = mod.simRegular(0.1)
@@ -84,9 +77,7 @@ object FilterSeasonalPoisson extends App with TestModel {
     map(a => ByteString(s"$a\n")).
     runWith(FileIO.toPath(Paths.get("OnlineComposedModelFiltered.csv")))
 
-  res.
-    get.
-    onComplete(_ => system.shutdown)
+  res.right.map(_.onComplete(_ => system.shutdown))
 }
 
 object DetermineComposedParams extends App with TestModel {
@@ -107,16 +98,14 @@ object DetermineComposedParams extends App with TestModel {
     grouped(100).
     map(d => {
 
-      val mll: Parameters => LogLikelihood = p => {
-        val res: Try[LogLikelihood] = for {
+      def mll(p: Parameters) = {
+        for {
           mod <- model(p)
           filter = Filter(mod, ParticleFilter.multinomialResampling)
         } yield filter.llFilter(d.toVector, d.map(_.t).min)(200)
-
-        res.get
       }
 
-      ParticleMetropolis(mll, params, Parameters.perturb(0.05)).
+      MetropolisParams(mll, Parameters.perturb(0.05), params).
         iters.
         take(1000).
         map(s => ByteString(s + "\n")).

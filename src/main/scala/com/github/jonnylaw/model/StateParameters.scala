@@ -8,6 +8,9 @@ import cats.implicits._
 import scala.util.{Try, Success, Failure}
 
 sealed trait StateParameter {
+  def flatten: Vector[Double]
+
+  def length: Int = this.flatten.length
 
   def sum(that: StateParameter): Try[StateParameter]
 
@@ -37,6 +40,9 @@ case class GaussianParameter(
   }
 
   def perturbIndep(delta: Array[Double]): Rand[StateParameter] = ???
+
+  def flatten: Vector[Double] =
+    (m0.data ++ diag(c0).toArray).toVector
 }
 
 object GaussianParameter {

@@ -9,7 +9,6 @@ import cats.implicits._
 import breeze.numerics.{cos, sin, sqrt, exp, log}
 import breeze.stats.distributions._
 import breeze.linalg.{DenseMatrix, DenseVector}
-import scala.util.{Try, Success, Failure}
 
 import akka.stream._
 import scaladsl._
@@ -225,7 +224,7 @@ object Model {
   }
 }
 
-trait UnparamModel extends (Parameters => Try[Model])
+trait UnparamModel extends (Parameters => Either[Throwable, Model])
 
 /**
   * Generalised student t model
@@ -233,9 +232,9 @@ trait UnparamModel extends (Parameters => Try[Model])
   * @return an unparameterised model of the Student-T model, which can be composed with other models
   */
 case class studentTModel(stepFun: StepFunction, df: Int) extends UnparamModel {
-  def apply(p: Parameters): Try[Model] = p match {
+  def apply(p: Parameters): Either[Throwable, Model] = p match {
   case LeafParameter(stateParam, Some(v), sdeparam) =>
-      Success(
+      Right(
         new Model {
 
           def observation = x => StudentsT(df) map (a => a * v + x.head)
@@ -253,7 +252,7 @@ case class studentTModel(stepFun: StepFunction, df: Int) extends UnparamModel {
           def dataLikelihood = (eta, y) => 1/v * StudentsT(df).logPdf((y - eta.head) / v)
         }
       )
-    case _ => Failure(throw new Exception("Student T model requires LeafParameter"))
+    case _ => Left(throw new Exception("Student T model requires LeafParameter"))
   }
 }
 
@@ -266,7 +265,7 @@ case class studentTModel(stepFun: StepFunction, df: Int) extends UnparamModel {
 case class SeasonalModel(period: Int, harmonics: Int, stepFun: StepFunction) extends UnparamModel {
   def apply(p: Parameters) = p match {
     case LeafParameter(init, Some(v), sde) => 
-      Success(new Model {
+      Right(new Model {
 
         def observation = x => Gaussian(x.head, v)
 
@@ -288,7 +287,7 @@ case class SeasonalModel(period: Int, harmonics: Int, stepFun: StepFunction) ext
 
         def dataLikelihood = (eta, y) => Gaussian(eta.head, v).logPdf(y)
       })
-    case _ => Failure(throw new Exception(s"Seasonal Model requires LeafParameter got $p"))
+    case _ => Left(throw new Exception(s"Seasonal Model requires LeafParameter got $p"))
   }
 }
 
@@ -302,7 +301,7 @@ case class LinearModel(stepFun: StepFunction) extends UnparamModel {
     case LeafParameter(init, Some(v), sde) =>
       init match {
         case GaussianParameter(m0, c0) => 
-          Success(new Model {
+          Right(new Model {
             def observation = x => Gaussian(x.head, v)
 
             def f(s: State, t: Time) = s.head
@@ -313,9 +312,9 @@ case class LinearModel(stepFun: StepFunction) extends UnparamModel {
 
             def dataLikelihood = (eta, y) => Gaussian(eta.head, v).logPdf(y)
           })
-        case _ => Failure(throw new Exception("Incorrect initial state parameters in linear model"))
+        case _ => Left(throw new Exception("Incorrect initial state parameters in linear model"))
       }
-    case _ => Failure(throw new Exception("LinearModel requires LeafParameter"))
+    case _ => Left(throw new Exception("LinearModel requires LeafParameter"))
   }
 }
 
@@ -327,7 +326,7 @@ case class LinearModel(stepFun: StepFunction) extends UnparamModel {
 case class PoissonModel(stepFun: StepFunction) extends UnparamModel {
   def apply(p: Parameters) = p match {
     case LeafParameter(init, _, sde) =>
-      Success(new Model {
+      Right(new Model {
 
       def observation = lambda => Poisson(lambda.head) map (_.toDouble): Rand[Double]
 
@@ -345,7 +344,7 @@ case class PoissonModel(stepFun: StepFunction) extends UnparamModel {
 
       def dataLikelihood = (lambda, y) => Poisson(lambda.head).logProbabilityOf(y.toInt)
       })
-    case _ => Failure(throw new Exception("PoissonModel requires LeafParameter"))
+    case _ => Left(throw new Exception("PoissonModel requires LeafParameter"))
   }
 }
 
@@ -356,7 +355,7 @@ case class PoissonModel(stepFun: StepFunction) extends UnparamModel {
 case class BernoulliModel(stepFun: StepFunction) extends UnparamModel {
   def apply(params: Parameters) = params match {
     case LeafParameter(init, _, sde) =>
-      Success(new Model {
+      Right(new Model {
 
       def observation = p => Uniform(0, 1) map (_ < p.head)
 
@@ -389,7 +388,7 @@ case class BernoulliModel(stepFun: StepFunction) extends UnparamModel {
       }
 
       })
-    case _ => Failure(throw new Exception("BernoulliModel requires LeafParameter"))
+    case _ => Left(throw new Exception("BernoulliModel requires LeafParameter"))
   }
 }
 
@@ -400,7 +399,7 @@ case class BernoulliModel(stepFun: StepFunction) extends UnparamModel {
 case class LogGaussianCox(stepFun: StepFunction) extends UnparamModel {
   def apply(p: Parameters) = p match {
     case LeafParameter(init, _, sde) =>
-      Success(new Model {
+      Right(new Model {
 
       def observation = ???
 
@@ -416,7 +415,7 @@ case class LogGaussianCox(stepFun: StepFunction) extends UnparamModel {
 
       def dataLikelihood = (lambda, y) => lambda.head - lambda(1)
       })
-    case _ => Failure(throw new Exception("LogGaussianCox requires LeafParameter"))
+    case _ => Left(throw new Exception("LogGaussianCox requires LeafParameter"))
   }
 }
 
@@ -439,7 +438,7 @@ object UnparamModel {
     * @return a composed model of mod1 and mod2, which can be composed again
     */
   def op(mod1: UnparamModel, mod2: UnparamModel): UnparamModel = new UnparamModel {
-    def apply(p: Parameters): Try[Model] = p match {
+    def apply(p: Parameters): Either[Throwable, Model] = p match {
       case BranchParameter(lp, rp) =>
         for {
           left_mod <- mod1(lp)
@@ -475,7 +474,7 @@ object UnparamModel {
 
           def dataLikelihood = (s, y) => left_mod.dataLikelihood(s, y)
         }
-      case _ => Failure(throw new Exception(s"Expected BranchParameter to composed model, got $p"))
+      case _ => Left(throw new Exception(s"Expected BranchParameter to composed model, got $p"))
     }
   }
 }
