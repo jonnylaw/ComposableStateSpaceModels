@@ -31,6 +31,11 @@ object State {
     override def empty: State = State.zero
   }
 
+  def leafState(data: DenseVector[Double]): State = LeafState(data)
+
+  def branchState(left: State, right: State): State = BranchState(left, right)
+
+
   def combine(state1: State, state2: State): State = {
     if (state1.isEmpty) {
       state2

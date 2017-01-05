@@ -11,7 +11,7 @@ package object model {
   type Time = Double
   type TimeIncrement = Double
   type LogLikelihood = Double
-  type StepFunction = (SdeParameter) => (State, TimeIncrement) => Rand[State]
+  type StepFunction = SdeParameter => (State, TimeIncrement) => Rand[State]
 
   type Attempt[A] = Either[Throwable, A]
 

@@ -1,7 +1,8 @@
 package com.github.jonnylaw.model
 
-import breeze.linalg._
+import breeze.linalg.{DenseMatrix, DenseVector}
 import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}
+import breeze.stats.distributions.Rand._
 import breeze.numerics.exp
 import cats._
 import cats.implicits._
@@ -17,6 +18,12 @@ sealed trait Parameters {
   def perturb(delta: Double): Rand[Parameters]
 
   def perturbIndep(delta: Array[Double]): Rand[Parameters]
+
+  def flatten: Vector[Double]
+
+  def length: Int = this.flatten.length
+
+  override def toString = this.flatten.mkString(", ")
 }
 case class LeafParameter(
   initParams: StateParameter,
@@ -33,6 +40,10 @@ case class LeafParameter(
     case _ => Failure(throw new Exception(s"Can't sum LeafParameter and $that"))
   }
 
+  def flatten: Vector[Double] = scale match {
+    case Some(v) => initParams.flatten ++ Vector(v) ++ sdeParam.flatten
+    case None => initParams.flatten ++ sdeParam.flatten
+  }
 
   def perturb(delta: Double): Rand[Parameters] = {
     for {
@@ -65,12 +76,18 @@ case class BranchParameter(left: Parameters, right: Parameters) extends Paramete
   }
 
   def perturbIndep(delta: Array[Double]): Rand[Parameters] = ???
+
+  def flatten: Vector[Double] = left.flatten ++ right.flatten
 }
 
 case object EmptyParameter extends Parameters {
-  def perturb(delta: Double): Rand[Parameters] = ???
-  def perturbIndep(delta: Array[Double]): Rand[Parameters] = ???
-  def sum(that: Parameters): Try[Parameters] = ???
+  def perturb(delta: Double): Rand[Parameters] = always(EmptyParameter)
+  def perturbIndep(delta: Array[Double]): Rand[Parameters] = always(EmptyParameter)
+  def sum(that: Parameters): Try[Parameters] = that match {
+    case EmptyParameter => Success(EmptyParameter)
+    case _ => Failure(throw new Exception("Can't add $that to EmptyParameter"))
+  }
+  def flatten = Vector()
 }
 
 object Parameters {

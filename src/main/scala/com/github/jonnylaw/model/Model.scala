@@ -318,11 +318,27 @@ case class LinearModel(stepFun: StepFunction) extends UnparamModel {
   }
 }
 
+object LinearModel {
+  // smart constructors used for validation of model creation
+  private def unsafeLinearModel(stepFun: StepFunction)(p: LeafParameter): Model = ???
+
+  // create a model from a validated step function
+  def linearModel(stepFun: StepFunction)(p: Parameters): Either[Throwable, Model] = p match {
+    case LeafParameter(init, Some(v), sde) =>
+      init match {
+        case GaussianParameter(m0, c0) => 
+          Right(unsafeLinearModel(stepFun)(LeafParameter(init, Some(v), sde)))
+        case _ => Left(throw new Exception("Incorrect initial state parameters in linear model"))
+      }
+    case _ => Left(throw new Exception("LinearModel requires LeafParameter"))
+  }
+}
+
   /**
     * The Poisson unparameterised model with a one dimensional latent state
-    * @param stepFun a solution to a diffusion process representing the evolution of the latent space
-    * @return a Poisson UnparamModel which can be composed with other UnparamModels
-    */
+  * @param stepFun a solution to a diffusion process representing the evolution of the latent space
+  * @return a Poisson UnparamModel which can be composed with other UnparamModels
+  */
 case class PoissonModel(stepFun: StepFunction) extends UnparamModel {
   def apply(p: Parameters) = p match {
     case LeafParameter(init, _, sde) =>

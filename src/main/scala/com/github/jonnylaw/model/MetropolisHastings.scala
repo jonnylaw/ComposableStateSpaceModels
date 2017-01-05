@@ -131,6 +131,12 @@ trait MetropolisTryTransformer[P] {
     val init = MetropolisState(-1e99, init_param)
     Source.unfold(step_mh(init))(s => Some((s flatMap step_mh, s)))
   }
+
+  // in order for this to work, do we need a RandT monad transformer?
+  // def markov_iters = {
+  //   val init = MetropolisState(-1e99, init_param)
+  //   MarkovChain(step_mh(init))(s => s flatMap step_mh)
+  // }
 }
 
 case class MetropolisParams(

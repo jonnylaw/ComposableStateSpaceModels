@@ -47,7 +47,7 @@ object SimLinear extends App with LinearModel {
   * Random walk Metropolis Hastings
   * with different values of delta
   */
-object BreezeMCMC extends App with LinearModel {
+object StreamingMCMC extends App with LinearModel {
   implicit val system = ActorSystem("PMMH")
   implicit val materializer = ActorMaterializer()
 
@@ -90,4 +90,48 @@ object BreezeMCMC extends App with LinearModel {
       }).
       runWith(Sink.ignore)
   }
+}
+
+object ErrorHandlingMCMC extends App with LinearModel {
+  implicit val system = ActorSystem("PMMH")
+  implicit val materializer = ActorMaterializer()
+
+  // Read in the data
+  val data = FileIO.fromPath(Paths.get("LinearModelSims.csv")).
+    via(Framing.delimiter(
+      ByteString("\n"),
+      maximumFrameLength = 256,
+      allowTruncation = true)).
+    map(_.utf8String).
+    map(a => a.split(",")).
+    map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None))
+
+
+  data.
+    take(100).
+    grouped(100).
+    map((d: Seq[Data]) => {
+
+      // we handle the exception here when building the loglikelihood function
+      // this way the PMMH algorithm doesn't need to know about failures, it should be provided with a valid model
+      def mll(n: Int)(p: Parameters): LogLikelihood = {
+        val res = for {
+          mod <- unparamMod(p)
+          filter = Filter(mod, ParticleFilter.multinomialResampling)
+        } yield filter.llFilter(d, 0.0)(n) 
+
+        res match {
+          case Right(ll) => ll
+          case Left(e) => throw new Exception(e)
+        }
+      }
+
+      ParticleMetropolis(mll(500), p, Parameters.perturb(0.05)).
+        iters.
+        take(100000).
+        map(s => ByteString(s + "\n")).
+        runWith(FileIO.toPath(Paths.get(s"LinearModelPMMH.csv"))).
+        onComplete(_ => system.terminate)
+    }).
+    runWith(Sink.ignore)
 }
