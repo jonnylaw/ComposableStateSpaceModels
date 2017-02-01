@@ -1,58 +1,41 @@
 // package com.github.jonnylaw.examples
 
-// import akka.actor.ActorSystem
-// import akka.stream.ActorMaterializer
-// import akka.stream.scaladsl.Source
-// import scala.concurrent.ExecutionContext.Implicits.global
 // import java.nio.file.Paths
-// import akka.stream.scaladsl._
-// import scala.concurrent.{duration, Await}
-// import scala.concurrent.duration._
-// import akka.util.ByteString
+// import fs2._
 
 // import com.github.jonnylaw.model._
-// import Streaming._
-// import ParticleFilter._
-// import DataTypes._
-// import Model._
-// import Utilities._
-// import State._
-// import Parameters._
-// import StateSpace._
-// import java.io.{PrintWriter, File}
 // import breeze.stats.distributions.Gaussian
 // import breeze.linalg.{DenseVector, diag}
+// import java.io.PrintWriter
 
 // trait LgcpModel {
 //   /** Define the model **/
-//   val params = LeafParameter(
-//     GaussianParameter(0.0, 1.0),
+//   val params = Parameters.leafParameter(
 //     None,
-//     OrnsteinParameter(2.0, 0.5, 1.0))
+//     OrnsteinParameter(DenseVector(0.0),
+//       DenseMatrix((1.0)),
+//       DenseVector(2.0),
+//       DenseVector(0.5),
+//       DenseVector(1.0)))
 
-//   val model = LogGaussianCox(stepOrnstein)
+//   val model = Model.logGaussianCox(Sde.ornsteinUhlenbeck)
 // }
 
 // object SimulateLGCP extends App with LgcpModel {
-//   val sims = simLGCP(0.0, 10.0, model(params), 2)
+//   val sims = SimulatedData(model(params)).
+//     simLGCP(0.0, 10.0, 2)
 
-//   val pw = new PrintWriter("lgcpsims.csv")
+//   val pw = new PrintWriter("data/lgcpsims.csv")
 //   pw.write(sims.mkString("\n"))
 //   pw.close()
 // }
 
 // object FilteringLgcp extends App with LgcpModel {
-//   implicit val system = ActorSystem("FilterLgcp")
-//   implicit val materializer = ActorMaterializer()
-
-//   val data = FileIO.fromPath(Paths.get("lgcpsims.csv")).
-//     via(Framing.delimiter(
-//       ByteString("\n"),
-//       maximumFrameLength = 256,
-//       allowTruncation = true)).
-//     map(_.utf8String).
-//     map(a => a.split(",")).
-//     map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None))
+//   val data = io.file.readAll[Task](Paths.get("data/lgcpsims.csv"), 4096).
+//     through(text.utf8Decode).
+//     through(text.lines).
+//     map(a => a.split(", ")).
+//     map(d => TimedObservation(d(0).toDouble, d(1).toDouble))
 
 //   val pf = FilterLgcp(model, ParticleFilter.multinomialResampling, 2)
 

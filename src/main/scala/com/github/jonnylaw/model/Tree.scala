@@ -2,40 +2,110 @@ package com.github.jonnylaw.model
 
 import cats._
 
-sealed trait Tree[+A]
-case class Leaf[+A](a: A) extends Tree[A]
-case class Branch[+A](left: Tree[A], right: Tree[A]) extends Tree[A]
+/**
+  * A binary tree implementation, to be used when combining models
+  * Hopefully this simplifies "zooming" into values and changing them
+  */
+sealed trait Tree[A] { self =>
+  import Tree._
+
+  /**
+    * Add a Tree to the right of the tree
+    */
+  def |+(that: Tree[A]): Tree[A] = {
+    branch(self, that)
+  }
+
+  /**
+    * Add a Tree to the left of the tree
+    */
+  def +|(that: Tree[A]): Tree[A] = {
+    branch(that, self)
+  }
+
+  /**
+    * Get the contents of the leaf node element at position n from the left, indexed from 0
+    * @param n the node position from the left
+    */
+  def getNode(n: Int): A = {
+    val l = self.flatten
+    l(n)
+  }
+
+  /**
+    * Reduce the tree to a value, by recursively applying fold to the branches, combining the results using g
+    * and transforming the leaves using f
+    */
+  def fold[B](z: B)(f: A => B)(g: (B, B) => B): B = {
+    def loop(acc: B, remaining: Tree[A]): B = remaining match {
+      case Leaf(a) => f(a)
+      case Branch(l, r) => g(loop(acc, l), loop(acc, r))
+    }
+
+    loop(z, self)
+  }
+
+  def foldMap(f: A => A)(implicit m: Monoid[A]): A = {
+    self.fold(m.empty)(identity)((b, a) => m.combine(b, f(a)))
+  }
+
+  def flatten: List[A] = self match {
+    case Leaf(a) => List[A](a)
+    case Branch(l, r) => l.flatten ++ r.flatten
+  }
+
+  /**
+    * Combine two trees which are the same shape using the function f
+    */
+  def zipWith[B, C](that: Tree[B])(f: (A, B) => C): Tree[C] = (self, that) match {
+    case (Leaf(a), Leaf(b)) => leaf(f(a, b))
+    case (Branch(l, r), Branch(l1, r1)) => branch(l.zipWith(l1)(f), r.zipWith(r1)(f))
+    case _ => throw new Exception("Can't zip different shaped trees")
+  }
+
+  def prettyPrint: String = self match{
+    case Branch(l, r) => "/ \\ \n" ++ l.prettyPrint ++ r.prettyPrint
+    case Leaf(a) => a.toString
+  }
+
+  /**
+    * Add two (same shape) trees together, each leaf node is added
+    */
+  def add(that: Tree[A])(implicit N: Numeric[A]): Tree[A] = self.zipWith(that)(N.plus)
+}
+case class Leaf[A](value: A) extends Tree[A]
+case class Branch[A](left: Tree[A], right: Tree[A]) extends Tree[A]
 
 object Tree {
+  def branch[A](l: Tree[A], r: Tree[A]): Tree[A] = Branch(l, r)
   def leaf[A](a: A): Tree[A] = Leaf(a)
-  def branch[A](left: Tree[A], right: Tree[A]): Tree[A] = Branch(left, right)
 
-  implicit def treeSemigroup[A] = new Semigroup[Tree[A]] {
-    def combine(t: Tree[A], s: Tree[A]): Tree[A] = {
-      branch(t, s)
+  /**
+    * fill the tree from the left
+    * 
+    */
+  def constructTreeLeft[A](l: Seq[A]): Tree[A] = {
+    l.tail.foldLeft(Tree.leaf(l.head))(_ |+ Tree.leaf(_))
+  }
+
+  /**
+    * Fill an already constructed tree
+    */
+//  def fillTree(t: Tree[A])(l: Seq[B]): Tree[A] = 
+
+  implicit val treeFun = new Functor[Tree] {
+    def pure[A](a: A): Tree[A] = leaf(a)
+
+    def map[A, B](a: Tree[A])(f: A => B): Tree[B] = a match {
+      case Leaf(a) => Leaf(f(a))
+      case Branch(l, r) => branch(map(l)(f), map(r)(f))
     }
   }
 
-  implicit def treeMonad = new Monad[Tree] with Traverse[Tree] {
-    def pure[A](a: A): Tree[A] = Leaf(a)
-
-    def flatMap[A, B](fa: Tree[A])(f: A => Tree[B]): Tree[B] = fa match {
-      case Leaf(a) => f(a)
-      case Branch(l, r) => Branch(flatMap(l)(f), flatMap(r)(f))
-    }
-
-    // TODO: Implement tailRecM properly...
-    def tailRecM[A, B](a: A)(f: A => Tree[Either[A,B]]): Tree[B] = f(a) match {
-      case Leaf(Right(b)) => Leaf(b)
-      case Leaf(Left(a1)) => tailRecM(a1)(f)
-      case _ => throw new Exception("I have no idea what will happen here")
-    }
-
-    def foldLeft[A, B](fa: Tree[A],b: B)(f: (B, A) => B): B = ???
-    def foldRight[A, B](fa: Tree[A],lb: cats.Eval[B])(f: (A, cats.Eval[B]) => cats.Eval[B]): cats.Eval[B] = ???
-
-    def traverse[G[_], A, B](fa: Tree[A])(f: A => G[B])(implicit evidence: cats.Applicative[G]): G[Tree[B]] = ???
+  /**
+    * Semigroup to build a larger tree
+    */
+  implicit def composeTreeSemigroup[A] = new Semigroup[Tree[A]] {
+    def combine(l: Tree[A], r: Tree[A]): Tree[A] = branch(l, r)
   }
-
-
 }

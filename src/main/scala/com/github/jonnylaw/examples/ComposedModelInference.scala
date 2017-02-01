@@ -1,117 +1,104 @@
-// package com.github.jonnylaw.examples
+package com.github.jonnylaw.examples
 
-// import akka.actor.ActorSystem
-// import akka.stream.ActorMaterializer
-// import scala.concurrent.ExecutionContext.Implicits.global
-// import akka.NotUsed
-// import akka.stream.scaladsl._
-// import scala.concurrent.duration._
-// import scala.concurrent.Future
-// import akka.util.ByteString
+import breeze.linalg.{DenseVector, DenseMatrix}
+import cats.data.Reader
+import cats.implicits._
 
-// import com.github.jonnylaw.model._
-// import State._
-// import Parameters._
-// import StateSpace._
+import com.github.jonnylaw.model._
+import Parameters._
 
-// import java.nio.file.Paths
-// import breeze.stats.distributions._
-// import breeze.linalg.{DenseVector, diag}
-// import breeze.numerics.exp
-// import cats.implicits._
+import fs2._
 
-// /**
-//   * Define a model to use throughout the examples in this file
-//   */
-// trait TestModel {
-//   val poissonParams: Parameters = LeafParameter(
-//     GaussianParameter(0.0, 0.5),
-//     None,
-//     BrownianParameter(-0.05, 0.3))
-//   val seasonalParams: Parameters = LeafParameter(
-//     GaussianParameter(DenseVector.fill(6)(0.0),
-//       diag(DenseVector.fill(6)(0.5))),
-//     Some(1.0),
-//     OrnsteinParameter(DenseVector.fill(6)(1.0), DenseVector.fill(6)(0.1), DenseVector.fill(6)(0.5)))
+import java.nio.file.Paths
+import java.io.PrintWriter
 
-//   val params = poissonParams |+| seasonalParams
-//   val poisson: UnparamModel = PoissonModel(stepBrownian)
-//   val seasonal: UnparamModel = SeasonalModel(24, 3, stepOrnstein)
-//   val model = poisson |+| seasonal
-// }
+/**
+  * Define a model to use throughout the examples in this file
+  */
+trait TestModel {
+  val poissonParams = Parameters.leafParameter(
+    None,
+    SdeParameter.brownianParameter(
+      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(0.01), DenseMatrix((0.3))))
+  val seasonalParams = Parameters.leafParameter(
+    Some(1.0),
+    SdeParameter.brownianParameter(
+      DenseVector.fill(6)(1.0),
+      DenseMatrix.eye[Double](6),
+      DenseVector.fill(6)(0.01),
+      DenseMatrix.eye[Double](6) * 0.3))
 
-// /**
-//   * Simulate a poisson model, with seasonal rate parameter
-//   */
-// object SimulateSeasonalPoisson extends App with TestModel {
-//   implicit val system = ActorSystem("SimulateSeasonalPoisson")
-//   implicit val materializer = ActorMaterializer()
+  val params = poissonParams |+| seasonalParams
+  val poisson = Model.poissonModel(Sde.brownianMotion)
+  val seasonal = Model.seasonalModel(24, 3, Sde.brownianMotion)
+  val model = poisson |+| seasonal
+}
 
-//   val times = (1 to 100).map(_.toDouble).toList
 
-//   val res = model(params) map {mod =>
-//     Source(times).
-//       via(mod.simPompModel(0.0)).
-//       map(s => ByteString(s + "\n")).
-//       runWith(FileIO.toPath(Paths.get("seasonalPoissonSims.csv")))
-//   }
+/**
+  * Simulate a poisson model, with seasonal rate parameter
+  */
+object SimulateSeasonalPoisson extends App with TestModel {
+  val times = (0.0 to 120.0 by 1.0).
+    filter(a => scala.util.Random.nextDouble < 0.9). // 10% of data missing
+    toList
 
-//   res.right.map(_.onComplete(_ => system.terminate))
-// }
+  Stream.emits[Task, Double](times).
+    through(SimulatedData(model(params)).simPompModel(0.0)).
+    map((x: Data) => x.show).
+    intersperse("\n").
+    through(text.utf8Encode).
+    through(io.file.writeAll(Paths.get("data/seasonalPoissonSims.csv"))).
+    run.
+    unsafeRun
+}
 
-// object FilterSeasonalPoisson extends App with TestModel {
-//   implicit val system = ActorSystem("FilterPoisson")
-//   implicit val materializer = ActorMaterializer()
+object FilterSeasonalPoisson extends App with TestModel {
+  val n = 1000 // number of particles for the particle filter
+  val t0 = 0.0 // starting time of the filter (time of the first observation)
+  val filter = ParticleFilter.filter(0.0, n)
 
-//   // number of particles for the particle filter
-//   val n = 1000
+io.file.readAll[Task](Paths.get("data/seasonalPoissonSims.csv"), 4096).
+    through(text.utf8Decode).
+    through(text.lines).
+    map(a => a.split(", ")).
+    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
+    through(filter(model(params))).
+    map(ParticleFilter.getIntervals(model(params))).
+    drop(1).
+    map(_.show).
+    intersperse("\n").
+    through(text.utf8Encode).
+    through(io.file.writeAll(Paths.get("data/seasonalPoissonFiltered.csv"))).
+    run.
+    unsafeRun
+}
 
-//   val res = for {
-//     mod <- model(params)
-//     observations = mod.simRegular(0.1)
-//     bootstrapFilter = Filter(mod, ParticleFilter.multinomialResampling)
-//   } yield observations.
-//     take(100).
-//     via(bootstrapFilter.filter(0.0)(n)).
-//     drop(1).
-//     map(a => ByteString(s"$a\n")).
-//     runWith(FileIO.toPath(Paths.get("OnlineComposedModelFiltered.csv")))
+object DetermineComposedParams extends App with TestModel {
+  // read a file from memory
+  val data = scala.io.Source.fromFile("data/seasonalPoissonSims.csv").
+    getLines.
+    toList.
+    take(200).
+    map(a => a.split(",")).
+    map(d => TimedObservation(d(0).toDouble, d(1).toDouble))
 
-//   res.right.map(_.onComplete(_ => system.shutdown))
-// }
+  def prior: Parameters => LogLikelihood = p => 0.0
 
-// object DetermineComposedParams extends App with TestModel {
-//   implicit val system = ActorSystem("DeterminePoissonParams")
-//   implicit val materializer = ActorMaterializer()
+  // determine parameters
+  val mll: Reader[Parameters, LogLikelihood] = ParticleFilter.likelihood(
+    ParticleFilter.multinomialResampling, data.sortBy(_.t).toVector, 200) compose model
 
-//   val data = FileIO.fromPath(Paths.get("seasonalPoissonSims.csv")).
-//     via(Framing.delimiter(
-//       ByteString("\n"),
-//       maximumFrameLength = 256,
-//       allowTruncation = true)).
-//     map(_.utf8String).
-//     map(a => a.split(",")).
-//     map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None))
+  val iters = ParticleMetropolis(mll.run, params, Parameters.perturb(0.05), prior).
+    markovIters.
+    steps.
+    take(10000)
 
-//   data.
-//     take(100).
-//     grouped(100).
-//     map(d => {
+  val pw = new PrintWriter("data/SeasonalPoissonParams.csv")
 
-//       def mll(p: Parameters) = {
-//         for {
-//           mod <- model(p)
-//           filter = Filter(mod, ParticleFilter.multinomialResampling)
-//         } yield filter.llFilter(d.toVector, d.map(_.t).min)(200)
-//       }
+  for (iter <- iters) {
+    pw.write(iter + "\n")
+  }
 
-//       MetropolisParams(mll, Parameters.perturb(0.05), params).
-//         iters.
-//         take(1000).
-//         map(s => ByteString(s + "\n")).
-//         runWith(FileIO.toPath(Paths.get("SeasonalPoissonParams.csv"))).
-//         onComplete(_ => system.terminate)
-
-//     }).
-//     runWith(Sink.ignore)
-// }
+  pw.close()
+}

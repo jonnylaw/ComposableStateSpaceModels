@@ -15,8 +15,8 @@ sims = read.csv("./LinearModelSims.csv", header = F,
                 col.names = c("time", "y", "eta", "gamma", "x"))
 
 sims[,-(3:4)] %>%
-    gather(key = "key", value = "value", -time) %>%
-    ggplot(aes(x = time, y = value, colour = key)) + geom_line()
+  gather(key = "key", value = "value", -time) %>%
+  ggplot(aes(x = time, y = value, colour = key)) + geom_line()
 
 system("scp maths:/home/a9169110/LinearModel* ~/Desktop/ComposableModels")
 

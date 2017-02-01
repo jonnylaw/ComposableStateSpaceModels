@@ -5,9 +5,8 @@ import breeze.stats.distributions.Rand._
 import breeze.stats.distributions.MarkovChain._
 import breeze.linalg.DenseMatrix
 import breeze.numerics._
-import akka.stream.scaladsl.Source
-import akka.stream.scaladsl._
-import Stream._
+import fs2._
+import fs2.util.Suspendable
 
 /**
   * The state of the metropolis-hastings algorithms
@@ -15,20 +14,14 @@ import Stream._
   * @param params the current set of parameters
   * @param accepted the total number of accepted moves in the metropolis hastings algorithm
   */
-case class MetropState(ll: LogLikelihood, params: Parameters, accepted: Int) {
-  override def toString = s"${params.toString}, $accepted"
-}
+case class MetropState(ll: LogLikelihood, params: Parameters, accepted: Int)
 
 trait MetropolisHastings {
 
   /**
     * Prior distribution for the parameters, with default implementation
     */
-  def prior: ContinuousDistr[Parameters] = new ContinuousDistr[Parameters] {
-    val draw: Parameters = Parameters.emptyParameter
-    def unnormalizedLogPdf(p: Parameters): Double = 0.0
-    def logNormalizer: Double = 0.0
-  }
+  def prior: Parameters => LogLikelihood
 
   /**
     * Proposal density, to propose new parameters for a model
@@ -67,7 +60,7 @@ trait MetropolisHastings {
     for {
       propParams <- proposal(p.params)
       propll = logLikelihood(propParams)
-      a = propll + logTransition(propParams, p.params) + prior.logPdf(propParams) - logTransition(p.params, propParams) - p.ll - prior.logPdf(p.params)
+      a = propll + logTransition(propParams, p.params) + prior(propParams) - logTransition(p.params, propParams) - p.ll - prior(p.params)
       u <- Uniform(0, 1)
       prop = if (log(u) < a) {
         MetropState(propll, propParams, p.accepted + 1)
@@ -87,16 +80,20 @@ trait MetropolisHastings {
     MarkovChain(initState)(mhStep)
   }
 
+  def fromProcess[F[_]: Suspendable, A](iter: Process[A]): Stream[F, A] = {
+    Stream.unfold(iter.step){ case (a, p) => Some((a, p.step)) }
+  }
+
   /**
     * Use the same step for iterations in a stream
     */
-  def iters: Source[MetropState, Any] = {
-    Source.fromIterator(() => markovIters.steps)
+  def iters[F[_]: Suspendable]: Stream[F, MetropState] = {
+    fromProcess[F, MetropState](markovIters)
   }
 }
 
 /**
-  * Implementation of the particle metropolis algorithm without a properly specified prior distribution
+  * Implementation of the particle metropolis algorithm
   * @param logLikelihood a function from parameters to LogLikelihood
   * @param initialParams the starting parameters for the metropolis algorithm
   * @param proposal a SYMMETRIC proposal distribution for the metropolis algorithm (eg. Gaussian)
@@ -104,13 +101,14 @@ trait MetropolisHastings {
 case class ParticleMetropolis(
   logLikelihood: Parameters => LogLikelihood,
   initialParams: Parameters,
-  proposal: Parameters => Rand[Parameters]) extends MetropolisHastings{
+  proposal: Parameters => Rand[Parameters],
+  prior: Parameters => LogLikelihood) extends MetropolisHastings {
 
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = 0.0
 }
 
 /**
-  * Implementation of the particle metropolis hastings algorithm without a properly
+  * Implementation of the particle metropolis hastings algorithm
   * specified prior distribution
   * @param logLikelihood a function from parameters to LogLikelihood
   * @param initialParams the starting parameters for the metropolis algorithm
@@ -122,39 +120,9 @@ case class ParticleMetropolisHastings(
   logLikelihood: Parameters => LogLikelihood,
   transitionProb: (Parameters, Parameters) => LogLikelihood,
   proposal: Parameters => Rand[Parameters],
-  initialParams: Parameters) extends MetropolisHastings {
+  initialParams: Parameters,
+  prior: Parameters => LogLikelihood) extends MetropolisHastings {
 
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = transitionProb(from, to)
 
-}
-
-/**
-  * Implementation of the particle metropolis algorithm
-  * @param logLikelihood a function from parameters to LogLikelihood
-  * @param initialParams the starting parameters for the metropolis algorithm
-  * @param proposal a SYMMETRIC proposal distribution for the metropolis algorithm (eg. Gaussian)
-  * @param prior a prior distribution on the parameters
-  */
-case class ParticleMetropolisWithPrior(
-  logLikelihood: Parameters => LogLikelihood,
-  proposal: Parameters => Rand[Parameters],
-  initialParams: Parameters, override val prior: ContinuousDistr[Parameters]) extends MetropolisHastings {
-
-  def logTransition(from: Parameters, to: Parameters): LogLikelihood = 0.0
-}
-
-/**
-  * Implementation of the particle metropolis-hastings algorithm
-  * @param logLikelihood a function from parameters to LogLikelihood
-  * @param initialParams the starting parameters for the metropolis algorithm
-  * @param proposal a SYMMETRIC proposal distribution for the metropolis algorithm (eg. Gaussian)
-  * @param prior a prior distribution on the parameters
-  */
-case class ParticleMetropolisHastingsWithPrior(
-  logLikelihood: Parameters => LogLikelihood,
-  transitionProb: (Parameters, Parameters) => LogLikelihood,
-  proposal: Parameters => Rand[Parameters],
-  initialParams: Parameters, override val prior: ContinuousDistr[Parameters]) extends MetropolisHastings {
-
-  def logTransition(from: Parameters, to: Parameters): LogLikelihood = transitionProb(from, to)
 }

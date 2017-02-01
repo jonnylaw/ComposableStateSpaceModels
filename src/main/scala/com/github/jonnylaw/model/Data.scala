@@ -35,12 +35,11 @@ case class ObservationWithState(
 case class TimedObservation(t: Time, observation: Observation) extends Data
 
 trait DataService {
-  def observations: Stream[Task, Data]
+  def observations[F[_]]: Stream[F, Data]
 }
 
 case class SimulatedData(model: Model) extends DataService {
-
-  def observations = simRegular(0.1)
+  def observations[F[_]] = simRegular[F](0.1)
 
   /**
     * Simulate a single step from a model, return a distribution over the possible values
@@ -100,7 +99,7 @@ case class SimulatedData(model: Model) extends DataService {
     * @param dt the time increment between successive realisations of the POMP model
     * @return an Akka Stream containing a realisation of the process
     */
-  def simRegular(dt: TimeIncrement): Stream[Task, ObservationWithState] = model match {
+  def simRegular[F[_]](dt: TimeIncrement): Stream[F, ObservationWithState] = model match {
     case _: LogGaussianCox => throw new Exception("Not implemented")
     case _ =>
       fromProcess(simMarkov(dt))
@@ -117,15 +116,14 @@ case class SimulatedData(model: Model) extends DataService {
   def simLGCP(
     start: Time,
     end: Time,
-    mod: Model,
     precision: Int): Vector[ObservationWithState] = {
 
     // generate an SDE Stream
-    val stateSpace = SimulateData.simSdeStream(mod.sde.initialState.draw,
-      start, end - start, precision, mod.sde.stepFunction)
+    val stateSpace = SimulateData.simSdeStream(model.sde.initialState.draw,
+      start, end - start, precision, model.sde.stepFunction)
 
     // Calculate the upper bound of the stream
-    val upperBound = stateSpace.map(s => mod.f(s.state, s.time)).
+    val upperBound = stateSpace.map(s => model.f(s.state, s.time)).
       map(exp(_)).max
 
     def loop(lastEvent: Time, eventTimes: Vector[ObservationWithState]): Vector[ObservationWithState] = {
@@ -137,11 +135,11 @@ case class SimulatedData(model: Model) extends DataService {
       } else {
         // drop the elements we don't need from the stream, then calculate the hazard near that time
         val statet1 = stateSpace.takeWhile(s => s.time <= t1) 
-        val hazardt1 = statet1.map(s => mod.f(s.state, s.time)).last
+        val hazardt1 = statet1.map(s => model.f(s.state, s.time)).last
 
         val stateEnd = statet1.last.state
-        val gamma = mod.f(stateEnd, t1)
-        val eta = mod.link(gamma)
+        val gamma = model.f(stateEnd, t1)
+        val eta = model.link(gamma)
 
         if (Uniform(0,1).draw <= exp(hazardt1)/upperBound) {
           loop(t1, ObservationWithState(t1, 1.0, eta, gamma, statet1.last.state) +: eventTimes)
@@ -151,8 +149,8 @@ case class SimulatedData(model: Model) extends DataService {
       }
     }
     loop(start, stateSpace.map{ s => {
-      val gamma = mod.f(s.state, s.time)
-      val eta = mod.link(gamma)
+      val gamma = model.f(s.state, s.time)
+      val eta = model.link(gamma)
       ObservationWithState(s.time, 0.0, eta, gamma, s.state) }}.toVector
     )
   }
