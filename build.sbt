@@ -24,7 +24,6 @@ libraryDependencies  ++= Seq(
 // sonatypeProfileName := "com.github.jonnylaw"
 
 publishMavenStyle := true
-isSnapshot := true
 
 publishTo := {
   val nexus = "https://oss.sonatype.org/"
@@ -33,8 +32,6 @@ publishTo := {
   else
     Some("Releases" at nexus + "service/local/staging/deploy/maven2")
 }
-
-credentials += Credentials(Path.userHome / ".sbt" / ".credentials")
 
 publishArtifact in Test := false
 
