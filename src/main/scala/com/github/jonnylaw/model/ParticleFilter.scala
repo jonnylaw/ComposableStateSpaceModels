@@ -165,19 +165,15 @@ trait ParticleFilter {
     * credible intervals
     * @param t0 the initial time of the observations
     * @param particles the number of particles to use in the filter/forecast
-    * @param p the parameters of the model
-    * @return an Akka Stream Flow from Data to ForecastOut
+    * @return a Pipe[Task, Data, (PfState, ForecastOut)], which transforms a stream of Data into a stream
+    * of tuples (PfState, ForecastOut)
     */
-  // def getOneStepForecast(t0: Time)(particles: Int): Pipe[Task, Data, ForecastOut] = {
-  //   val initState = initialiseState(particles, t0)
-  //   val forecastState = oneStepForecast(initState.particles.toList, t0, t0, mod).draw._1
+  def filterWithForecast(t0: Time)(particles: Int): Pipe[Task, Data, (PfState, ForecastOut)] = {
+    val initState = initialiseState(particles, t0)
+    val forecastState = oneStepForecast(initState.particles.toList, t0, t0, mod).draw._1
 
-  //   pipe.
-  //     scan((initState, forecastState))((s: (PfState, ForecastOut), y: Data) =>
-  //       stepWithForecast(s._1, y)).
-  //     through(pipe.map { case (_, f) => f }).
-  //     drop(1) // drop the initial state
-  // }
+    pipe.scan((initState, forecastState))((s: (PfState, ForecastOut), y: Data) => stepWithForecast(s._1, y))
+  }
 }
 
 case class Filter(mod: Model, resamplingScheme: Resample[State]) extends ParticleFilter {
@@ -230,6 +226,19 @@ case class FilterLgcp(mod: Model, resamplingScheme: Resample[State], precision: 
 }
 
 object ParticleFilter {
+  /**
+    * Construct a particle filter to calculate the state of an fs2 Stream of Data
+    * @param t0 the starting time of the observations
+    * @param n the number of particles to use in the filter
+    * @return a Reader monad representing the function Model => Pipe[Task, Data, PfState]
+    * When given a Model, this can be used to filter an fs2 stream of data
+    * eg:
+    * val mod: Model
+    * val pf = filter(0.0, 100)
+    * val data: Stream[Task, Data] = // data as an fs2 stream
+    * data.
+    *   through(pf(mod))
+    */
   def filter(t0: Time, n: Int): Reader[Model, Pipe[Task, Data, PfState]] = Reader {
     mod => Filter(mod, ParticleFilter.multinomialResampling).filter(t0)(n)
   }
