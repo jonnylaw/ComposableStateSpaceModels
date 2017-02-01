@@ -4,7 +4,7 @@ organization := "com.github.jonnylaw"
 
 version := "0.1"
 
-scalaVersion := "2.12"
+scalaVersion := "2.11.8"
 
 resolvers ++= Seq(
   "Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/",
@@ -24,6 +24,7 @@ libraryDependencies  ++= Seq(
 // sonatypeProfileName := "com.github.jonnylaw"
 
 publishMavenStyle := true
+isSnapshot := true
 
 publishTo := {
   val nexus = "https://oss.sonatype.org/"
@@ -32,6 +33,8 @@ publishTo := {
   else
     Some("Releases" at nexus + "service/local/staging/deploy/maven2")
 }
+
+credentials += Credentials(Path.userHome / ".sbt" / ".credentials")
 
 publishArtifact in Test := false
 
