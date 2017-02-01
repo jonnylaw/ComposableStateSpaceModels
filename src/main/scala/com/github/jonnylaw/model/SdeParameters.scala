@@ -6,6 +6,8 @@ import scala.util.{Try, Success, Failure}
 import breeze.numerics.exp
 
 sealed trait SdeParameter {
+  def flatten: Vector[Double]
+  def length: Int = this.flatten.length
   def sum(that: SdeParameter): Try[SdeParameter]
   def perturb(delta: Double): Rand[SdeParameter]
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter]
@@ -40,6 +42,9 @@ case class BrownianParameter(
   }
 
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???
+
+  def flatten: Vector[Double] =
+    mu.data.toVector ++ diag(sigma).data.toVector
 }
 
 case class OrnsteinParameter(
@@ -76,6 +81,17 @@ case class OrnsteinParameter(
   }
 
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???
+  //     innov <- MultivariateGaussian(
+  //       DenseVector.zeros[Double](3 * theta.length),
+  //       diag(DenseVector.fill(3 * theta.length)(delta)))
+  //     t = theta + innov(0 to theta.length - 1)
+  //     a = alpha :* exp(innov(theta.length to 2 * theta.length - 1))
+  //     s = sigma :* exp(innov(2 * theta.length to -1))
+  //   } yield SdeParameter.ornsteinParameter(t, a, s)
+  // }
+
+  def flatten: Vector[Double] =
+    theta.data.toVector ++ alpha.data.toVector ++ sigma.data.toVector
 }
 
 object SdeParameter {

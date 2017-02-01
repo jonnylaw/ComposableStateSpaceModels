@@ -112,7 +112,6 @@ object Model {
     }
     case _ => throw new Exception("Can't Build composed model from leafParameter")
   }}
-
 }
 
 /**
@@ -120,6 +119,7 @@ object Model {
   * @param stepFun the diffusion process solution to use for this model
   * @return an model of the Student-T model, which can be composed with other models
   */
+
 private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) extends Model {
   def observation = x => p.scale match {
     case Some(v) => StudentsT(df) map (a => a * v + x.head)
@@ -127,6 +127,7 @@ private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) ext
   }
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
+
 
   def dataLikelihood = (eta, y) => p.scale match {
     case Some(v) => 1/v * StudentsT(df).logPdf((y - eta.head) / v)
@@ -140,7 +141,7 @@ private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) ext
     * @param harmonics the number of harmonics to use in the seasonal model
     * @param sde a solution to a diffusion process representing the latent state
     */
-case class SeasonalModel(
+private final case class SeasonalModel(
   period: Int, 
   harmonics: Int, 
   sde: Sde, p: LeafParameter) extends Model {
@@ -171,19 +172,18 @@ case class SeasonalModel(
     * @param sde a solution to a diffusion process representing the evolution of the latent state
     * @return an UnparamModel which can be composed with other models
     */
-case class LinearModel(sde: Sde, p: LeafParameter) extends Model {
+private final case class LinearModel(sde: Sde, p: LeafParameter) extends Model {
   def observation = x => p.scale match {
     case Some(v) => Gaussian(x.head, v)
     case None => throw new Exception("Must provide SD parameter for LinearModel")
   }
-
+  
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
   def dataLikelihood = (eta, y) => p.scale match {
     case Some(v) =>  Gaussian(eta.head, v).logPdf(y)
     case None => throw new Exception("Must provide SD parameter for LinearModel")
   }
-
 }
 
   /**
@@ -191,7 +191,7 @@ case class LinearModel(sde: Sde, p: LeafParameter) extends Model {
     * @param sde a solution to a diffusion process representing the evolution of the latent space
     * @return a Poisson UnparamModel which can be composed with other UnparamModels
     */
-case class PoissonModel(sde: Sde, p: LeafParameter) extends Model {
+private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model {
   def observation = lambda => Poisson(lambda.head) map (_.toDouble): Rand[Double]
 
   override def link(x: Double) = Vector(exp(x))
@@ -205,7 +205,7 @@ case class PoissonModel(sde: Sde, p: LeafParameter) extends Model {
     * The bernoulli model with a one dimensional latent state
     * @param sde a solution to a diffusion process 
     */
-case class BernoulliModel(sde: Sde, p: LeafParameter) extends Model {
+private final case class BernoulliModel(sde: Sde, p: LeafParameter) extends Model {
   def observation = p => Uniform(0, 1).map(_ < p.head).map(a => if (a) 1.0 else 0.0)
 
   override def link(x: Gamma) = {
@@ -217,6 +217,7 @@ case class BernoulliModel(sde: Sde, p: LeafParameter) extends Model {
       Vector(1.0/(1 + exp(-x)))
     }
   }
+
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
@@ -233,7 +234,7 @@ case class BernoulliModel(sde: Sde, p: LeafParameter) extends Model {
     * The Log-Gaussian Cox-Process is used to model time to event data with 
     * log-gaussian varying hazard rate
     */
-case class LogGaussianCox(sde: Sde, p: LeafParameter) extends Model {
+private final case class LogGaussianCox(sde: Sde, p: LeafParameter) extends Model {
   def observation = ???
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)

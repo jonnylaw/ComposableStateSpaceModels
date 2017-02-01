@@ -149,68 +149,60 @@ class ModelSuite extends FlatSpec with Matchers {
   }
 }
 
-class LongRunningModelSuite extends FlatSpec with Matchers {
-  def stepNull(p: SdeParameter): Sde = new Sde {
-    def initialState: Rand[State] = Rand.always(Tree.leaf(DenseVector(0.0)))
-    def drift(state: State): Tree[DenseVector[Double]] = Tree.leaf(DenseVector(1.0))
-    def diffusion(state: State): Tree[DenseMatrix[Double]] = Tree.leaf(DenseMatrix((0.0)))
-    def dimension: Int = 1
-    override def stepFunction(dt: TimeIncrement)(s: State) = Rand.always(s)
-  }
+// class LongRunningModelSuite extends FlatSpec with Matchers {
+//   def stepNull(p: SdeParameter): Sde = new Sde {
+//     def initialState: Rand[State] = Rand.always(Tree.leaf(DenseVector(0.0)))
+//     def drift(state: State): Tree[DenseVector[Double]] = Tree.leaf(DenseVector(1.0))
+//     def diffusion(state: State): Tree[DenseMatrix[Double]] = Tree.leaf(DenseMatrix((0.0)))
+//     def dimension: Int = 1
+//     override def stepFunction(dt: TimeIncrement)(s: State) = Rand.always(s)
+//   }
+//   val tolerance = 1E-1
 
-  val tolerance = 1E-1
+//   "A linear model" should "produce normally distributed observations" in {
+//     val unparamMod = LinearModel(stepNull)
+//     val p = LeafParameter(GaussianParameter(0.0, 1.0), Some(3.0), StepConstantParameter(0.0))
+//     val mod = unparamMod(p)
 
-  "A linear model" should "produce normally distributed observations" in {
-    val unparamMod = Model.linearModel(stepNull)
-    val p = Parameters.leafParameter(Some(3.0), SdeParameter.brownianParameter(
-      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(-0.2), DenseMatrix((1.0))))
-    val mod = unparamMod(p)
+//     val data = simData((1 to 100000).map(_.toDouble), mod)
 
-    val observations = SimulatedData(mod).
-      observations[Nothing].
-      take(100000).
-      map(_.observation).
-      toList
+//     val observations = data map (_.observation)
+//     val firstState = mod.f(data.head.sdeState.get, 1)
 
-    assert(math.abs(mean(observations)) < tolerance)
-    assert(math.abs(variance(observations) - 9.0) < tolerance)
-  }
+//     assert(math.abs(mean(observations) - firstState) < tolerance)
+//     assert(math.abs(variance(observations) - 9.0) < tolerance)
+//   }
 
-  "A poisson model" should "produce poisson distributed observations" in {
-    val unparamMod = Model.poissonModel(stepNull)
-    val p = Parameters.leafParameter(None, SdeParameter.brownianParameter(
-      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(-0.2), DenseMatrix((1.0))))
-    val mod = unparamMod(p)
+//   "A poisson model" should "produce poisson distributed observations" in {
+//     val unparamMod = PoissonModel(stepNull)
+//     val p = LeafParameter(GaussianParameter(1.0, 10.0), None, StepConstantParameter(0.0))
+//     val mod = unparamMod(p)
 
-    // the state is constant at the first generated value (fixed at 0.0),
-    // hence the rate, lambda is constant and equal to exp(0.0) = 1.0
-    val observations = SimulatedData(mod).
-      simRegular[Nothing](1.0).
-      take(1000000).
-      map(_.observation).
-      toList
+//     // the state is constant at the first generated value, hence the rate lambda is constant
+//     val data = simData((1 to 1000000).map(_.toDouble), mod)
 
-    assert(math.abs(mean(observations) - 1.0) < tolerance)
-    assert(math.abs(variance(observations) - 1.0) < tolerance)
-  }
+//     val observations = data map (_.observation)
+//     val state = data.head.sdeState.get
+//     val lambda = mod.link(mod.f(state, 1)).head
+//     assert(math.abs(mean(observations) - lambda) < tolerance)
+//     assert(math.abs(variance(observations) - lambda) < tolerance)
+//   }
 
-  "Bernoulli model" should "produce bernoulli distributed observations" in {
-    val unparamMod = Model.bernoulliModel(stepNull)
-    val params = Parameters.leafParameter(None, SdeParameter.brownianParameter(
-      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(-0.2), DenseMatrix((1.0))))
-    val mod = unparamMod(params)
+//   "Bernoulli model" should "produce bernoulli distributed observations" in {
+//     val unparamMod = BernoulliModel(stepNull)
+//     val params = LeafParameter(GaussianParameter(1.0, 10.0), None, StepConstantParameter(0.0))
+//     val mod = unparamMod(params)
 
-    val observations = SimulatedData(mod).
-      observations[Nothing].
-      take(1000000).
-      map(_.observation).
-      toList
+//     val data = simData((1 to 100000).map(_.toDouble), mod)
 
-    // The state will remain constant at the first value (0.0)
-    // hence the value of p will remain constant
-    val p = 1.0/(1 + exp(-0.0))
+//     // The state will remain constant at the first value
+//     // hence the value of p will remain constant
+//     val observations = data map (_.observation)
+//     val state = data.head.sdeState.get
+//     val p = mod.link(mod.f(state, 1)).head
+//     val n = observations.size
 
-    assert(math.abs(mean(observations) - p) < tolerance)
-    assert(math.abs(variance(observations) - p*(1-p)) < tolerance)
-  }
-}
+//     assert(math.abs(mean(observations) - p) < tolerance)
+//     assert(math.abs(variance(observations) - p*(1-p)) < tolerance)
+//   }
+// }

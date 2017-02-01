@@ -1,5 +1,6 @@
 package com.github.jonnylaw.examples
 
+
 import fs2.{io, text, Task}
 import breeze.stats.distributions.{Gaussian, Gamma}
 import cats.data.Reader

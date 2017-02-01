@@ -29,6 +29,7 @@ package object model {
     }
   }
 
+
   implicit def numericDenseVector = new Numeric[DenseVector[Double]] {
     def fromInt(x: Int): DenseVector[Double] = DenseVector(x.toDouble)
     def minus(x: DenseVector[Double],y: DenseVector[Double]): DenseVector[Double] = x - y

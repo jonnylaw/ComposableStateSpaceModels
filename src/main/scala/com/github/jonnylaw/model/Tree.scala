@@ -32,7 +32,6 @@ sealed trait Tree[A] { self =>
     l(n)
   }
 
-
   /**
     * Reduce the tree to a value, by recursively applying fold to the branches, combining the results using g
     * and transforming the leaves using f

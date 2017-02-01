@@ -4,7 +4,7 @@ organization := "com.github.jonnylaw"
 
 version := "0.1"
 
-scalaVersion := "2.11.8"
+scalaVersion := "2.12"
 
 resolvers ++= Seq(
   "Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/",
