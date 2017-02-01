@@ -1,279 +1,214 @@
 import com.github.jonnylaw.model._
-import State._
-import SimData._
-import StateSpace._
-import DataTypes._
 
 import org.scalatest._
 import breeze.numerics.{exp, log, sin, cos}
 import breeze.stats.distributions._
-import breeze.linalg.DenseVector
 import breeze.stats.{mean, variance}
-import breeze.linalg.{DenseVector, diag}
+import breeze.linalg.{DenseVector, diag, DenseMatrix}
 import cats.implicits._
-import cats.Monoid
+import cats.{Monoid, Applicative}
+import cats.data.Reader
+import scala.util.{Try, Failure, Success}
+import fs2._
 
 class ModelSuite extends FlatSpec with Matchers {
-  def LinearModelNoNoise(stepFun: StepFunction): UnparamModel = new UnparamModel {
-    def apply(p: Parameters): Model = new Model {
-      def observation = x => new Rand[Observation] {
-        def draw = x.head
+  // a simple linear model with no observation noise, for testing
+  case class LinearModelNoNoise(sde: Sde, p: LeafParameter) extends Model {
+    def observation = x => Rand.always(x.head)
+
+    def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
+
+    def dataLikelihood = (x, y) => y
+  }
+  // smart constructor for linear model
+  def linearModelNoNoise(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p: Parameters => p match {
+    case param: LeafParameter => LinearModelNoNoise(sde(param.sdeParam), param)
+    case _ => throw new Exception
+  }}
+
+  case class SeasonalModelNoNoise(
+    period: Int, harmonics: Int, sde: Sde, p: LeafParameter) extends Model {
+
+      def observation = x => Rand.always(x.head)
+
+      def buildF(harmonics: Int, t: Time): DenseVector[Double] = {
+        val frequency = 2 * math.Pi / period
+        val res = (1 to harmonics).toArray.
+          flatMap (a => Array(cos(frequency * a * t), sin(frequency * a * t)))
+
+        DenseVector(res)
       }
 
-      def f(s: State, t: Time) = s.head
-
-      def x0 = new Rand[State] { def draw = LeafState(0.0) }
-
-      def stepFunction = (x, dt) => p match {
-        case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
-      }
+      def f(s: State, t: Time) = s.fold(0.0)(x => buildF(harmonics, t) dot x)(_ + _)
 
       def dataLikelihood = (x, y) => y
-    }
   }
 
-  def SeasonalModelWithoutNoise(period: Int, harmonics: Int, stepFun: StepFunction): UnparamModel =
-    new UnparamModel {
-      def apply(p: Parameters): Model = new Model {
+  def seasonalModelNoNoise(
+    period: Int,
+    h: Int,
+    sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p: Parameters => p match {
 
-        def observation = x => new Rand[Observation] {
-          def draw = x.head
-        }
+    case param: LeafParameter => SeasonalModelNoNoise(period, h, sde(param.sdeParam), param)
+    case _ => throw new Exception
+  }}
 
-        def buildF(harmonics: Int, t: Time): DenseVector[Double] = {
-          val frequency = 2 * math.Pi / period
-          DenseVector(((1 to harmonics) flatMap (a => Array(cos(frequency * a * t), sin(frequency * a * t)))).toArray)
-        }
-
-        def f(s: State, t: Time) = s match {
-          case LeafState(x) =>
-            buildF(harmonics, t) dot DenseVector(x.toArray)
-        }
-
-        def x0 = new Rand[State] {
-          def draw = LeafState(DenseVector.fill(harmonics*2)(0.0))
-        }
-
-        def stepFunction = (x, dt) => p match {
-          case LeafParameter(_,_,sdeparam  @unchecked) => stepFun(sdeparam)(x, dt)
-        }
-
-        def dataLikelihood = (x, y) => y
-      }
-    }
-
-  def stepNull(p: SdeParameter): (State, TimeIncrement) => Rand[State] = {
-    (s, dt) => new Rand[State] { def draw = s }
+  def stepNull(p: SdeParameter): Sde = new Sde {
+    def initialState: Rand[State] = Rand.always(Tree.leaf(DenseVector(0.0)))
+    def drift(state: State): Tree[DenseVector[Double]] = Tree.leaf(DenseVector(1.0))
+    def diffusion(state: State): Tree[DenseMatrix[Double]] = Tree.leaf(DenseMatrix((0.0)))
+    def dimension: Int = 1
+    override def stepFunction(dt: TimeIncrement)(s: State) = Rand.always(s)
   }
 
-  "Adding a null model" should "result in the same initial state" in {
-    val linearModel = LinearModelNoNoise(stepConstant)
-    val nullModel = Monoid[UnparamModel].empty
-    val combinedModel = linearModel |+| nullModel
-    val p = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
+  "Brownian Motion step function" should "Change the value of the state" in {
+    val p = SdeParameter.brownianParameter(
+      DenseVector(1.0), DenseMatrix((1.0)),
+      DenseVector(1.0), DenseMatrix((1.0)))
 
-    val x0 = linearModel(p).x0.draw
+    val x0 = Tree.leaf(DenseVector(1.0))
 
-    assert(x0 == combinedModel(p).x0.draw)
+    assert(Sde.brownianMotion(p).stepFunction(2)(x0).draw.getNode(0) != x0.getNode(0))
   }
 
-  "Adding a null model" should "result in the same step" in {
-    val linearModel = LinearModelNoNoise(stepConstant)
-    val nullModel = Monoid[UnparamModel].empty
-    val combinedModel = linearModel |+| nullModel
-    val p = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
-    val x0 = linearModel(p).x0.draw
-    val x1 = linearModel(p).stepFunction(x0, 1).draw
-    assert(x1 == combinedModel(p).stepFunction(x0, 1).draw)
-  }
+  "Compose two models" should "work" in {
+    val singleP = Parameters.leafParameter(
+      Some(1.0), SdeParameter.brownianParameter(
+      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(1.0), DenseMatrix((1.0))))
 
-  "Adding a null model" should "result in the same observation" in {
-    val linearModel = LinearModelNoNoise(stepConstant)
-    val nullModel = Monoid[UnparamModel].empty
-    val combinedModel = linearModel |+| nullModel
-    val p =LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
-    val x0 = linearModel(p).x0.draw
-    val x1 = linearModel(p).stepFunction(x0, 1).draw
-    val lambda1 = linearModel(p).link(linearModel(p).f(x1, 1))
-    val y1 = linearModel(p).observation(lambda1).draw
+    val p = singleP |+| singleP
 
-    assert(y1 == combinedModel(p).observation(combinedModel(p).link(combinedModel(p).f(x1, 1))).draw)
-  }
+    val twoLinear = linearModelNoNoise(Sde.brownianMotion) |+|
+    linearModelNoNoise(Sde.brownianMotion)
 
-  "Adding a null model" should "result in the same data likelihood" in {
-    val linearModel = LinearModelNoNoise(stepConstant)
-    val nullModel = Monoid[UnparamModel].empty
-    val combinedModel = linearModel |+| nullModel
-    val p = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
-    val x0 = linearModel(p).x0.draw
-    val x1 = linearModel(p).stepFunction(x0, 1).draw
-    val y = linearModel(p).observation(linearModel(p).link(linearModel(p).f(x1, 1))).draw
-    val eta = linearModel(p).link(linearModel(p).f(x1, 1))
-    val datalik = linearModel(p).dataLikelihood(eta, y)
-    val eta1 = linearModel(p).link(linearModel(p).f(x1, 1))
+    val x0 = twoLinear(p).sde.initialState.draw
+    assert(x0.flatten.size == twoLinear(p).sde.dimension)
 
-    assert(datalik == combinedModel(p).dataLikelihood(eta1, y))
-  }
+    val x1 = twoLinear(p).sde.stepFunction(1)(x0).draw
+    assert(x1.getNode(0) != x0.getNode(1))
 
-  "Constant Step Function" should "Advance the state by a constant * dt" in {
-    val p = StepConstantParameter(1.0)
-    val x0 = LeafState(1.0)
-
-    assert(stepConstant(p)(x0, 2).draw == LeafState(3.0))
-  }
-
-  "Add the null model twice" should "result in the same model" in {
-    val linearModel = LinearModelNoNoise(stepConstant)
-    val nullModel = Monoid[UnparamModel].empty
-    val combinedModel = linearModel |+| nullModel
-    val p = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
-    val combinedModel3 = linearModel |+| nullModel |+| nullModel
-    val x0 = linearModel(p).x0.draw
-    assert(x0 == combinedModel3(p).x0.draw)
-
-    val x1 = linearModel(p).stepFunction(x0, 1).draw
-    assert(x1 == combinedModel3(p).stepFunction(x0, 1).draw)
-
-    val y = linearModel(p).observation(linearModel(p).link(linearModel(p).f(x1, 1))).draw
-    val eta = linearModel(p).link(linearModel(p).f(x1, 1))
-    val datalik = linearModel(p).dataLikelihood(eta, y)
-
-    val eta1 = linearModel(p).link(linearModel(p).f(x1, 1))
-
-    assert(datalik == combinedModel3(p).dataLikelihood(eta, y))
-  }
-
-  "Combine two models" should "work" in {
-    val p = BranchParameter(
-      LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0)),
-      LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(3.0)))
-    val twoLinear = LinearModelNoNoise(stepConstant) |+| LinearModelNoNoise(stepConstant)
-
-    val x0 = twoLinear(p).x0.draw
-    assert(x0 == BranchState(LeafState(0.0), LeafState(0.0)))
-
-    val x1 = twoLinear(p).stepFunction(x0, 1).draw
-    assert(x1 == BranchState(LeafState(1.0), LeafState(3.0)))
-
-    val y = twoLinear(p).observation(twoLinear(p).link(twoLinear(p).f(x1, 1))).draw
-    assert(y == 4.0)
+    val eta = twoLinear(p).link(twoLinear(p).f(x1, 1))
+    val y = twoLinear(p).observation(eta).draw
+    assert(y == eta.head)
   }
 
   "Combine three models" should "result in a state space of three combined states" in {
-    val p1: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
-    val p2: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(2.0))
-    val p3: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(3.0))
+    val p = List.fill(3)(
+      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(
+      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(1.0), DenseMatrix((0.0))))).
+      reduce((a, b) => a |+| b)
 
-    val p = p1 |+| p2 |+| p3
+    val threeLinear = linearModelNoNoise(stepNull) |+|
+    linearModelNoNoise(Sde.brownianMotion) |+|
+    linearModelNoNoise(Sde.brownianMotion)
 
-    val threeLinear = LinearModelNoNoise(stepNull) |+| LinearModelNoNoise(stepConstant) |+| LinearModelNoNoise(stepConstant)
-
-    val x0 = threeLinear(p).x0.draw
-    val s1: State = LeafState(0.0)
-    assert(x0 == (s1 |+| s1 |+| s1))
+    val x0 = threeLinear(p).sde.initialState
+    assert(x0.draw.flatten.size == 3)
   }
 
   "Combine three Models" should "advance each state space seperately" in {
-    val p1: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
-    val p2: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(2.0))
-    val p3: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(3.0))
+    val p = List.fill(3)(
+      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(
+      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(1.0), DenseMatrix((0.1))))).
+      reduce((a, b) => a |+| b)
 
-    val p = p1 |+| p2 |+| p3
+    val threeLinear = linearModelNoNoise(Sde.brownianMotion) |+|
+    linearModelNoNoise(Sde.brownianMotion) |+|
+    linearModelNoNoise(Sde.brownianMotion)
 
-    val threeLinear = LinearModelNoNoise(stepNull) |+| LinearModelNoNoise(stepConstant) |+| LinearModelNoNoise(stepConstant)
+    val x0 = threeLinear(p).sde.initialState.draw
+    val x1 = threeLinear(p).sde.stepFunction(1)(x0).draw
+    val s1 = Tree.leaf(DenseVector(0.0))
+    val s2 = Tree.leaf(DenseVector(2.0))
+    val s3 = Tree.leaf(DenseVector(3.0))
+    assert(x1.getNode(0) != s1.getNode(0))
 
-    val x0 = threeLinear(p).x0.draw
-    val x1 = threeLinear(p).stepFunction(x0, 1).draw
-    val s1: State = LeafState(0.0)
-    val s2: State = LeafState(2.0)
-    val s3: State = LeafState(3.0)
-    assert(x1 == (s1 |+| s2 |+| s3))
+    assert(x1.getNode(1) != s2.getNode(0))
+
+    assert(x1.getNode(2) != s3.getNode(0))
+
+    assert(s1.getNode(0) != s2.getNode(0))
   }
 
   "Combine three models" should "return an observation which is the sum of the state space, plus measurement error" in {
-    val p1: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))
-    val p2: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(2.0))
-    val p3: Parameters = LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(3.0))
+    val p = List.fill(3)(
+      Parameters.leafParameter(Some(1.0),     SdeParameter.brownianParameter(
+      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(-0.2), DenseMatrix((1.0))))).
+      reduce((a, b) => a |+| b)
 
-    val p = p1 |+| p2 |+| p3
+    val threeLinear = linearModelNoNoise(stepNull) |+|
+    linearModelNoNoise(Sde.brownianMotion) |+|
+    linearModelNoNoise(Sde.brownianMotion)
 
-    val threeLinear = LinearModelNoNoise(stepNull) |+| LinearModelNoNoise(stepConstant) |+| LinearModelNoNoise(stepConstant)
-
-    val x0 = threeLinear(p).x0.draw
-    val x1 = threeLinear(p).stepFunction(x0, 1).draw
+    val x0 = threeLinear(p).sde.initialState.draw
+    val x1 = threeLinear(p).sde.stepFunction(1)(x0).draw
     val eta = threeLinear(p).link(threeLinear(p).f(x1, 1))
     val y = threeLinear(p).observation(eta).draw
 
-    assert(Math.abs(y - 3.0) < 3) // This will be true 99% of the time, since we have V = 1.0 and v ~ N(0,1)
-  }
-
-  "Combine three models" should "be associative" in {
-    val p = BranchParameter(
-      BranchParameter(LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0)),
-        LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0))),
-        LeafParameter(GaussianParameter(0.0, 10.0), Some(1.0), StepConstantParameter(1.0)))
-    val threeLinear1 = LinearModelNoNoise(stepNull) |+| LinearModelNoNoise(stepConstant) |+| LinearModelNoNoise(stepConstant)
-
-    val x0 = threeLinear1(p).x0.draw
-    assert(x0 == BranchState(
-      BranchState(LeafState(0.0), LeafState(0.0)),
-      LeafState(0.0)))
-
-    val x1 = threeLinear1(p).stepFunction(x0, 1).draw
-    assert(x1 == BranchState(BranchState(LeafState(0.0), LeafState(1.0)), LeafState(1.0)))
+    assert(y == eta.head) 
   }
 }
 
 class LongRunningModelSuite extends FlatSpec with Matchers {
-
-  def stepNull(p: SdeParameter): (State, TimeIncrement) => Rand[State] = {
-    (s, dt) => new Rand[State] { def draw = s }
+  def stepNull(p: SdeParameter): Sde = new Sde {
+    def initialState: Rand[State] = Rand.always(Tree.leaf(DenseVector(0.0)))
+    def drift(state: State): Tree[DenseVector[Double]] = Tree.leaf(DenseVector(1.0))
+    def diffusion(state: State): Tree[DenseMatrix[Double]] = Tree.leaf(DenseMatrix((0.0)))
+    def dimension: Int = 1
+    override def stepFunction(dt: TimeIncrement)(s: State) = Rand.always(s)
   }
 
   val tolerance = 1E-1
 
   "A linear model" should "produce normally distributed observations" in {
-    val unparamMod = LinearModel(stepNull)
-    val p = LeafParameter(GaussianParameter(0.0, 1.0), Some(3.0), StepConstantParameter(0.0))
+    val unparamMod = Model.linearModel(stepNull)
+    val p = Parameters.leafParameter(Some(3.0), SdeParameter.brownianParameter(
+      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(-0.2), DenseMatrix((1.0))))
     val mod = unparamMod(p)
 
-    val data = simData((1 to 100000).map(_.toDouble), mod)
+    val observations = SimulatedData(mod).
+      observations[Nothing].
+      take(100000).
+      map(_.observation).
+      toList
 
-    val observations = data map (_.observation)
-    val firstState = mod.f(data.head.sdeState.get, 1)
-
-    assert(math.abs(mean(observations) - firstState) < tolerance)
+    assert(math.abs(mean(observations)) < tolerance)
     assert(math.abs(variance(observations) - 9.0) < tolerance)
   }
 
   "A poisson model" should "produce poisson distributed observations" in {
-    val unparamMod = PoissonModel(stepNull)
-    val p = LeafParameter(GaussianParameter(1.0, 10.0), None, StepConstantParameter(0.0))
+    val unparamMod = Model.poissonModel(stepNull)
+    val p = Parameters.leafParameter(None, SdeParameter.brownianParameter(
+      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(-0.2), DenseMatrix((1.0))))
     val mod = unparamMod(p)
 
-    // the state is constant at the first generated value, hence the rate lambda is constant
-    val data = simData((1 to 1000000).map(_.toDouble), mod)
+    // the state is constant at the first generated value (fixed at 0.0),
+    // hence the rate, lambda is constant and equal to exp(0.0) = 1.0
+    val observations = SimulatedData(mod).
+      simRegular[Nothing](1.0).
+      take(1000000).
+      map(_.observation).
+      toList
 
-    val observations = data map (_.observation)
-    val state = data.head.sdeState.get
-    val lambda = mod.link(mod.f(state, 1)).head
-    assert(math.abs(mean(observations) - lambda) < tolerance)
-    assert(math.abs(variance(observations) - lambda) < tolerance)
+    assert(math.abs(mean(observations) - 1.0) < tolerance)
+    assert(math.abs(variance(observations) - 1.0) < tolerance)
   }
 
   "Bernoulli model" should "produce bernoulli distributed observations" in {
-    val unparamMod = BernoulliModel(stepNull)
-    val params = LeafParameter(GaussianParameter(1.0, 10.0), None, StepConstantParameter(0.0))
+    val unparamMod = Model.bernoulliModel(stepNull)
+    val params = Parameters.leafParameter(None, SdeParameter.brownianParameter(
+      DenseVector(1.0), DenseMatrix((1.0)), DenseVector(-0.2), DenseMatrix((1.0))))
     val mod = unparamMod(params)
 
-    val data = simData((1 to 100000).map(_.toDouble), mod)
+    val observations = SimulatedData(mod).
+      observations[Nothing].
+      take(1000000).
+      map(_.observation).
+      toList
 
-    // The state will remain constant at the first value
+    // The state will remain constant at the first value (0.0)
     // hence the value of p will remain constant
-    val observations = data map (_.observation)
-    val state = data.head.sdeState.get
-    val p = mod.link(mod.f(state, 1)).head
-    val n = observations.size
+    val p = 1.0/(1 + exp(-0.0))
 
     assert(math.abs(mean(observations) - p) < tolerance)
     assert(math.abs(variance(observations) - p*(1-p)) < tolerance)

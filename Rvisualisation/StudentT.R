@@ -16,7 +16,7 @@ seas = read.csv("seastdistSims.csv", header = F,
 
 seas %>%
   gather(key = "key", value = "value", -Time) %>%
-    ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + facet_wrap(~key)
+  ggplot(aes(x = Time, y = value, colour = key)) + geom_line() + facet_wrap(~key)
 ggsave("Figures/SeasonalTSims.pdf")
 
 ##################################

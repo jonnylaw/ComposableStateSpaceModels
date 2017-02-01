@@ -1,173 +1,187 @@
-// package com.github.jonnylaw.examples
+package com.github.jonnylaw.examples
 
-// import akka.actor.ActorSystem
-// import akka.stream.ActorMaterializer
-// import akka.NotUsed
-// import akka.stream._
-// import scaladsl._
-// import akka.util.ByteString
-// import GraphDSL.Implicits._
-// import java.nio.file.{Path, Paths}
-// import scala.concurrent.duration._
+import java.nio.file.Paths
+import com.github.jonnylaw.model._
+import breeze.stats.distributions.{Gaussian, MultivariateGaussian, Gamma}
+import breeze.linalg.{DenseVector, DenseMatrix, diag}
+import cats.implicits._
+import fs2._
 
-// import com.github.jonnylaw.model._
-// import DataTypes._
-// import Model._
-// import State._
-// import Parameters._
-// import StateSpace._
-// import Streaming._
-// import java.io.{PrintWriter, File}
-// import breeze.stats.distributions.{Gaussian, MultivariateGaussian}
-// import breeze.linalg.{DenseVector, diag}
-// import breeze.numerics.exp
-// import scala.concurrent.ExecutionContext.Implicits.global
-// import cats.implicits._
-
-// /**
-//   * A model to use for the examples in this class
-//   */
-// trait PoissonModel {
-//   val p = LeafParameter(
-//     GaussianParameter(-1.0, 1.0),
-//     None,
-//     OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 0.5))
+/**
+  * A model to use for the examples in this class
+  */
+trait PoissonModel {
+  val p = Parameters.leafParameter(
+    None,
+    SdeParameter.ornsteinParameter(
+      m0 = DenseVector(-1.0),
+      c0 = DenseMatrix((1.0)),
+      theta = DenseVector(1.0),
+      alpha = DenseVector(0.05),
+      sigma = DenseVector(0.5))
+  )
   
-//   val model: Parameters => Model = PoissonModel(stepOrnstein)
-// }
+  val model = Model.poissonModel(Sde.ornsteinUhlenbeck)
+}
 
-// /**
-//   * Simulate 100 observaitions from a simple bernoulli model
-//   */
-// object SimulatePoisson extends App with PoissonModel {
-//   implicit val system = ActorSystem("SimulatePoisson")
-//   implicit val materializer = ActorMaterializer()
-  
-//   val times: Source[Time, NotUsed] = Source((1 to 100).map(_.toDouble))
+/**
+  * Simulate 100 observaitions from a simple bernoulli model
+  */
+object SimulatePoisson extends App with PoissonModel {
+  val times: Stream[Task, Time] = Stream.emits((1 to 100).map(_.toDouble))
 
-//   times.
-//     via(model(p).simPompModel(1.0)).
-//     map(s => ByteString(s + "\n")).
-//     runWith(FileIO.toPath(Paths.get("PoissonSims.csv"))).
-//     onComplete(_ => system.terminate)
-// }
+  times.
+    through(SimulatedData(model(p)).simPompModel(1.0)).
+    map((d: Data) => d.show).
+    intersperse("\n").
+    through(text.utf8Encode).
+    through(io.file.writeAll(Paths.get("data/PoissonSims.csv"))).
+    run.
+    unsafeRun
+}
 
-// /**
-//   * Filter observations as a batch, return the state and credible intervals
-//   */
-// object FilterPoisson extends App with PoissonModel {
-//   implicit val system = ActorSystem("FilterPoisson")
-//   implicit val materializer = ActorMaterializer()
-  
-//   // read in the data from a csv file as a stream and parse it to a Data object
-//   // without the state, eta and gamma
-//   val data = FileIO.fromPath(Paths.get("PoissonSims.csv")).
-//     via(Framing.delimiter(
-//       ByteString("\n"),
-//       maximumFrameLength = 256,
-//       allowTruncation = true)).
-//     map(_.utf8String).
-//     map(line => line.split(",")).
-//     drop(1).
-//     map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None))
+/**
+  * Filter observations as a batch, return the state and credible intervals
+  */
+object FilterPoisson extends App with PoissonModel {
+  // read in the data from a csv file as a stream and parse it to a Data object
+  // without the state, eta and gamma
+  val data = io.file.readAll[Task](Paths.get("data/PoissonSims.csv"), 4096).
+    through(text.utf8Decode).
+    through(text.lines).
+    map(a => a.split(", ")).
+    map(d => TimedObservation(d(0).toDouble, d(1).toDouble))
 
-//   val pf = Filter(model, ParticleFilter.multinomialResampling)
+  val pf = Filter(model(p), ParticleFilter.multinomialResampling)
 
-//   data.
-//     via(pf.filter(0.0)(1000)(p)).
-//     map(s => ByteString(s + "\n")).
-//     runWith(FileIO.toPath(Paths.get("PoissonFiltered.csv"))).
-//     onComplete(_ => system.terminate)
-// }
+  data.
+    through(pf.filter(0.0)(1000)).
+    map(_.show).
+    intersperse("\n").
+    through(text.utf8Encode).
+    through(io.file.writeAll(Paths.get("data/PoissonFiltered.csv"))).
+    run.
+    unsafeRun
+}
 
-// object GetPoissonParameters {
-//   def main(args: Array[String]) = {
-//     implicit val system = ActorSystem("FilterOnline")
-//     implicit val materializer = ActorMaterializer()
+object GetPoissonParameters extends App with PoissonModel {
+  // provide a concurrency strategy
+  implicit val S = fs2.Strategy.fromFixedDaemonPool(8, threadName = "worker")
 
-//     // Read in the data from a file and parse it to a vector of Data
-//     val data = scala.io.Source.fromFile("PoissonSims.csv").getLines.
-//       map(a => a.split(",")).
-//       map(d => Data(d(0).toDouble, d(1).toDouble, None, None, None)).
-//       toVector.sortBy(_.t)
+    // Read in the data from a file and parse it to a vector of Data
+  val data = io.file.readAll[Task](Paths.get("data/PoissonSims.csv"), 4096).
+    through(text.utf8Decode).
+    through(text.lines).
+    map(a => a.split(", ")).
+    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
+    runLog.
+    unsafeRun
 
-//     // parse supplied command line arguments for number of iterations, particles and
-//     // the size of the diagonal entries of the covariance matrix of the proposal distribution
-//     val (iters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
+  // parse supplied command line arguments for number of iterations, particles and
+  // the size of the diagonal entries of the covariance matrix of the proposal distribution
+  val (niters, particles, delta) = (args.head.toInt, args(1).toInt, args(2).toDouble)
 
-//     // create the model trait
-//     val mod = new PoissonModel {}
+  // build the particle filter by selecting the model type and resampling scheme
+  // specify the filter type (llFilter, to return estimate of log-likelihood),
+  // the number of particles and observations
+  val mll = ParticleFilter.likelihood(ParticleFilter.multinomialResampling, data, 200) compose model
 
-//     // build the particle filter by selecting the model type and resampling scheme
-//     val filter = Filter(mod.model, ParticleFilter.multinomialResampling)
+  // specify the a prior distribution on the parameters
+  def prior: Parameters => LogLikelihood = p => p match {
+    case LeafParameter(_, OrnsteinParameter(m, v, t, a, s)) =>
+      Gaussian(-1.0, 10.0).logPdf(m(0)) +
+      Gamma(1.0, 10.0).logPdf(1/v.data(0)) +
+      Gaussian(1.0, 10.0).logPdf(t(0)) +
+      Gamma(1.0, 10.0).logPdf(1/a(0)) +
+      Gamma(1.0, 10.0).logPdf(1/s(0))
+  }
 
-//     // specify the filter type (llFilter, to return estimate of log-likelihood),
-//     // the number of particles and observations
-//     val mll = filter.llFilter(data, 0.0)(particles) _
+  // build the PMMH algorithm using mll estimate (via particle filter), the
+  // initial parameters and the proposal distribution for new paramters
+  def iters(chain: Int) = ParticleMetropolis(mll.run, p, Parameters.perturb(delta), prior).
+    iters[Task].
+    take(niters).
+    map(_.show).
+    intersperse("\n").
+    through(text.utf8Encode).
+    through(io.file.writeAll(Paths.get(s"data/PoissonParameters-$chain.csv"))).
+    run
 
-//     // build the PMMH algorithm using mll estimate (via particle filter), the
-//     // initial parameters and the proposal distribution for new paramters
-//     val mh = ParticleMetropolis(mll, mod.p, Parameters.perturb(delta))
+  // run four chains in parallel
+  Task.parallelTraverse((1 to 4))(iters)
+}
 
-//     // run the PMMH as an akka stream in parallel and write the results to a file
-//     runPmmhToFile(s"PoissonSimParams-$delta-$particles", 2,
-//       mod.p, mll, Parameters.perturb(delta), iters)
-//   }
-// }
+/**
+  * Simulate an SDE
+  */
+object SimulateBrownianMotion extends App {
+  val p = SdeParameter.brownianParameter(
+    DenseVector.fill(2)(1.0),
+    DenseMatrix.eye[Double](2),
+    DenseVector.fill(2)(-0.3),
+    DenseMatrix.eye[Double](2) * 0.3)
 
-// /**
-//   * Simulate a brownian motion state space 
-//   */
-// object SimulateBrownian extends App {
-//   implicit val system = ActorSystem("SimBrownian")
-//   implicit val materializer = ActorMaterializer()
+  val p1 = SdeParameter.brownianParameter(
+    DenseVector.fill(2)(1.0),
+    DenseMatrix.eye[Double](2),
+    DenseVector.fill(2)(0.3),
+    DenseMatrix.eye[Double](2) * 0.3)
 
-//   val p = BrownianParameter(DenseVector(0.1, 0.1), diag(DenseVector(0.1, 0.5)))
-//   val x0: State = LeafState(MultivariateGaussian(DenseVector(1.0, 1.0), diag(DenseVector(5.0, 5.0))).draw)
-//   val dt = 0.1
+  val sde1 = Sde.brownianMotion(p)
+  val sde2 = Sde.brownianMotion(p1)
 
-//   Source.unfold(x0)(x => Some((stepBrownian(p)(x, dt).draw, x))).
-//     zip(Source.tick(1 second, 1 second, Unit)).
-//     map{ case (a, _) => a }.
-//     take(100).
-//     runForeach(println).
-//     onComplete(_ => system.terminate)
-// }
+  val composedSde = sde1 |+| sde2
 
-// /**
-//   * Simulate an Ornstein-Uhlenbeck state space
-//   */
-// object SimulateOrnstein extends App {
-//   implicit val system = ActorSystem("SimOrnstein")
-//   implicit val materializer = ActorMaterializer()
+  composedSde.
+    simStream[Task](0.0, 0.1).
+    take(200).
+    zipWithIndex.
+    map { case (x, t) => t + ", " + x.show }.
+    intersperse("\n").
+    through(text.utf8Encode).
+    through(io.file.writeAll(Paths.get("data/brownianMotion.csv"))).
+    run.
+    unsafeRun
+}
 
-//   val p = OrnsteinParameter(theta = 1.0, alpha = 0.05, sigma = 1.0)
-//   val x0: State = LeafState(DenseVector(Gaussian(6.0, 1.0).draw))
-//   val dt = 0.1
+object SimOrnstein extends App {
+  val p = SdeParameter.ornsteinParameter(
+    DenseVector.fill(2)(0.0),
+    diag(DenseVector.fill(2)(3.0)),
+    DenseVector.fill(2)(2.0), DenseVector.fill(2)(0.5), DenseVector.fill(2)(0.3))
+  val sde = Sde.ornsteinUhlenbeck
 
-//   Source.unfold(x0)(x => Some((stepOrnstein(p)(x, dt).draw, x))).
-//     map(a => ByteString(a + "\n")).
-//     runWith(FileIO.toPath(Paths.get("OrnsteinSims.csv"))).
-//     onComplete(_ => system.terminate)
-// }
+  sde(p).
+    simStream[Task](0.0, 0.1).
+    take(200).
+    zipWithIndex.
+    map { case (x, t) => t + ", " + x.show }.
+    intersperse("\n").
+    through(text.utf8Encode).
+    through(io.file.writeAll(Paths.get("data/ornsteinUhlenbeck.csv"))).
+    run.
+    unsafeRun
+}
 
-// object SimulateSeasonal extends App {
-//   implicit val system = ActorSystem("SimSeasonal")
-//   implicit val materializer = ActorMaterializer()
+object SimulateSeasonal extends App {
+  val params: Parameters = Parameters.leafParameter(
+    Some(1.0),
+    BrownianParameter(
+      DenseVector.zeros[Double](6),
+      DenseMatrix.eye[Double](6),
+      DenseVector.fill(6)(0.1),
+      diag(DenseVector.fill(6)(1.0))))
 
-//   val params: Parameters = LeafParameter(
-//     GaussianParameter(DenseVector(Array.fill(6)(0.0)),
-//       diag(DenseVector(Array.fill(6)(1.0)))),
-//     Some(1.0),
-//     BrownianParameter(DenseVector.fill(6)(0.1), diag(DenseVector.fill(6)(1.0))))
+  val mod = Model.seasonalModel(24, 3, Sde.brownianMotion)
 
-//   val mod = SeasonalModel(24, 3, stepBrownian)
+  val times = Stream.emits((1 to 100).map(_.toDouble))
 
-//   val times = Source((1 to 100).map(_.toDouble))
-
-//   times.
-//     via(mod(params).simPompModel(1.0)).
-//     map(s => ByteString(s + "\n")).
-//     runWith(FileIO.toPath(Paths.get("SeasonalSims.csv"))).
-//     onComplete(_ => system.terminate)
-// }
+  times.
+    through(SimulatedData(mod(params)).simPompModel(1.0)).
+    map((d: Data) => d.show).
+    intersperse("\n").
+    through(text.utf8Encode).
+    through(io.file.writeAll(Paths.get("data/ornsteinUhlenbeck.csv"))).
+    run.
+    unsafeRun
+}

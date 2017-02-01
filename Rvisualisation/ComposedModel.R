@@ -1,8 +1,5 @@
 ## install and load packages
-packages = c("dplyr","ggplot2","gridExtra", "ggmcmc", "coda", "tidyr")
-newPackages = packages[!(packages %in% as.character(installed.packages()[,"Package"]))]
-if(length(newPackages)) install.packages(newPackages)
-lapply(packages, require, character.only = T)
+library(tidyverse); library(gridExtra); library(ggmcmc); library(coda);
 
 theme_set(theme_minimal())
 
@@ -10,9 +7,8 @@ theme_set(theme_minimal())
 # Simulate Seasonal Poisson #
 #############################
 
-system("sbt \"run-main examples.SimulateSeasonalPoisson\"")
-seasPois = read.csv("seasonalPoissonSims.csv", header = F,
-                    col.names = c("Time", "Value", "Eta", "Gamma", sapply(1:7, function(i) paste("State", i, sep = ""))))
+system("cd ../ && sbt \"run-main com.github.jonnylaw.examples.SimulateSeasonalPoisson\"")
+seasPois = read_csv("../data/seasonalPoissonSims.csv", col_names = c("Time", "Value", "Eta", "Gamma", sapply(1:7, function(i) paste("State", i, sep = ""))))
 
 png("Figures/SeasonalPoisson.png")
 p1 = seasPois %>%
@@ -37,13 +33,13 @@ dev.off()
 # Filtering Seasonal Poisson #
 ##############################
 
-system("sbt \"run-main examples.FilteringSeasonalPoisson\"")
-filteredPoisson = read.csv("seasonalPoissonFiltered.csv", header = F)
-colnames(filteredPoisson) = c("Time", "Observation", "PredictedEta", "lowerEta", "upperEta", sapply(1:7, function(i) paste0("PredictedState", i)), sapply(1:7, function(i) c(paste0("LowerState", i), paste0("UpperState", i))))
+system("cd ../ && sbt \"run-main com.github.jonnylaw.examples.FilterSeasonalPoisson\"")
+filteredPoisson = read_csv("../data/seasonalPoissonFiltered.csv", 
+                           col_names c("Time", "Observation", "PredictedEta", "lowerEta", "upperEta", sapply(1:7, function(i) paste0("PredictedState", i)), sapply(1:7, function(i) c(paste0("LowerState", i), paste0("UpperState", i))))
 
 pdf("Figures/FilteredPoisson.pdf")
 
-p1 = filteredPoisson %>%  
+p1 = filteredPoisson %>%
   inner_join(seasPois, by = "Time") %>%
   dplyr::select(PredictedState1, State1, LowerState1, UpperState1, Time) %>%
   gather(key = "key", value = "value", -Time, -LowerState1, -UpperState1) %>%
@@ -78,8 +74,8 @@ plotIters = function(iters, variable, thin = 10, burning = nrow(iters)*0.1) {
   grid.arrange(p1, p2, p3, p4)
 }
 
-system("sbt \"run-main examples.DetermineComposedParams\"")
-iters = read.csv("SeasonalPoissonParams.csv", header = F,
+system("cd ../ && sbt \"run-main com.github.jonnylaw.examples.DetermineComposedParams\"")
+iters = read.csv("../data/SeasonalPoissonParams.csv", header = F,
                  col.names = c("m0", "c0", "mu0", "sigma0",
                                sapply(2:7, function(i) paste0("m", i)),
                                sapply(2:7, function(i) paste0("c", i)),

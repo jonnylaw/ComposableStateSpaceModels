@@ -8,6 +8,7 @@
 
 // import cats.implicits._
 // import cats.data.Kleisli
+// import cats.Monad
 
 // import akka.stream.scaladsl.Source
 // import akka.NotUsed
@@ -43,50 +44,6 @@
 //     MarkovChain(init_state)(step_mh)
 //   }
 // }
-
-// /**
-//   * This function has error handling, which is a bit of a shame, because the error can't really 
-//   * happen here, I'm not sure how to pass a function which has a Try to another function
-//   */
-// trait MetropolisTry[P] {
-//   def ll: P => Try[LogLikelihood]
-//   def proposal: P => Rand[P]
-//   def prior: ContinuousDistr[P]
-//   def init_param: P
-
-//   /**
-//     * A single step of a Metropolis algorithm, without re-evaluting the likelihood
-//     * This is possibly the most terrible function ever
-//     * Can this be cleaned up with a Monad Transformer?
-//     */
-//   def step_mh: MetropState[P] => Try[Rand[MetropState[P]]] = s => {
-//     val prop_p: Rand[P] = proposal(s.p)
-//     val prop_ll: Try[Rand[LogLikelihood]] = prop_p traverse (p => ll(p))
-//     for {
-//       ll <- prop_ll
-//       unif = Uniform(0, 1)
-//       a = prop_p.flatMap(p => ll map (l => l + prior.logPdf(p) - s.ll - prior.logPdf(s.p)))
-//       next = prop_p flatMap ((p: P) => a flatMap ((accept: Double) => ll flatMap (l => unif map ((u: Double) => if (log(u) < accept) MetropState(l, p) else s))))
-//     } yield next
-//   }
-
-//   // Can we avoid calling get on this, I think this ruins everything :(
-//   def iters: Try[Process[MetropState[P]]] = {
-//     val init_state = MetropState(-1e99, init_param)
-
-//     Kleisli{ MarkovChain(init_state) }.lift[Try].run(s => step_mh(s).get)
-//   }
-
-//   def iters_stream: Try[Source[MetropState[P], NotUsed]] = {
-//     iters map(s => Source.fromIterator(() => s.steps))
-//   }
-// }
-
-// case class MetropolisParams(
-//   ll: Parameters => Try[LogLikelihood],
-//   proposal: Parameters => Rand[Parameters],
-//   init_param: Parameters,
-//   prior: ContinuousDistr[Parameters]) extends MetropolisTry[Parameters]
 
 // /**
 //   * simplify the metropolis hastings with error handling using a monad transformer

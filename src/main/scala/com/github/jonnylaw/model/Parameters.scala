@@ -8,52 +8,42 @@ import cats.implicits._
 import scala.util.{Try, Success, Failure}
 
 sealed trait Parameters {
-  def compose(that: Parameters): Parameters = {
-    Parameters.branchParameter(this, that)
-  }
-
   def sum(that: Parameters): Try[Parameters]
 
   def perturb(delta: Double): Rand[Parameters]
 
   def perturbIndep(delta: Array[Double]): Rand[Parameters]
 }
-case class LeafParameter(
-  initParams: StateParameter,
-  scale: Option[Double],
-  sdeParam: SdeParameter) extends Parameters {
+case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends Parameters {
 
   def sum(that: Parameters): Try[Parameters] = that match {
-    case LeafParameter(init, other_scale, sde) =>
+    case LeafParameter(otherScale, sde) =>
       for {
-        init_sum <- initParams sum init
-        sde_sum <- sdeParam sum sde
-        scale_sum = scale flatMap (v1 => other_scale map (v2 => v1 + v2))
-      } yield Parameters.leafParameter(init_sum, scale_sum, sde_sum)
+        sdeSum <- sdeParam sum sde
+        scaleSum = scale flatMap (v1 => otherScale map (v2 => v1 + v2))
+      } yield Parameters.leafParameter(scaleSum, sdeSum)
     case _ => Failure(throw new Exception(s"Can't sum LeafParameter and $that"))
   }
 
 
   def perturb(delta: Double): Rand[Parameters] = {
     for {
-      init <- initParams.perturb(delta)
       sde <- sdeParam.perturb(delta)
       innov <- Gaussian(0.0, delta)
       v = scale map (_ * exp(innov))
-    } yield Parameters.leafParameter(init, v, sde)
+    } yield Parameters.leafParameter(v, sde)
   }
 
   def perturbIndep(delta: Array[Double]): Rand[Parameters] = ???
 }
 
 case class BranchParameter(left: Parameters, right: Parameters) extends Parameters {
-
   def sum(that: Parameters): Try[Parameters] = that match {
     case BranchParameter(l, r) => 
       for {
-        sum_left <- left sum l
-        sum_right <- right sum r
-      } yield Parameters.branchParameter(sum_left, sum_right)
+        sumLeft <- left sum l
+        sumRight <- right sum r
+      } yield Parameters.branchParameter(sumLeft, sumRight)
     case _ => Failure(throw new Exception(s"Can't add BranchParameter and $that"))
   }
 
@@ -68,18 +58,14 @@ case class BranchParameter(left: Parameters, right: Parameters) extends Paramete
 }
 
 case object EmptyParameter extends Parameters {
-  def perturb(delta: Double): Rand[Parameters] = ???
-  def perturbIndep(delta: Array[Double]): Rand[Parameters] = ???
-  def sum(that: Parameters): Try[Parameters] = ???
+  def perturb(delta: Double): Rand[Parameters] = Rand.always(Parameters.emptyParameter)
+  def perturbIndep(delta: Array[Double]): Rand[Parameters] = Rand.always(Parameters.emptyParameter)
+  def sum(that: Parameters): Try[Parameters] = Success(Parameters.emptyParameter)
 }
 
 object Parameters {
-  def leafParameter(
-    initParams: StateParameter,
-    scale: Option[Double],
-    sdeParam: SdeParameter): Parameters = {
-
-    LeafParameter(initParams, scale, sdeParam)
+  def leafParameter(scale: Option[Double], sdeParam: SdeParameter): Parameters = {
+    LeafParameter(scale, sdeParam)
   }
 
   def branchParameter(lp: Parameters, rp: Parameters): Parameters = {
@@ -91,8 +77,14 @@ object Parameters {
   /**
     * A monoid to compose parameter values
     */
-  implicit def composeParameterSemigroup = new Semigroup[Parameters] {
-    def combine(lp: Parameters, rp: Parameters): Parameters = lp compose rp
+  implicit def composeParameterMonoid = new Monoid[Parameters] {
+    def combine(lp: Parameters, rp: Parameters): Parameters = (lp, rp) match {
+      case (EmptyParameter, r) => r
+      case (l, EmptyParameter) => l
+      case _ => Parameters.branchParameter(lp, rp)
+    }
+
+    def empty: Parameters = Parameters.emptyParameter
   }
 
   /**
@@ -108,5 +100,3 @@ object Parameters {
     p.perturb(delta)
   }
 }
-
-

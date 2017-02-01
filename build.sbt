@@ -13,14 +13,15 @@ resolvers ++= Seq(
 )
 
 libraryDependencies  ++= Seq(
-  "com.typesafe.akka" %% "akka-stream" % "2.4.14",
   "org.scalanlp" %% "breeze" % "0.12",
   "org.scalatest" %% "scalatest" % "2.2.4" % "test",
   "com.github.fommil.netlib" % "all" % "1.1.2",
-  "org.typelevel" %% "cats" % "0.8.1"
+  "org.typelevel" %% "cats" % "0.9.0",
+  "co.fs2" %% "fs2-core" % "0.9.2",
+  "co.fs2" %% "fs2-io" % "0.9.2"
 )
 
-sonatypeProfileName := "com.github.jonnylaw"
+// sonatypeProfileName := "com.github.jonnylaw"
 
 publishMavenStyle := true
 
