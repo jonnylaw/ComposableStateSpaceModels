@@ -2,7 +2,7 @@ package com.github.jonnylaw.model
 
 import breeze.stats.distributions.{Rand, Uniform, Multinomial}
 import breeze.stats.distributions.Rand._
-import breeze.numerics.exp
+import breeze.numerics.{exp, log}
 import breeze.linalg.DenseVector
 
 import cats._
@@ -10,6 +10,8 @@ import cats.data.Reader
 import cats.implicits._
 
 import fs2._
+
+import scala.collection.parallel.immutable.ParVector
 
 /**
   * Representation of the state of the particle filter, at each step the previous observation time, t0, and 
@@ -90,7 +92,7 @@ trait ParticleFilter {
     val max = w.max
     val w1 = w map { a => exp(a - max) }
 
-    val ll = s.ll + max + math.log(breeze.stats.mean(w1))
+    val ll = s.ll + max + log(breeze.stats.mean(w1))
 
     PfState(y.t, Some(y.observation), x1, w1, ll)
   }
@@ -115,7 +117,7 @@ trait ParticleFilter {
     val max = w.max
     val w1 = w map { a => exp(a - max) }
 
-    val ll = s.ll + max + math.log(breeze.stats.mean(w1))
+    val ll = s.ll + max + log(breeze.stats.mean(w1))
 
     val pf = PfState(y.t, Some(y.observation), x1, w1, ll)
 
@@ -174,6 +176,38 @@ trait ParticleFilter {
 
     pipe.scan((initState, forecastState))((s: (PfState, ForecastOut), y: Data) => stepWithForecast(s._1, y))
   }
+
+  def initStatePar(n: Int, t: Time) = {
+    (t, ParVector.fill(n)(mod.sde.initialState.draw), 0.0)
+  }
+
+  /**
+    * A datatype-generic mean function, can we shorten this with Spire?
+    */
+  def parMean[A](s: ParVector[A])(implicit N: Fractional[A]): A = {
+    N.div(s.sum, N.fromInt(s.size))
+  }
+
+  def stepFilterPar(y: Data) = { (t0: Time, x: ParVector[State], ll: LogLikelihood) =>
+    val (s, w) = (for {
+      state <- x
+      x1 = mod.sde.stepFunction(y.t - t0)(state).draw
+      eta = mod.link(mod.f(x1, y.t))
+      weight = mod.dataLikelihood(eta, y.observation)
+    } yield (x1, weight)).unzip
+
+    val max = w.max
+    val w1 = w map { a => exp(a - max) }
+    val newLl = ll + max + log(parMean(w1))
+
+    (y.t, ParticleFilter.parallelSystematicResampling(s, w1), newLl)
+  }
+
+  def llPar(t0: Time, particles: Int)(data: Seq[Data]): LogLikelihood = {
+    val initState = initStatePar(particles, t0)
+    data.foldLeft(initState)((s, d) => stepFilterPar(d)(s._1, s._2, s._3))._3
+  }
+
 }
 
 case class Filter(mod: Model, resamplingScheme: Resample[State]) extends ParticleFilter {
@@ -264,6 +298,13 @@ object ParticleFilter {
       llFilter(data.map((d: Data) => d.t).min, n)(data.sortBy((d: Data) => d.t))
   }
 
+  def parLikelihood(
+    data: Seq[Data],
+    n: Int): Reader[Model, LogLikelihood] = Reader {
+    mod => Filter(mod, ParticleFilter.multinomialResampling).
+      llPar(data.map((d: Data) => d.t).min, n)(data.sortBy((d: Data) => d.t))
+  }
+
   /**
     * Transforms PfState into PfOut, including eta, eta intervals and state intervals
     */
@@ -305,9 +346,11 @@ object ParticleFilter {
     prob map (_/prob.sum)
   }
 
+  /**
+    * Calculate the cumulative sum of a sequence
+    */
   def cumsum(x: Seq[Double]): Seq[Double] = {
-    val sums = x.foldLeft(Seq(0.0))((acc: Seq[Double], num: Double) => (acc.head + num) +: acc)
-    sums.reverse.tail
+    x.scanLeft(0.0)(_ + _)
   }
 
   /**
@@ -319,6 +362,9 @@ object ParticleFilter {
     indices map { particles(_) }
   }
 
+  /**
+    * Calculate the effective sample size of a particle cloud
+    */
   def effectiveSampleSize(weights: Seq[LogLikelihood]): Int = {
     math.floor(1 / (weights, weights).zipped.map(_ * _).sum).toInt
   }
@@ -343,7 +389,8 @@ object ParticleFilter {
   def invecdf[A](ecdf: Seq[(A, LogLikelihood)], p: Double): A = {
     ecdf.
       filter{ case (_, w) => w > p }.
-      map{ case (x, _) => x }.head
+      map{ case (x, _) => x }.
+      head
   }
 
   /**
@@ -370,6 +417,23 @@ object ParticleFilter {
     val ecdf = particles.zip(cumsum(normalise(weights)))
 
     k map (invecdf(ecdf, _))
+  }
+
+  /**
+    * Parallel systematic resampling
+    */
+  def parallelSystematicResampling[A](s: ParVector[A], w: ParVector[Double]): ParVector[A] = {
+    val u = scala.util.Random.nextDouble // generate a random number 
+    val n = s.size
+    val k = ParVector.range(1, n).map(i => (i - 1 + u) / n)
+
+    val ecdf = w.
+      map(_ / w.sum).
+      scanLeft(0.0)(_+_)
+
+    val indices = k.map { i => ecdf.indexWhere(e => e > i ) }
+
+    indices.map(i => s(i-1))
   }
 
   /**
@@ -426,6 +490,9 @@ object ParticleFilter {
   }
 
 
+  /**
+    * Calculate the weighted mean of a particle cloud
+    */
   def weightedMean(x: Seq[State], w: Seq[Double]): State = {
     val normalisedWeights = w map (_ / w.sum)
 

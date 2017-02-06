@@ -1,6 +1,6 @@
 package com.github.jonnylaw.model
 
-import breeze.linalg.{DenseMatrix, DenseVector, diag}
+import breeze.linalg.{DenseVector, diag}
 import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}
 import scala.util.{Try, Success, Failure}
 import breeze.numerics.exp
@@ -15,9 +15,9 @@ sealed trait SdeParameter {
 
 case class BrownianParameter(
   m0: DenseVector[Double],
-  c0: DenseMatrix[Double],
+  c0: DenseVector[Double],
   mu: DenseVector[Double],
-  sigma: DenseMatrix[Double]) extends SdeParameter {
+  sigma: DenseVector[Double]) extends SdeParameter {
 
   def sum(that: SdeParameter): Try[SdeParameter] = that match {
     case BrownianParameter(m01, c01, m1, c1) =>
@@ -31,25 +31,27 @@ case class BrownianParameter(
       meanInit <- MultivariateGaussian(m0, diag(DenseVector.fill(dimension)(delta)))
       cInnov <- MultivariateGaussian(
         DenseVector.zeros[Double](dimension),
-        diag(DenseVector.fill(dimension)(delta)))
-      covInit = diag(c0) :* exp(cInnov)
+        diag(DenseVector.fill(dimension)(delta))
+      )
+      covInit = c0 :* exp(cInnov)
       m <- MultivariateGaussian(mu, diag(DenseVector.fill(dimension)(delta)))
       sInnov <- MultivariateGaussian(
         DenseVector.zeros[Double](dimension),
-        diag(DenseVector.fill(dimension)(delta)))
-      s = diag(sigma) :* exp(sInnov)
-    } yield SdeParameter.brownianParameter(meanInit, diag(covInit), m, diag(s))
+        diag(DenseVector.fill(dimension)(delta))
+      )
+      s = sigma :* exp(sInnov)
+    } yield SdeParameter.brownianParameter(meanInit, covInit, m, s)
   }
 
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???
 
   def flatten: Vector[Double] =
-    mu.data.toVector ++ diag(sigma).data.toVector
+    m0.data.toVector ++ c0.data.toVector ++ mu.data.toVector ++ sigma.data.toVector
 }
 
 case class OrnsteinParameter(
   m0: DenseVector[Double],
-  c0: DenseMatrix[Double],
+  c0: DenseVector[Double],
   theta: DenseVector[Double],
   alpha: DenseVector[Double],
   sigma: DenseVector[Double]) extends SdeParameter {
@@ -67,7 +69,7 @@ case class OrnsteinParameter(
       cInnov <- MultivariateGaussian(
         DenseVector.zeros[Double](dimension),
         diag(DenseVector.fill(dimension)(delta)))
-      covInit = diag(c0) :* exp(cInnov)
+      covInit = c0 :* exp(cInnov)
       t <- MultivariateGaussian(theta, diag(DenseVector.fill(dimension)(delta)))
       aInnov <- MultivariateGaussian(
         DenseVector.zeros[Double](dimension),
@@ -77,7 +79,7 @@ case class OrnsteinParameter(
         DenseVector.zeros[Double](dimension),
         diag(DenseVector.fill(dimension)(delta)))
       s = sigma :* exp(sInnov)
-    } yield SdeParameter.ornsteinParameter(meanInit, diag(covInit), t, a, s)
+    } yield SdeParameter.ornsteinParameter(meanInit, covInit, t, a, s)
   }
 
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???
@@ -91,23 +93,23 @@ case class OrnsteinParameter(
   // }
 
   def flatten: Vector[Double] =
-    theta.data.toVector ++ alpha.data.toVector ++ sigma.data.toVector
+    m0.data.toVector ++ c0.data.toVector ++ theta.data.toVector ++ alpha.data.toVector ++ sigma.data.toVector
 }
 
 object SdeParameter {
   // smart constructors
   def brownianParameter(
     m0: DenseVector[Double],
-    c0: DenseMatrix[Double],
+    c0: DenseVector[Double],
     mu: DenseVector[Double],
-    sigma: DenseMatrix[Double]): SdeParameter = {
+    sigma: DenseVector[Double]): SdeParameter = {
 
     BrownianParameter(m0, c0, mu, sigma)
   }
 
   def ornsteinParameter(
     m0: DenseVector[Double],
-    c0: DenseMatrix[Double],
+    c0: DenseVector[Double],
     theta: DenseVector[Double],
     alpha: DenseVector[Double],
     sigma: DenseVector[Double]): SdeParameter = {

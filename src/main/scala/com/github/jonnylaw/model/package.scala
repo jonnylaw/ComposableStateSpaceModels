@@ -1,11 +1,11 @@
 package com.github.jonnylaw
 
 import breeze.stats.distributions.{Rand, Process}
-import fs2.Stream
 import breeze.stats.distributions.Rand._
 import breeze.linalg.{DenseVector, diag}
 import cats.{Monad, Monoid, Show}
 import cats.data.Reader
+import fs2.Stream
 
 package object model {
   type Observation = Double
@@ -28,7 +28,6 @@ package object model {
       case Left(b) => tailRecM(b)(f)
     }
   }
-
 
   implicit def numericDenseVector = new Numeric[DenseVector[Double]] {
     def fromInt(x: Int): DenseVector[Double] = DenseVector(x.toDouble)
@@ -60,9 +59,9 @@ package object model {
   implicit def sdeParamShow = new Show[SdeParameter] {
     def show(p: SdeParameter): String = p match {
       case BrownianParameter(m0, c0, mu, sigma) =>
-        s"""${m0.data.mkString(", ")}, ${diag(m0).data.mkString(", ")}, ${mu.data.mkString(", ")}, ${diag(sigma).data.mkString(", ")}"""
+        s"""${m0.data.mkString(", ")}, ${c0.data.mkString(", ")}, ${mu.data.mkString(", ")}, ${diag(sigma).data.mkString(", ")}"""
       case OrnsteinParameter(m0, c0, theta, alpha, sigma) =>
-        s"""${m0.data.mkString(", ")}, ${diag(m0).data.mkString(", ")}, ${theta.data.mkString(", ")}, ${alpha.data.mkString(", ")}, ${sigma.data.mkString(", ")}"""
+        s"""${m0.data.mkString(", ")}, ${c0.data.mkString(", ")}, ${theta.data.mkString(", ")}, ${alpha.data.mkString(", ")}, ${sigma.data.mkString(", ")}"""
     }
   }
 
@@ -103,4 +102,6 @@ package object model {
   implicit def fromProcess[F[_], A](iter: Process[A]): Stream[F, A] = {
     Stream.unfold(iter.step){ case (a, p) => Some((a, p.step)) }
   }
+
+
 }

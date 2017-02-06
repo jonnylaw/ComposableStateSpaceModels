@@ -56,9 +56,9 @@ trait Sde { self =>
 private final case class BrownianMotion(p: BrownianParameter) extends Sde {
 
   def dimension: Int = p.mu.size
-  def initialState: Rand[State] = MultivariateGaussian(p.m0, p.c0) map Tree.leaf
+  def initialState: Rand[State] = MultivariateGaussian(p.m0, diag(p.c0)) map Tree.leaf
   def drift(state: State) = Tree.leaf(p.mu)
-  def diffusion(state: State) = Tree.leaf(p.sigma)
+  def diffusion(state: State) = Tree.leaf(diag(p.sigma))
 
   override def stepFunction(dt: TimeIncrement)(s: State) = {
     val res = s map (x => DenseVector((x.data, p.mu.data, diag(p.sigma).toArray).zipped.
@@ -80,7 +80,7 @@ private final case class OrnsteinUhlenbeck(p: OrnsteinParameter) extends Sde {
   }
 
   def dimension: Int = p.theta.size
-  def initialState: Rand[State] = MultivariateGaussian(p.m0, p.c0) map Tree.leaf
+  def initialState: Rand[State] = MultivariateGaussian(p.m0, diag(p.c0)) map Tree.leaf
   def drift(state: State) = {
     val c = state map (x => p.theta - x)
     c map ((x: DenseVector[Double]) => diag(p.alpha) * x)
