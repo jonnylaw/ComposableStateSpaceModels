@@ -1,30 +1,34 @@
-plots:
-	Rscript Rvisualisation/Bernoulli.R
-	Rscript Rvisualisation/Composed.R
-	Rscript Rvisualisation/StudentT.R
-	Rscript Rvisualisation/VisualiseLGCP.R
-
 linearModel:
 	sbt assembly
-	ssh struve -t "rm -f LinearModelPMMH.csv LinearModelSims.csv"
-	scp target/scala-2.11/ComposableModels-assembly-0.1.jar maths:/home/a9169110/.
-	ssh struve -t "java -cp ComposableModels-assembly-0.1.jar com.github.jonnylaw.examples.SimLinear"
-	ssh struve -t "java -cp ComposableModels-assembly-0.1.jar com.github.jonnylaw.examples.MultipleChains"
-	scp maths:/home/a9169110/LinearModelSims.csv .
-<<<<<<< HEAD
-	scp maths:/home/a9169110/LinearModelPMMH-1.csv .	
-	scp maths:/home/a9169110/LinearModelPMMH-2.csv .	
-	scp maths:/home/a9169110/LinearModelPMMH-3.csv .	
-	scp maths:/home/a9169110/LinearModelPMMH-4.csv .	
-=======
-	scp maths:/home/a9169110/StorvikGaussianUnknownPrecision.csv .
+	cp target/scala-2.11/ComposableModels-assembly-0.3.jar ./LinearModel.jar
+	scp LinearModel.jar maths:/home/a9169110/.
+	ssh struve -t "java -cp LinearModel.jar com.github.jonnylaw.examples.SimLinearModel"
+	ssh struve -t "java -cp LinearModel.jar com.github.jonnylaw.examples.FilterLinear"
+	scp maths:/home/a9169110/data/LinearModelSims.csv data/.
+	scp maths:/home/a9169110/data/LinearModelFiltered.csv data/.
+	RScript scripts/LinearExamples.R
 
-linearModel:
+poissonModel:
 	sbt assembly
-	ssh struve -t "rm -f LinearModelPMMH.csv LinearModelSims.csv"
-	scp target/scala-2.11/ComposableModels-assembly-0.1.jar maths:/home/a9169110/.
-	ssh struve -t "java -cp ComposableModels-assembly-0.1.jar com.github.jonnylaw.examples.SimLinear"
-	ssh struve -t "java -cp ComposableModels-assembly-0.1.jar com.github.jonnylaw.examples.ErrorHandlingMCMC"
-	scp maths:/home/a9169110/LinearModelSims.csv .
-	scp maths:/home/a9169110/LinearModelPMMH.csv .	
->>>>>>> 4296ee6f4cac6a717a3d51e112472903c7076fbf
+	cp target/scala-2.11/ComposableModels-assembly-0.3.jar ./PoissonModel.jar
+	scp PoissonModel.jar maths:/home/a9169110/.	
+	ssh struve -t "java -cp PoissonModel.jar com.github.jonnylaw.examples.SimPoissonModel"
+	ssh struve -t "java -cp PoissonModel.jar com.github.jonnylaw.examples.FilterPoisson"
+	ssh struve -t "java -cp PoissonPilot.jar com.github.jonnylaw.examples.PilotRunPoisson"
+	ssh 
+	scp maths:/home/a9169110/data/PoissonModelSims.csv data/.
+	scp maths:/home/a9169110/data/PoissonModelFiltered.csv data/.
+	scp maths:/home/a9169110/data/PoissonPilotRun.csv data/.
+	RScript scripts/PoissonExamples.R
+
+seasonalModel:
+	sbt assembly
+	cp target/scala-2.11/ComposableModels-assembly-0.3.jar ./SeasonalModel.jar
+	scp SeasonalModel.jar maths:/home/a9169110/.	
+	ssh struve -t "java -cp SeasonalModel.jar com.github.jonnylaw.examples.SimSeasonalModel"
+	ssh struve -t "ssh struve -t java -cp SeasonalModel.jar com.github.jonnylaw.examples.FilterSeasonal"
+	scp maths:/home/a9169110/data/SeasonalModelSims.csv data/.
+	scp maths:/home/a9169110/data/SeasonalModelFiltered.csv data/.
+	RScript scripts/SeasonalExamples.R
+
+

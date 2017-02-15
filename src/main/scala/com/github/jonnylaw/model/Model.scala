@@ -16,12 +16,13 @@ trait Model { self =>
     * The observation model, a function from eta to a distribution over the observations
     * realisations can be produced from the observation model by calling draw
     */
-  def observation: Eta => Rand[Observation]
+  def observation: Gamma => Rand[Observation]
   /**
     * The linking-function, transforms the state space into the parameter space of the 
     * observation distribution using a possibly non-linear transformation
     */
-  def link(x: Gamma): Eta = Vector(x)
+  def link(x: Gamma): Eta = x
+
   /**
     * The Linear, deterministic transformation function. f is used to add seasonal factors or
     * other time depending linear transformations
@@ -36,7 +37,7 @@ trait Model { self =>
     * The data likelihood, given a fully transformed latent state, eta, and an observation
     * the log-likelihood can be calculated for use in inference algorithms
     */
-  def dataLikelihood: (Eta, Observation) => LogLikelihood
+  def dataLikelihood: (Gamma, Observation) => LogLikelihood
 
 }
 
@@ -122,7 +123,7 @@ object Model {
 
 private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) extends Model {
   def observation = x => p.scale match {
-    case Some(v) => StudentsT(df) map (a => a * v + x.head)
+    case Some(v) => StudentsT(df) map (a => a * v + x)
     case None => throw new Exception("No scale parameter provided to Student T Model")
   }
 
@@ -130,7 +131,7 @@ private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) ext
 
 
   def dataLikelihood = (eta, y) => p.scale match {
-    case Some(v) => 1/v * StudentsT(df).logPdf((y - eta.head) / v)
+    case Some(v) => 1/v * StudentsT(df).logPdf((y - eta) / v)
     case None => throw new Exception("No scale parameter provided to Student T Model")
   }
 }
@@ -147,7 +148,7 @@ private final case class SeasonalModel(
   sde: Sde, p: LeafParameter) extends Model {
 
   def observation = x => p.scale match {
-    case Some(v) => Gaussian(x.head, v)
+    case Some(v) => Gaussian(x, v)
     case None => throw new Exception("No SD parameter provided to SeasonalModel")
   }
 
@@ -162,7 +163,7 @@ private final case class SeasonalModel(
   def f(s: State, t: Time) = s.fold(0.0)(x => buildF(harmonics, t) dot x)(_ + _)
 
   def dataLikelihood = (eta, y) => p.scale match {
-    case Some(v) => Gaussian(eta.head, v).logPdf(y)
+    case Some(v) => Gaussian(eta, v).logPdf(y)
     case None => throw new Exception("No SD parameter provided to SeasonalModel")
   }
 }
@@ -174,14 +175,14 @@ private final case class SeasonalModel(
     */
 private final case class LinearModel(sde: Sde, p: LeafParameter) extends Model {
   def observation = x => p.scale match {
-    case Some(v) => Gaussian(x.head, v)
+    case Some(v) => Gaussian(x, v)
     case None => throw new Exception("Must provide SD parameter for LinearModel")
   }
   
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
   def dataLikelihood = (eta, y) => p.scale match {
-    case Some(v) =>  Gaussian(eta.head, v).logPdf(y)
+    case Some(v) =>  Gaussian(eta, v).logPdf(y)
     case None => throw new Exception("Must provide SD parameter for LinearModel")
   }
 }
@@ -192,13 +193,13 @@ private final case class LinearModel(sde: Sde, p: LeafParameter) extends Model {
     * @return a Poisson UnparamModel which can be composed with other UnparamModels
     */
 private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model {
-  def observation = lambda => Poisson(lambda.head) map (_.toDouble): Rand[Double]
+  def observation = x => Poisson(exp(x)) map (_.toDouble): Rand[Double]
 
-  override def link(x: Double) = Vector(exp(x))
+  override def link(x: Double) = exp(x)
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
-  def dataLikelihood = (lambda, y) => Poisson(lambda.head).logProbabilityOf(y.toInt)
+  def dataLikelihood = (state, y) => y.toInt * state - exp(state) - breeze.numerics.lgamma(y.toInt + 1)
 }
 
   /**
@@ -206,26 +207,25 @@ private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model 
     * @param sde a solution to a diffusion process 
     */
 private final case class BernoulliModel(sde: Sde, p: LeafParameter) extends Model {
-  def observation = p => Uniform(0, 1).map(_ < p.head).map(a => if (a) 1.0 else 0.0)
+  def observation = p => Uniform(0, 1).map(_ < p).map(a => if (a) 1.0 else 0.0)
 
   override def link(x: Gamma) = {
     if (x > 6) {
-      Vector(1.0)
+      1.0
     } else if (x < -6) {
-      Vector(0.0)
+      0.0
     } else {
-      Vector(1.0/(1 + exp(-x)))
+      1.0/(1 + exp(-x))
     }
   }
-
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
   def dataLikelihood = (p, y) => {
     if (y == 1.0) {
-      if (p.head == 0.0) -1e99 else log(p.head)
+      if (link(p) == 0.0) -1e99 else log(link(p))
     } else {
-      if (p.head == 1.0) -1e99 else log(1-p.head)
+      if (link(p) == 1.0) -1e99 else log(1-link(p))
     }
   }
 }
@@ -239,5 +239,5 @@ private final case class LogGaussianCox(sde: Sde, p: LeafParameter) extends Mode
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
-  def dataLikelihood = (lambda, y) => lambda.head - lambda(1)
+  def dataLikelihood = ??? // (lambda, y) => lambda.head - lambda(1)
 }

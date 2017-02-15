@@ -123,8 +123,7 @@ case class SimulatedData(model: Model) extends DataService {
       start, end - start, precision, model.sde.stepFunction)
 
     // Calculate the upper bound of the stream
-    val upperBound = stateSpace.map(s => model.f(s.state, s.time)).
-      map(exp(_)).max
+    val upperBound = stateSpace.map(s => model.f(s.state, s.time)).map(exp(_)).max
 
     def loop(lastEvent: Time, eventTimes: Vector[ObservationWithState]): Vector[ObservationWithState] = {
       // sample from an exponential distribution with the upper bound as the parameter
@@ -138,11 +137,11 @@ case class SimulatedData(model: Model) extends DataService {
         val hazardt1 = statet1.map(s => model.f(s.state, s.time)).last
 
         val stateEnd = statet1.last.state
-        val gamma = model.f(stateEnd, t1)
-        val eta = model.link(gamma)
+        val gamma = statet1 map (s => model.f(s.state, s.time))
+        val eta = exp(gamma.last)
 
         if (Uniform(0,1).draw <= exp(hazardt1)/upperBound) {
-          loop(t1, ObservationWithState(t1, 1.0, eta, gamma, statet1.last.state) +: eventTimes)
+          loop(t1, ObservationWithState(t1, 1.0, eta, gamma.last, stateEnd) +: eventTimes)
          } else {
           loop(t1, eventTimes)
         }
@@ -150,7 +149,7 @@ case class SimulatedData(model: Model) extends DataService {
     }
     loop(start, stateSpace.map{ s => {
       val gamma = model.f(s.state, s.time)
-      val eta = model.link(gamma)
+      val eta = exp(gamma)
       ObservationWithState(s.time, 0.0, eta, gamma, s.state) }}.toVector
     )
   }

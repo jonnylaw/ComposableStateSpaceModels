@@ -2,7 +2,7 @@ name := "ComposableModels"
 
 organization := "com.github.jonnylaw"
 
-version := "0.2"
+version := "0.3"
 
 scalaVersion := "2.11.8"
 
@@ -18,7 +18,8 @@ libraryDependencies  ++= Seq(
   "com.github.fommil.netlib" % "all" % "1.1.2",
   "org.typelevel" %% "cats" % "0.9.0",
   "co.fs2" %% "fs2-core" % "0.9.2",
-  "co.fs2" %% "fs2-io" % "0.9.2"
+  "co.fs2" %% "fs2-io" % "0.9.2",
+  "org.scalacheck" %% "scalacheck" % "1.13.4" % "test"
 )
 
 // sonatypeProfileName := "com.github.jonnylaw"

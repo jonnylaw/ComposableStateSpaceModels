@@ -1,6 +1,6 @@
 package com.github.jonnylaw.model
 
-import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian, MarkovChain, Process}
+import breeze.stats.distributions.{Rand, Gaussian, MarkovChain, Process}
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
 import breeze.numerics.{sqrt, exp}
 import cats.{Semigroup, Applicative}
@@ -51,36 +51,56 @@ trait Sde { self =>
   def simStream[F[_]](t0: Time, dt: TimeIncrement): Stream[F, State] = {
     fromProcess[F, State](simProcess(t0, dt))
   }
+
+  def simStreamInit[F[_]](t0: Time, initialState: State, dt: TimeIncrement) = {
+    fromProcess[F, StateSpace](MarkovChain(StateSpace(t0, initialState))(s => for {
+      x <- stepFunction(dt)(s.state)
+      t = s.time + dt
+    } yield StateSpace(t, x)))
+  }
 }
 
 private final case class BrownianMotion(p: BrownianParameter) extends Sde {
 
   def dimension: Int = p.mu.size
-  def initialState: Rand[State] = MultivariateGaussian(p.m0, diag(p.c0)) map Tree.leaf
+
+  def initialState: Rand[State] = {
+    val init = p.m0.data.zip(p.c0.data).map { case (m, c) => Gaussian(m, c).draw }
+    Rand.always(init) map (x => Tree.leaf(DenseVector(x)))
+  }
+
   def drift(state: State) = Tree.leaf(p.mu)
+
   def diffusion(state: State) = Tree.leaf(diag(p.sigma))
 
   override def stepFunction(dt: TimeIncrement)(s: State) = {
-    val res = s map (x => DenseVector((x.data, p.mu.data, diag(p.sigma).toArray).zipped.
-      map { case (a: Double, m: Double, sd: Double) =>
-        Gaussian(a + m * dt, Math.sqrt(sd * sd * dt)).draw
-      }))
-    Rand.always(res)
+    val res = s map (x => (x.data, p.mu.data, p.sigma.data).zipped.
+      map { case (a: Double, m: Double, s: Double) =>
+        Gaussian(a + m * dt, Math.sqrt(s * dt)).draw
+      })
+    Rand.always(res map (DenseVector(_)))
   }
 }
 
 private final case class OrnsteinUhlenbeck(p: OrnsteinParameter) extends Sde {
   override def stepFunction(dt: TimeIncrement)(s: State) = {
-    val res: State = s map { x => 
-      val mean = (x.data, p.alpha.data, p.theta.data).zipped map { case (state, a, t) => t + (state - t) * exp(- a * dt) }
-      val variance = (p.sigma.data, p.alpha.data).zipped map { case (s, a) => (s*s/2*a)*(1-exp(-2*a*dt)) }
-      DenseVector(mean.zip(variance) map { case (a, v) => Gaussian(a, sqrt(v)).draw() })
+    val res = s map { x => 
+      val mean = (x.data, p.alpha.data, p.theta.data).zipped.
+        map { case (state, a, t) => t + (state - t) * exp(- a * dt) }
+      val variance = (p.sigma.data, p.alpha.data).zipped.
+        map { case (s, a) => (s*s/2*a)*(1-exp(-2*a*dt)) }
+      mean.zip(variance) map { case (a, v) => Gaussian(a, sqrt(v)).draw() }
     }
-    Rand.always(res)
+    Rand.always(res map (DenseVector(_)))
   }
 
   def dimension: Int = p.theta.size
-  def initialState: Rand[State] = MultivariateGaussian(p.m0, diag(p.c0)) map Tree.leaf
+
+  def initialState: Rand[State] = {
+    val init = p.m0.data.zip(p.c0.data).map { case (m, c) => Gaussian(m, c).draw }
+    Rand.always(init) map (x => Tree.leaf(DenseVector(x)))
+  }
+
   def drift(state: State) = {
     val c = state map (x => p.theta - x)
     c map ((x: DenseVector[Double]) => diag(p.alpha) * x)
