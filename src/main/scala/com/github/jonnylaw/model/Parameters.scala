@@ -18,6 +18,8 @@ sealed trait Parameters {
 
   def length: Int = this.flatten.length
 
+  def map(f: Double => Double): Parameters
+
   override def toString = this.flatten.mkString(", ")
 }
 case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends Parameters {
@@ -45,6 +47,10 @@ case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends 
   }
 
   def perturbIndep(delta: Array[Double]): Rand[Parameters] = ???
+
+  def map(f: Double => Double): Parameters = {
+    Parameters.leafParameter(scale.map(f), sdeParam.map(f))
+  }
 }
 
 case class BranchParameter(left: Parameters, right: Parameters) extends Parameters {
@@ -67,6 +73,10 @@ case class BranchParameter(left: Parameters, right: Parameters) extends Paramete
   def perturbIndep(delta: Array[Double]): Rand[Parameters] = ???
 
   def flatten: Vector[Double] = left.flatten ++ right.flatten
+
+  def map(f: Double => Double): Parameters = {
+    Parameters.branchParameter(left.map(f), right.map(f))
+  }
 }
 
 case object EmptyParameter extends Parameters {
@@ -74,6 +84,7 @@ case object EmptyParameter extends Parameters {
   def perturbIndep(delta: Array[Double]): Rand[Parameters] = Rand.always(Parameters.emptyParameter)
   def sum(that: Parameters): Try[Parameters] = Success(that)
   def flatten = Vector()
+  def map(f: Double => Double): Parameters = EmptyParameter
 }
 
 object Parameters {
@@ -101,9 +112,19 @@ object Parameters {
   }
 
   /**
-    * A sum parameter values
+    * Sum parameter values
     */
-  def sum_parameters(lp: Parameters, rp: Parameters): Try[Parameters] = lp sum rp
+  def sumParameters(lp: Parameters, rp: Parameters): Try[Parameters] = lp sum rp
+
+  /**
+    * Calculate the mean of the parameter values
+    */
+  def meanParameters(params: List[Parameters]): Try[Parameters] = {
+    val sum = params.foldLeft(Success(Parameters.emptyParameter): Try[Parameters])((a, b) =>
+      a.flatMap(Parameters.sumParameters(_, b)))
+
+    sum.map(_.map(_/params.length))
+  }
 
   def proposeIdent: Parameters => Rand[Parameters] = p => new Rand[Parameters] {
     def draw = p

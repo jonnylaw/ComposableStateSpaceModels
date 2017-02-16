@@ -11,6 +11,7 @@ sealed trait SdeParameter {
   def sum(that: SdeParameter): Try[SdeParameter]
   def perturb(delta: Double): Rand[SdeParameter]
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter]
+  def map(f: Double => Double): SdeParameter
 }
 
 case class BrownianParameter(
@@ -47,6 +48,10 @@ case class BrownianParameter(
 
   def flatten: Vector[Double] =
     m0.data.toVector ++ c0.data.toVector ++ mu.data.toVector ++ sigma.data.toVector
+
+  def map(f: Double => Double): SdeParameter = {
+    SdeParameter.brownianParameter(m0.mapValues(f), c0.mapValues(f), mu.mapValues(f), sigma.mapValues(f))
+  }
 }
 
 case class OrnsteinParameter(
@@ -94,6 +99,10 @@ case class OrnsteinParameter(
 
   def flatten: Vector[Double] =
     m0.data.toVector ++ c0.data.toVector ++ theta.data.toVector ++ alpha.data.toVector ++ sigma.data.toVector
+
+  def map(f: Double => Double): SdeParameter = {
+    SdeParameter.ornsteinParameter(m0.mapValues(f), c0.mapValues(f), theta.mapValues(f), alpha.mapValues(f), sigma.mapValues(f))
+  }
 }
 
 object SdeParameter {
