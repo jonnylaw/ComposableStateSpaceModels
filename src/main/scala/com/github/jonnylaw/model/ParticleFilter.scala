@@ -285,15 +285,17 @@ object ParticleFilter {
     * @return ForecastOut, a summary containing the mean of the state, gamma and observation
     */
   def getMeanForecast[F[_]](s: PfState[F], mod: Model, t: Time)(implicit f: Collection[F]): ForecastOut = {
+    val state: List[State] = f.toList(s.particles)
+
     val dt = t - s.t
-    val x1 = s.particles map (mod.sde.stepFunction(dt)(_).draw)
+    val x1 = state map (mod.sde.stepFunction(dt)(_).draw)
     val gamma = x1 map (x => mod.link(mod.f(x, t)))
 
     val stateIntervals = getallCredibleIntervals(x1.toList, 0.995)
     val statemean = meanState(x1.toList)
-    val meanGamma = f.mean(gamma)
+    val meanGamma = breeze.stats.mean(gamma)
     val gammaIntervals = getOrderStatistic(gamma.toList, 0.995)
-    val obs = f.mean(gamma.map(mod.observation(_).draw))
+    val obs = breeze.stats.mean(gamma.map(mod.observation(_).draw))
     val obsIntervals = getOrderStatistic(gamma.map(mod.observation(_).draw).toList, 0.995)
 
     ForecastOut(t, obs, obsIntervals, meanGamma, gammaIntervals, statemean, stateIntervals)

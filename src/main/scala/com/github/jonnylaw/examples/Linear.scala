@@ -58,3 +58,32 @@ object FilterLinear extends App with LinearTestModel {
     run.
     unsafeRun()
 }
+
+object ForecastLinear extends App with LinearTestModel {
+  val data = io.file.readAll[Task](Paths.get("data/LinearModelSims.csv"), 4096).
+    through(text.utf8Decode).
+    through(text.lines).
+    map(a => a.split(",")).
+    take(200).
+    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
+    runLog.
+    unsafeRun().
+    sortBy(_.t)
+
+  val filter = ParticleFilter.filter[List](ParticleFilter.systematicResampling, 0.0, 1000).
+    compose(mod)
+
+  // set the prediction interval, predict five minutes ahead from each observation
+  val dt = 5.0/60
+
+  // A function which accepts an integer and a sample from the posterior distribution of the parameters
+  Stream.emits[Task, Data](data).
+    through(filter(linearParam)).
+    map(s => ParticleFilter.getMeanForecast(s, mod(linearParam), s.t + dt)). // return the log-likelihood of each path
+    map(_.show).
+    intersperse("\n").
+    through(text.utf8Encode).
+    through(io.file.writeAll(Paths.get("data/LinearModelForecast.csv"))).
+    run.
+    unsafeRun()
+}
