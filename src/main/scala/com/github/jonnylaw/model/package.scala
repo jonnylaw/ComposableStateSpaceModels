@@ -209,14 +209,14 @@ package object model {
   implicit def filterOutShow(implicit S: Show[State], C: Show[CredibleInterval]) = new Show[PfOut] {
     def show(a: PfOut): String = a.observation match {
       case Some(x) =>
-        s"${a.time}, $x, ${a.gamma}, ${C.show(a.gammaIntervals)}, ${S.show(a.state)}, ${a.stateIntervals.map(C.show).mkString(", ")}"
+        s"${a.time}, $x, ${a.eta}, ${C.show(a.etaIntervals)}, ${S.show(a.state)}, ${a.stateIntervals.map(C.show).mkString(", ")}"
       case None =>
-        s"${a.time}, NA, ${a.gamma}, ${C.show(a.gammaIntervals)}, ${S.show(a.state)}, ${a.stateIntervals.map(C.show).mkString(", ")}"
+        s"${a.time}, NA, ${a.eta}, ${C.show(a.etaIntervals)}, ${S.show(a.state)}, ${a.stateIntervals.map(C.show).mkString(", ")}"
     }
   }
 
   implicit def forecastOutShow(implicit S: Show[State]) = new Show[ForecastOut] {
-    def show(a: ForecastOut): String = s"${a.t}, ${a.obs}, ${a.obsIntervals.toString}, ${a.gamma}, ${a.gammaIntervals.toString}, ${S.show(a.state)}, ${a.stateIntervals.mkString(", ")}"
+    def show(a: ForecastOut): String = s"${a.t}, ${a.obs}, ${a.obsIntervals.toString}, ${a.eta}, ${a.etaIntervals.toString}, ${S.show(a.state)}, ${a.stateIntervals.mkString(", ")}"
   }
 
   implicit def fromProcess[F[_], A](iter: Process[A]): Stream[F, A] = {

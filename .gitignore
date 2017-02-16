@@ -7,6 +7,7 @@ src/main/resources/*
 target/*
 project/*
 .ensime
+*.jar
 
 # emacs backup files
 .#*

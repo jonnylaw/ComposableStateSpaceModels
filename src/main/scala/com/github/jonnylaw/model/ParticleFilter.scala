@@ -13,6 +13,7 @@ import cats.implicits._
 import fs2._
 
 import scala.collection.parallel.immutable.ParVector
+import scala.collection.parallel.ForkJoinTaskSupport
 import scala.language.higherKinds
 import scala.reflect.ClassTag
 
@@ -42,8 +43,8 @@ case class PfState[F[_]](
 case class PfOut(
   time: Time,
   observation: Option[Observation],
-  gamma: Double,
-  gammaIntervals: CredibleInterval,
+  eta: Double,
+  etaIntervals: CredibleInterval,
   state: State,
   stateIntervals: IndexedSeq[CredibleInterval])
 
@@ -61,8 +62,8 @@ case class ForecastOut(
   t: Time,
   obs: Observation,
   obsIntervals: CredibleInterval,
-  gamma: Double,
-  gammaIntervals: CredibleInterval,
+  eta: Double,
+  etaIntervals: CredibleInterval,
   state: State,
   stateIntervals: IndexedSeq[CredibleInterval])
 
@@ -146,8 +147,23 @@ case class FilterSequential(mod: Model, resample: Resample[List, State]) extends
   override val f = implicitly[Collection[List]]
 }
 
-case class FilterParallel(mod: Model, resample: Resample[ParVector, State]) extends ParticleFilter[ParVector] {
+/**
+  * Particle filter which uses ParVector to represent the collection of particles, parallelism specifies the level 
+  * of parallelism using a scala.concurrent.forkjoin.ForkJoinPool
+  * @param mod the model to use for filtering
+  * @param resample the resampling scheme
+  * @param parallelism the level of parallism
+  */
+case class FilterParallel(mod: Model, resample: Resample[ParVector, State], parallelism: Int) extends ParticleFilter[ParVector] {
   override val f = implicitly[Collection[ParVector]]
+
+  override def initialiseState(particles: Int, t0: Time): PfState[ParVector] = {
+    val state = ParVector.fill(particles)(mod.sde.initialState.draw)
+    state.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(parallelism))
+
+    PfState[ParVector](t0, None, state, 0.0, particles)
+  }
+
 }
 
 /**
@@ -255,8 +271,8 @@ object ParticleFilter {
       llFilter(data.map((d: Data) => d.t).min, n)(data.sortBy((d: Data) => d.t))
   }
 
-  def parLikelihood(data: List[Data], n: Int) = Reader { (mod: Model) => 
-    FilterParallel(mod, systematicResampling[ParVector, State]).
+  def parLikelihood(data: List[Data], n: Int)(implicit parallelism: Int = 4) = Reader { (mod: Model) => 
+    FilterParallel(mod, systematicResampling[ParVector, State], parallelism).
       llFilter(data.map((d: Data) => d.t).min, n)(data.sortBy((d: Data) => d.t))
   }
 
