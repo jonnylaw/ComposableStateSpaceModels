@@ -70,7 +70,7 @@ object ForecastLinear extends App with LinearTestModel {
     unsafeRun().
     sortBy(_.t)
 
-  val filter = ParticleFilter.filter[List](ParticleFilter.systematicResampling, 0.0, 1000).
+  val filter = ParticleFilter.filter[Vector](ParticleFilter.systematicResampling, 0.0, 1000).
     compose(mod)
 
   // set the prediction interval, predict five minutes ahead from each observation

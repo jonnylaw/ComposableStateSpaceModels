@@ -2,13 +2,14 @@ name := "ComposableModels"
 
 organization := "com.github.jonnylaw"
 
-version := "0.3.2"
+version := "0.3.4"
 
 scalaVersion := "2.11.8"
 
 resolvers ++= Seq(
   "Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/",
   "Sonatype Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots",
+  "krasserm at bintray" at "http://dl.bintray.com/krasserm/maven",
   Resolver.sonatypeRepo("public")
 )
 

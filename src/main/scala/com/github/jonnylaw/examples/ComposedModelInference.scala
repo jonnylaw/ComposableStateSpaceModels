@@ -13,6 +13,8 @@ import fs2._
 import java.nio.file.Paths
 import java.io.PrintWriter
 
+import scala.collection.parallel.immutable.ParVector
+
 /**
   * Define a model to use throughout the examples in this file
   */
@@ -23,30 +25,29 @@ trait TestModel {
       DenseVector(1.0), 
       DenseVector(1.0), 
       DenseVector(0.01), 
-      DenseVector(0.3)))
+      DenseVector(0.1)))
 
   val seasonalParams = Parameters.leafParameter(
-    Some(1.0),
-    SdeParameter.brownianParameter(
+    None,
+    SdeParameter.ornsteinParameter(
       DenseVector.fill(6)(1.0),
       DenseVector.fill(6)(1.0),
-      DenseVector.vertcat(DenseVector.fill(2)(0.01),
-        DenseVector.fill(2)(-0.05),
-        DenseVector.fill(2)(0.05)),
-      DenseVector.fill(6)(0.3)))
+      theta = DenseVector.fill(6)(1.0),
+      alpha = DenseVector.fill(6)(0.5),
+      sigma = DenseVector.fill(6)(0.3))
+  )
 
   val params = poissonParams |+| seasonalParams
   val poisson = Model.poissonModel(Sde.brownianMotion)
-  val seasonal = Model.seasonalModel(24, 3, Sde.brownianMotion)
+  val seasonal = Model.seasonalModel(24, 3, Sde.ornsteinUhlenbeck)
   val model = poisson |+| seasonal
 }
-
 
 /**
   * Simulate a poisson model, with seasonal rate parameter
   */
 object SimulateSeasonalPoisson extends App with TestModel {
-  val times = (0.0 to 120.0 by 1.0).
+  val times = (0.0 to 240.0 by 1.0).
     filter(a => scala.util.Random.nextDouble < 0.9). // 10% of data missing
     toList
 
@@ -57,97 +58,102 @@ object SimulateSeasonalPoisson extends App with TestModel {
     through(text.utf8Encode).
     through(io.file.writeAll(Paths.get("data/seasonalPoissonSims.csv"))).
     run.
-    unsafeRun
+    unsafeRun()
 }
 
-object FilterSeasonalPoisson extends App with TestModel {
-  val n = 1000 // number of particles for the particle filter
-  val t0 = 0.0 // starting time of the filter (time of the first observation)
-  val filter = ParticleFilter.filter[List](ParticleFilter.systematicResampling, 0.0, n)
+object FilterSeasonalPoisson extends TestModel {
+  def main(args: Array[String]): Unit = {
+    val n = 1000 // number of particles for the particle filter
+    val t0 = 0.0 // starting time of the filter (time of the first observation)
+    setParallelismGlobally(8) // set the number of threads to use for the parallel particle filter
+    val filter = ParticleFilter.filter[ParVector](ParticleFilter.systematicResampling, 0.0, n)
 
-  io.file.readAll[Task](Paths.get("data/seasonalPoissonSims.csv"), 4096).
-    through(text.utf8Decode).
-    through(text.lines).
-    map(a => a.split(", ")).
-    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
-    through(filter(model(params))).
-    map(ParticleFilter.getIntervals(model(params))).
-    drop(1).
-    map(_.show).
-    intersperse("\n").
-    through(text.utf8Encode).
-    through(io.file.writeAll(Paths.get("data/seasonalPoissonFiltered.csv"))).
-    run.
-    unsafeRun
+    io.file.readAll[Task](Paths.get("data/seasonalPoissonSims.csv"), 4096).
+      through(text.utf8Decode).
+      through(text.lines).
+      map(a => a.split(", ")).
+      map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
+      through(filter(model(params))).
+      map(ParticleFilter.getIntervals(model(params))).
+      drop(1).
+      map(_.show).
+      intersperse("\n").
+      through(text.utf8Encode).
+      through(io.file.writeAll(Paths.get("data/seasonalPoissonFiltered.csv"))).
+      run.
+      unsafeRun()
+  }
 }
 
-object DetermineComposedParams extends App with TestModel {
-  // read a file from memory
-  val data = scala.io.Source.fromFile("data/seasonalPoissonSims.csv").
-    getLines.
-    toList.
-    take(120).
-    map(a => a.split(",")).
-    map(d => TimedObservation(d(0).toDouble, d(1).toDouble))
+object DetermineComposedParams extends TestModel {
+  def main(args: Array[String]) = {
+    val nParticles = args.head.toInt
+    // read a file from memory
+    val data = scala.io.Source.fromFile("data/seasonalPoissonSims.csv").
+      getLines.
+      toVector.
+      take(120).
+      map(a => a.split(",")).
+      map(d => TimedObservation(d(0).toDouble, d(1).toDouble))
 
 
-  def priorDrift(p: Parameters) = p match {
-    case LeafParameter(_, BrownianParameter(m0, c0, mu, sigma)) =>
-      Some(
-        Gaussian(15.0, 10.0).logPdf(m0(0)) +
-        Gamma(1.0, 8.0).logPdf(1/c0(0)) +
-        Gaussian(0.0, 10.0).logPdf(mu(0)) +
-        Gamma(0.1, 10.0).logPdf(1/sigma(0)))
-    case _ => None
+    def priorDrift(p: Parameters) = p match {
+      case LeafParameter(_, BrownianParameter(m0, c0, mu, sigma)) =>
+        Some(
+          Gaussian(1.0, 3.0).logPdf(m0(0)) +
+            Gamma(0.5, 2.0).logPdf(1/c0(0)) +
+            Gaussian(0.0, 3.0).logPdf(mu(0)) +
+            Gamma(0.1, 3.0).logPdf(1/sigma(0)))
+      case _ => None
+    }
+
+    def priorDaily(p: Parameters) = p match {
+      case LeafParameter(_, OrnsteinParameter(m0, c0, theta, alpha, sigma)) =>
+        Some(
+          m0.mapValues(m => Gaussian(-0.5, 3.0).logPdf(m)).reduce(_+_) +
+            c0.mapValues(c => Gamma(0.3, 3.0).logPdf(1/c)).reduce(_+_) +
+            theta.mapValues(m => Gaussian(-1.0, 3.0).logPdf(m)).reduce(_+_) +
+            alpha.mapValues(a => Gamma(0.15, 3.0).logPdf(a)).reduce(_+_) +
+            sigma.mapValues(s => Gamma(1.0, 3.0).logPdf(s)).reduce(_+_))
+      case _ => None
+    }
+
+    def prior = (p: Parameters) => p match {
+      case BranchParameter(drift, daily) =>
+        for {
+          p1 <- priorDrift(drift)
+          p2 <- priorDaily(daily)
+        } yield p1 + p2
+      case _ => None
+    }
+
+    setParallelismGlobally(8) // set the number of threads to use for the parallel particle filter
+
+    // compose the particle filter with the model to get a function from Parameters => LogLikelihood
+    val mll = ParticleFilter.parLikelihood(data.sortBy(_.t), nParticles) compose model
+
+    ParticleMetropolis(mll.run, params, Parameters.perturb(0.05), p => prior(p).get).
+      iters[Task].
+      take(10000).
+      map(_.show).
+      intersperse("\n").
+      through(text.utf8Encode).
+      through(io.file.writeAll(Paths.get("data/SeasonalPoissonParams.csv"))).
+      run.
+      unsafeRun()
   }
-
-  def priorDaily(p: Parameters) = p match {
-    case LeafParameter(_, OrnsteinParameter(m0, c0, theta, alpha, sigma)) =>
-      Some(
-        m0.mapValues(m => Gaussian(-0.5, 10.0).logPdf(m)).reduce(_+_) +
-        c0.mapValues(c => Gamma(1.0, 10.0).logPdf(1/c)).reduce(_+_) +
-        theta.mapValues(m => Gaussian(-1.0, 10.0).logPdf(m)).reduce(_+_) +
-        alpha.mapValues(a => Gaussian(0.1, 10.0).logPdf(a)).reduce(_+_) +
-        sigma.mapValues(s => Gamma(0.5, 6.0).logPdf(s)).reduce(_+_))
-    case _ => None
-  }
-
-  def prior = (p: Parameters) => p match {
-    case BranchParameter(drift, daily) =>
-      for {
-        p1 <- priorDrift(drift)
-        p2 <- priorDaily(daily)
-      } yield p1 + p2
-    case _ => None
-  }
-
-  // determine parameters
-  val mll: Reader[Parameters, LogLikelihood] = 
-    ParticleFilter.parLikelihood(data.sortBy(_.t), 500) compose model
-
-  val iters = ParticleMetropolis(mll.run, params, Parameters.perturb(0.05), p => prior(p).get).
-    markovIters.
-    steps.
-    take(10000)
-
-  val pw = new PrintWriter("data/SeasonalPoissonParams.csv")
-
-  for (iter <- iters) {
-    pw.write(iter + "\n")
-  }
-
-  pw.close()
 }
 
 object PilotRunComposed extends App with TestModel {
   // provide a concurrency strategy
   implicit val S = fs2.Strategy.fromFixedDaemonPool(8, threadName = "worker")
+  setParallelismGlobally(8) // set the number of threads to use for the parallel particle filter
 
   val data = io.file.readAll[Task](Paths.get("data/seasonalPoissonSims.csv"), 4096).
     through(text.utf8Decode).
     through(text.lines).
     map(a => a.split(",")).
-    take(120).
+    take(1000).
     map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
     runLog.
     unsafeRun.
@@ -156,29 +162,31 @@ object PilotRunComposed extends App with TestModel {
   val t0 = 0.0
 
   // determine parameters
-  val mll = (n: Int) => ParticleFilter.parLikelihood(data.toList, n).compose(model)
+  val mll = (n: Int) => ParticleFilter.parLikelihood(data.toVector, n).compose(model)
 
   val proposal = (p: Parameters) => Rand.always(p)
 
   val prior = (p: Parameters) => 0.0
 
-  def iters(n: Int): Task[Double] = {
-    val its = ParticleMetropolis(mll(n).run, params, proposal, prior).
+  def varianceMll(n: Int): Task[Double] = {
+    val lls = ParticleMetropolis(mll(n).run, params, proposal, prior).
       iters[Task].
       take(100).
+      map(_.ll).
       runLog
 
-    its map (s => breeze.stats.variance(s.map(_.ll)))
+    lls map (x => breeze.stats.variance(x))
   }
 
-  val particles = List(100, 200, 500, 1000, 2000)
+  val particles = Vector(100, 200, 500, 1000, 2000)
 
-  val variances = Task.parallelTraverse(particles)(iters).
-    unsafeRun
-
-  import java.io.PrintWriter
   val pw = new PrintWriter("data/ComposedPilotRun.csv")
-  pw.write("Particles, mll Variance")
-  pw.write(particles.zip(variances).mkString(", "))
-  pw.close
+  pw.write("particles, mll_variance")
+
+  Task.parallelTraverse(particles)(varianceMll).
+    unsafeRun().
+    zip(particles).
+    foreach{ case (v, part) => pw.write(s"\n$part, $v") }
+
+  pw.close()
 }

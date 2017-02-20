@@ -45,57 +45,6 @@ package object model {
     def compare(x: DenseVector[Double],y: DenseVector[Double]): Int = ???
   }
 
-  /**
-    * A typeclass representing a Collection with a few additional 
-    * features required for implementing the particle filter
-    */
-  trait Collection[F[_]] extends Foldable[F] with MonoidK[F] with Monad[F] {
-    def scanLeft[A, B, C](fa: F[A], z: B)(f: (B, A) => B): F[B]
-    def get[A](fa: F[A])(i: Int): A
-    def indices[A](fa: F[A]): F[Int]
-
-    /**
-      * Expand a into a range of Numerics
-      */
-    def range[A](from: A, to: A, by: A)(implicit N: Numeric[A], f: MonoidK[F], app: Applicative[F]) = {
-      def loop(acc: F[A], current: A): F[A] = {
-        if (N.gteq(current, to)) {
-          acc
-        } else {
-          loop(f.combineK(acc, app.pure(N.plus(current, by))), N.plus(current, by))
-        }
-      }
-      loop(app.pure(from), from)
-    }
-
-    def indexWhere[A](fa: F[A])(cond: A => Boolean): Int
-
-    def max[A: Ordering](fa: F[A]): A
-
-    /**
-      * Fund the sum of numeric values in a foldable
-      */
-    def sum[A](l: F[A])(implicit F: Foldable[F], N: Numeric[A]): A = {
-      F.foldLeft(l, N.zero)((a, b) => N.plus(a, b))
-    }
-
-    /**
-      * Generic Mean Function
-      */
-    def mean[A](s: F[A])(implicit f: Foldable[F], N: Fractional[A]): A = {
-      N.div(sum(s), N.fromInt(s.size.toInt))
-    }
-
-    def fill[A](n: Int)(a: A): F[A]
-    
-    def toArray[A: ClassTag](fa: F[A]): Array[A]
-
-    def toList[A](fa: F[A]): List[A]
-
-    def unzip[A, B](fa: F[(A, B)]): (F[A], F[B])
-  }
-
-
   implicit def parVectorCollection = new Collection[ParVector] {
     def pure[A](x: A): ParVector[A] = ParVector(x)
 
@@ -124,38 +73,42 @@ package object model {
     def fill[A](n: Int)(a: A): ParVector[A] = ParVector.fill(n)(a)
     def unzip[A, B](fa: ParVector[(A, B)]): (ParVector[A], ParVector[B]) = fa.unzip
     def max[A: Ordering](fa: ParVector[A]): A = fa.max
+    def toVector[A](fa: ParVector[A]): Vector[A] = fa.toVector
+    def zip[A, B](fa: ParVector[A], fb: ParVector[B]): ParVector[(A, B)] = fa.zip(fb)
   }
 
-  implicit def listCollection = new Collection[List] {
-    def pure[A](x: A): List[A] = List(x)
+  implicit def listCollection = new Collection[Vector] {
+    def pure[A](x: A): Vector[A] = Vector(x)
 
-    def flatMap[A, B](fa: List[A])(f: A => List[B]): List[B] = fa.flatMap(f)
-    def tailRecM[A, B](a: A)(f: A => List[Either[A,B]]): List[B] = ???
+    def flatMap[A, B](fa: Vector[A])(f: A => Vector[B]): Vector[B] = fa.flatMap(f)
+    def tailRecM[A, B](a: A)(f: A => Vector[Either[A,B]]): Vector[B] = ???
 
     // Members declared in Collection
-    def get[A](fa: List[A])(i: Int): A = fa(i)
-    def indexWhere[A](fa: List[A])(cond: A => Boolean): Int = fa.indexWhere(cond)
-    def scanLeft[A, B, C](fa: List[A],z: B)(f: (B, A) => B): List[B] = fa.scanLeft(z)(f)
+    def get[A](fa: Vector[A])(i: Int): A = fa(i)
+    def indexWhere[A](fa: Vector[A])(cond: A => Boolean): Int = fa.indexWhere(cond)
+    def scanLeft[A, B, C](fa: Vector[A],z: B)(f: (B, A) => B): Vector[B] = fa.scanLeft(z)(f)
 
     // Members declared in cats.Foldable
-    def foldLeft[A, B](fa: List[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
-    def foldRight[A, B](fa: List[A],lb: cats.Eval[B])(f: (A, cats.Eval[B]) => cats.Eval[B]): cats.Eval[B] = fa.foldRight(lb)(f)
+    def foldLeft[A, B](fa: Vector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
+    def foldRight[A, B](fa: Vector[A],lb: cats.Eval[B])(f: (A, cats.Eval[B]) => cats.Eval[B]): cats.Eval[B] = fa.foldRight(lb)(f)
 
     // Members declared in cats.MonoidK
-    def empty[A]: List[A] = List()
+    def empty[A]: Vector[A] = Vector()
 
     // Members declared in cats.SemigroupK
-    def combineK[A](x: List[A], y: List[A]): List[A] = x ++ y
+    def combineK[A](x: Vector[A], y: Vector[A]): Vector[A] = x ++ y
 
     /**
       * Return the indices of a collection
       */
-    def indices[A](fa: List[A]) = fa.zipWithIndex.map(_._2)
+    def indices[A](fa: Vector[A]) = fa.zipWithIndex.map(_._2)
 
-    def fill[A](n: Int)(a: A) = List.fill(n)(a)
-    def toArray[A: ClassTag](fa: List[A]): Array[A] = fa.toArray
-    def unzip[A, B](fa: List[(A, B)]): (List[A], List[B]) = fa.unzip
-    def max[A: Ordering](fa: List[A]): A = fa.max
+    def fill[A](n: Int)(a: A) = Vector.fill(n)(a)
+    def toArray[A: ClassTag](fa: Vector[A]): Array[A] = fa.toArray
+    def unzip[A, B](fa: Vector[(A, B)]): (Vector[A], Vector[B]) = fa.unzip
+    def max[A: Ordering](fa: Vector[A]): A = fa.max
+    def toVector[A](fa: Vector[A]): Vector[A] = fa
+    def zip[A, B](fa: Vector[A], fb: Vector[B]): Vector[(A, B)] = fa.zip(fb)
   }
 
   // various shows for printing nicely
@@ -219,7 +172,31 @@ package object model {
     def show(a: ForecastOut): String = s"${a.t}, ${a.obs}, ${a.obsIntervals.toString}, ${a.eta}, ${a.etaIntervals.toString}, ${S.show(a.state)}, ${a.stateIntervals.mkString(", ")}"
   }
 
+  /**
+    * Create an fs2 stream from a breeze Process
+    * @param iter a breeze Process
+    */
   implicit def fromProcess[F[_], A](iter: Process[A]): Stream[F, A] = {
     Stream.unfold(iter.step){ case (a, p) => Some((a, p.step)) }
+  }
+
+  /**
+    * Set the taskSupport for Parallel collections globally for the session using reflection
+    * Source: stackoverflow.com/questions/17865823/how-do-i-set-the-default-number-of-threads-for-scala-2-10-parallel-collections
+    * @param numThreads the number of threads to use for a parallel collection
+    */
+  def setParallelismGlobally(numThreads: Int): Unit = {
+    val parPkgObj = scala.collection.parallel.`package`
+    val defaultTaskSupportField = parPkgObj.getClass.getDeclaredFields.find{
+      _.getName == "defaultTaskSupport"
+    }.get
+
+    defaultTaskSupportField.setAccessible(true)
+    defaultTaskSupportField.set(
+      parPkgObj,
+      new scala.collection.parallel.ForkJoinTaskSupport(
+        new scala.concurrent.forkjoin.ForkJoinPool(numThreads)
+      )
+    )
   }
 }

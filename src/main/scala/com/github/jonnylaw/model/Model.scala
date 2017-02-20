@@ -193,7 +193,7 @@ private final case class LinearModel(sde: Sde, p: LeafParameter) extends Model {
     * @return a Poisson UnparamModel which can be composed with other UnparamModels
     */
 private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model {
-  def observation = x => Poisson(exp(x)) map (_.toDouble): Rand[Double]
+  def observation = x => Poisson(link(x)) map (_.toDouble): Rand[Double]
 
   override def link(x: Double) = exp(x)
 
@@ -207,7 +207,7 @@ private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model 
     * @param sde a solution to a diffusion process 
     */
 private final case class BernoulliModel(sde: Sde, p: LeafParameter) extends Model {
-  def observation = p => Uniform(0, 1).map(_ < p).map(a => if (a) 1.0 else 0.0)
+  def observation = p => Uniform(0, 1).map(_ < link(p)).map(a => if (a) 1.0 else 0.0)
 
   override def link(x: Gamma) = {
     if (x > 6) {

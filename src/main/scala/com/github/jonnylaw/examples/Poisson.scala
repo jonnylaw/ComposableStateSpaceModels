@@ -96,7 +96,7 @@ object PilotRunPoisson extends App with PoissonTestModel {
     unsafeRun.
     sortBy(_.t)
 
-  val mll = (n: Int) => ParticleFilter.parLikelihood(data.toList, n).compose(mod)
+  val mll = (n: Int) => ParticleFilter.parLikelihood(data.toVector, n).compose(mod)
 
   val proposal = (p: Parameters) => Rand.always(p)
 
@@ -111,7 +111,7 @@ object PilotRunPoisson extends App with PoissonTestModel {
     its map (s => breeze.stats.variance(s.map(_.ll)))
   }
 
-  val particles = List(100, 200, 500, 1000, 2000)
+  val particles = Vector(100, 200, 500, 1000, 2000)
 
   val variances = Task.parallelTraverse(particles)(iters).
     unsafeRun
@@ -145,7 +145,7 @@ object DeterminePoissonParams extends App with PoissonTestModel {
   val n = 500
 
   // determine parameters
-  val mll = ParticleFilter.parLikelihood(data.toList, n).compose(mod)
+  val mll = ParticleFilter.parLikelihood(data.toVector, n).compose(mod)
 
   val prior = (p: Parameters) => p match {
     case LeafParameter(None, BrownianParameter(m, s, mu, sigma)) =>

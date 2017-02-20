@@ -48,14 +48,12 @@ case class SimulatedData(model: Model) extends DataService {
     * @return a function from the previous datapoint to a Rand (Monadic distribution) representing 
     * the distribution of the next datapoint 
     */
-  def simStep(deltat: TimeIncrement) = (d: ObservationWithState) => model match {
-    case _: LogGaussianCox => throw new Exception("Can't simulate a step from the LGCP in this way")
-    case _ =>
+  def simStep(deltat: TimeIncrement) = (d: ObservationWithState) =>  {
     for {
       x1 <- model.sde.stepFunction(deltat)(d.sdeState)
       gamma = model.f(x1, d.t + deltat)
       eta = model.link(gamma)
-      y1 <- model.observation(eta)
+      y1 <- model.observation(gamma)
     } yield ObservationWithState(d.t + deltat, y1, eta, gamma, x1)
   }
 
@@ -70,7 +68,7 @@ case class SimulatedData(model: Model) extends DataService {
       x0 <- model.sde.initialState
       gamma = model.f(x0, t0)
       eta = model.link(gamma)
-      y <- model.observation(eta)
+      y <- model.observation(gamma)
     } yield ObservationWithState(t0, y, eta, gamma, x0)
 
     pipe.scan(init.draw)((d0, t: Time) => simStep(t - d0.t)(d0).draw)
@@ -88,7 +86,7 @@ case class SimulatedData(model: Model) extends DataService {
       x0 <- model.sde.initialState
       gamma = model.f(x0, 0.0)
       eta = model.link(gamma)
-      y <- model.observation(eta)
+      y <- model.observation(gamma)
     } yield ObservationWithState(0.0, y, eta, gamma, x0)
 
     MarkovChain(init.draw)(simStep(dt))
@@ -99,9 +97,7 @@ case class SimulatedData(model: Model) extends DataService {
     * @param dt the time increment between successive realisations of the POMP model
     * @return an Akka Stream containing a realisation of the process
     */
-  def simRegular[F[_]](dt: TimeIncrement): Stream[F, ObservationWithState] = model match {
-    case _: LogGaussianCox => throw new Exception("Not implemented")
-    case _ =>
+  def simRegular[F[_]](dt: TimeIncrement): Stream[F, ObservationWithState] = {
       fromProcess(simMarkov(dt))
   }
 

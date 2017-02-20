@@ -1,7 +1,6 @@
 package com.github.jonnylaw.model
 
 import breeze.stats.distributions.{Rand, Uniform, Multinomial}
-import breeze.stats.distributions.Rand._
 import breeze.numerics.{exp, log}
 import breeze.linalg.DenseVector
 
@@ -9,13 +8,63 @@ import cats._
 import cats.data.Reader
 import cats.implicits._
 
-
 import fs2._
 
 import scala.collection.parallel.immutable.ParVector
-import scala.collection.parallel.ForkJoinTaskSupport
 import scala.language.higherKinds
 import scala.reflect.ClassTag
+
+/**
+  * A typeclass representing a Collection with a few additional 
+  * features required for implementing the particle filter
+  */
+trait Collection[F[_]] extends Foldable[F] with MonoidK[F] with Monad[F] {
+  def scanLeft[A, B, C](fa: F[A], z: B)(f: (B, A) => B): F[B]
+  def get[A](fa: F[A])(i: Int): A
+  def indices[A](fa: F[A]): F[Int]
+
+  /**
+    * Expand a into a range of Numerics
+    */
+  def range[A](from: A, to: A, by: A)(implicit N: Numeric[A], f: MonoidK[F], app: Applicative[F]) = {
+    def loop(acc: F[A], current: A): F[A] = {
+      if (N.gteq(current, to)) {
+        acc
+      } else {
+        loop(f.combineK(acc, app.pure(N.plus(current, by))), N.plus(current, by))
+      }
+    }
+    loop(app.pure(from), from)
+  }
+
+  def indexWhere[A](fa: F[A])(cond: A => Boolean): Int
+
+  def max[A: Ordering](fa: F[A]): A
+
+  /**
+    * Fund the sum of numeric values in a foldable
+    */
+  def sum[A](l: F[A])(implicit F: Foldable[F], N: Numeric[A]): A = {
+    F.foldLeft(l, N.zero)((a, b) => N.plus(a, b))
+  }
+
+  /**
+    * Generic Mean Function
+    */
+  def mean[A](s: F[A])(implicit f: Foldable[F], N: Fractional[A]): A = {
+    N.div(sum(s), N.fromInt(s.size.toInt))
+  }
+
+  def fill[A](n: Int)(a: A): F[A]
+  
+  def toArray[A: ClassTag](fa: F[A]): Array[A]
+
+  def toVector[A](fa: F[A]): Vector[A]
+
+  def unzip[A, B](fa: F[(A, B)]): (F[A], F[B])
+
+  def zip[A, B](fa: F[A], fb: F[B]): F[(A, B)]
+}
 
 /**
   * Representation of the state of the particle filter, where the particles are in a Collection typeclass 
@@ -79,22 +128,12 @@ trait ParticleFilter[F[_]] {
     PfState[F](t0, None, state, 0.0, particles)
   }
 
-  def advanceState(states: F[State], dt: TimeIncrement, t: Time): F[(State, Gamma)] = {
-    for {
-      x <- states
-      x1 = mod.sde.stepFunction(dt)(x).draw
-      gamma = mod.f(x1, t)
-    } yield (x1, gamma)
-  }
-
-  def calculateWeights: (Gamma, Observation) => LogLikelihood = mod.dataLikelihood
-
   def resample: Resample[F, State]
 
   def stepFilter(s: PfState[F], y: Data): PfState[F] = {
     val dt = y.t - s.t
-    val (x1, gamma) = f.unzip(advanceState(s.particles, dt, y.t))
-    val w = gamma map (g => calculateWeights(g, y.observation))
+    val x1 = s.particles map (x => mod.sde.stepFunction(dt)(x).draw)
+    val w = x1 map (x => mod.dataLikelihood(mod.f(x, y.t), y.observation))
     val max = f.max(w)
     val w1 = f.map(w)(a => exp(a - max))
     val ll = s.ll + max + log(f.mean(w1))
@@ -107,7 +146,7 @@ trait ParticleFilter[F[_]] {
   /**
     * Filter a collection of data and return an estimate of the loglikelihood
     */
-  def llFilter(t0: Time, n: Int)(data: List[Data]) = {
+  def llFilter(t0: Time, n: Int)(data: Vector[Data]) = {
     val initState = initialiseState(n, t0)
     data.foldLeft(initState)(stepFilter).ll
   }
@@ -116,7 +155,7 @@ trait ParticleFilter[F[_]] {
     * Run a filter over a vector of data and return a vector of PfState
     * Containing the raw particles and associated weights at each time step
     */
-  def accFilter(data: List[Data], t0: Time)(particles: Int) = {
+  def accFilter(data: Vector[Data], t0: Time)(particles: Int) = {
     val initState = initialiseState(particles, t0)
 
     data.scanLeft(initState)(stepFilter).
@@ -127,9 +166,9 @@ trait ParticleFilter[F[_]] {
     * Filter the data, but get a vector containing the mean gamma, gamma intervals, mean state, 
     * and credible intervals of the state
     */
-  def filterWithIntervals(data: List[Data], t0: Time)(particles: Int) = {
+  def filterWithIntervals(data: Vector[Data], t0: Time)(particles: Int) = {
     accFilter(data, t0)(particles).
-      map(s => PfState(s.t, s.observation, s.particles.toList, s.ll, s.ess)).
+      map(s => PfState(s.t, s.observation, f.toVector(s.particles), s.ll, s.ess)).
       map(getIntervals(mod))
   }
 
@@ -143,27 +182,17 @@ trait ParticleFilter[F[_]] {
   }
 }
 
-case class FilterSequential(mod: Model, resample: Resample[List, State]) extends ParticleFilter[List] {
-  override val f = implicitly[Collection[List]]
+case class FilterSequential(mod: Model, resample: Resample[Vector, State]) extends ParticleFilter[Vector] {
+  override val f = implicitly[Collection[Vector]]
 }
 
 /**
-  * Particle filter which uses ParVector to represent the collection of particles, parallelism specifies the level 
-  * of parallelism using a scala.concurrent.forkjoin.ForkJoinPool
+  * Particle filter which uses ParVector to represent the collection of particles
   * @param mod the model to use for filtering
   * @param resample the resampling scheme
-  * @param parallelism the level of parallism
   */
-case class FilterParallel(mod: Model, resample: Resample[ParVector, State], parallelism: Int) extends ParticleFilter[ParVector] {
+case class FilterParallel(mod: Model, resample: Resample[ParVector, State]) extends ParticleFilter[ParVector] {
   override val f = implicitly[Collection[ParVector]]
-
-  override def initialiseState(particles: Int, t0: Time): PfState[ParVector] = {
-    val state = ParVector.fill(particles)(mod.sde.initialState.draw)
-    state.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(parallelism))
-
-    PfState[ParVector](t0, None, state, 0.0, particles)
-  }
-
 }
 
 /**
@@ -175,8 +204,8 @@ case class CredibleInterval(lower: Double, upper: Double) {
   override def toString = lower + ", " + upper
 }
 
-case class FilterLgcp(mod: Model, resample: Resample[List, State], precision: Int) extends ParticleFilter[List] {
-  override val f = implicitly[Collection[List]]
+case class FilterLgcp(mod: Model, resample: Resample[Vector, State], precision: Int) extends ParticleFilter[Vector] {
+  override val f = implicitly[Collection[Vector]]
 
   def calcWeight(x: State, dt: TimeIncrement, t: Time): (State, Double, Double) = {
     // calculate the amount of realisations of the state we need
@@ -186,7 +215,7 @@ case class FilterLgcp(mod: Model, resample: Resample[List, State], precision: In
     val x1 = mod.sde.simStreamInit[Nothing](t, x, Math.pow(10, -precision)).take(n)
 
     // get the value in the last position of the stream
-    val lastState = x1.toList.last.state
+    val lastState = x1.toVector.last.state
 
     // transform the state
     val gamma = mod.f(lastState, t + dt)
@@ -195,13 +224,13 @@ case class FilterLgcp(mod: Model, resample: Resample[List, State], precision: In
     val cumulativeHazard = x1.map((a: StateSpace) => mod.f(a.state, a.time)).
       map(x => exp(x) * Math.pow(10, -precision)).
       fold(0.0)(_+_).
-      toList.
+      toVector.
       head
 
     (lastState, gamma, cumulativeHazard)
   }
 
-  override def stepFilter(s: PfState[List], y: Data): PfState[List] = {
+  override def stepFilter(s: PfState[Vector], y: Data): PfState[Vector] = {
     val dt = y.t - s.t
     val state = s.particles.map(x => calcWeight(x, dt, y.t))
     val w = state.map(a => (a._2, a._3)).map { case (g,l) => g - l }
@@ -212,7 +241,7 @@ case class FilterLgcp(mod: Model, resample: Resample[List, State], precision: In
     val resampledX = resample(state.map(_._1), w)
     val ess = ParticleFilter.effectiveSampleSize(w1)
 
-    PfState[List](y.t, Some(y.observation), resampledX, ll, ess)
+    PfState[Vector](y.t, Some(y.observation), resampledX, ll, ess)
   }
 }
 
@@ -244,7 +273,7 @@ object ParticleFilter {
   }
 
   def filterWithIntervals[F[_]: Collection](
-    data: List[Data],
+    data: Vector[Data],
     resample: Resample[F, State], 
     t0: Time, 
     n: Int
@@ -266,13 +295,13 @@ object ParticleFilter {
     * @param n the number of particles to use in the particle filter
     * @return a function from model to logLikelihood
     */
-  def likelihood(data: List[Data], n: Int, resample: Resample[List, State]) = Reader { (mod: Model) => 
+  def likelihood(data: Vector[Data], n: Int, resample: Resample[Vector, State]) = Reader { (mod: Model) => 
     FilterSequential(mod, resample).
       llFilter(data.map((d: Data) => d.t).min, n)(data.sortBy((d: Data) => d.t))
   }
 
-  def parLikelihood(data: List[Data], n: Int)(implicit parallelism: Int = 4) = Reader { (mod: Model) => 
-    FilterParallel(mod, systematicResampling[ParVector, State], parallelism).
+  def parLikelihood(data: Vector[Data], n: Int) = Reader { (mod: Model) => 
+    FilterParallel(mod, systematicResampling[ParVector, State]).
       llFilter(data.map((d: Data) => d.t).min, n)(data.sortBy((d: Data) => d.t))
   }
 
@@ -285,18 +314,18 @@ object ParticleFilter {
     * @return ForecastOut, a summary containing the mean of the state, gamma and observation
     */
   def getMeanForecast[F[_]](s: PfState[F], mod: Model, t: Time)(implicit f: Collection[F]): ForecastOut = {
-    val state: List[State] = f.toList(s.particles)
+    val state: Vector[State] = f.toVector(s.particles)
 
     val dt = t - s.t
     val x1 = state map (mod.sde.stepFunction(dt)(_).draw)
     val gamma = x1 map (x => mod.link(mod.f(x, t)))
 
-    val stateIntervals = getallCredibleIntervals(x1.toList, 0.995)
-    val statemean = meanState(x1.toList)
+    val stateIntervals = getallCredibleIntervals(x1.toVector, 0.995)
+    val statemean = meanState(x1.toVector)
     val meanGamma = breeze.stats.mean(gamma)
-    val gammaIntervals = getOrderStatistic(gamma.toList, 0.995)
+    val gammaIntervals = getOrderStatistic(gamma.toVector, 0.995)
     val obs = breeze.stats.mean(gamma.map(mod.observation(_).draw))
-    val obsIntervals = getOrderStatistic(gamma.map(mod.observation(_).draw).toList, 0.995)
+    val obsIntervals = getOrderStatistic(gamma.map(mod.observation(_).draw).toVector, 0.995)
 
     ForecastOut(t, obs, obsIntervals, meanGamma, gammaIntervals, statemean, stateIntervals)
   }
@@ -305,7 +334,7 @@ object ParticleFilter {
     * Transforms PfState into PfOut, including gamma, gamma intervals and state intervals
     */
   def getIntervals[F[_]](mod: Model)(implicit f: Collection[F]): PfState[F] => PfOut = s => {
-    val state = f.toList(s.particles)
+    val state = f.toVector(s.particles)
     val stateMean = meanState(state)
     val stateIntervals = getallCredibleIntervals(state, 0.975)
     val gammas = state map (x => mod.link(mod.f(x, s.t)))
@@ -315,24 +344,6 @@ object ParticleFilter {
     PfOut(s.t, s.observation, meanGamma, gammaIntervals, stateMean, stateIntervals)
   }
 
-  /**
-    * Given a vector of doubles, returns a normalised vector with probabilities summing to one
-    * @param prob a vector of unnormalised probabilities
-    * @return a vector of normalised probabilities
-    */
-  def normalise[F[_]](prob: F[Double])(implicit f: Collection[F]): F[Double] = {
-    val total = f.sum(prob)
-    f.map(prob)(x => x/total)
-  }
-
- /**
-    * Multinomial Resampling, sample from a categorical distribution with probabilities
-    * equal to the particle weights 
-    */
-  def multinomialResampling[F[_], A](particles: F[A], weights: F[LogLikelihood])(implicit f: Collection[F]): F[A] = {
-    val indices = f.fill(f.size(particles).toInt)(Multinomial(DenseVector(f.toArray(weights))).draw)
-    f.map(indices)(i => f.get(particles)(i))
-  }
 
   /**
     * Calculate the effective sample size of a particle cloud, from the un-normalised weights
@@ -347,28 +358,24 @@ object ParticleFilter {
   /**
     * Produces a histogram output of a vector of Data
     */
-  def hist(x: List[Int]): Unit = {
+  def hist(x: Vector[Int]): Unit = {
     val h = x.
       groupBy(identity).
       toArray.
       map{ case (n, l) => (n, l.length) }.
       sortBy(_._1)
 
-    h foreach { case (n, count) => println(s"$n: ${List.fill(count)("#").mkString("")}") }
+    h foreach { case (n, count) => println(s"$n: ${Vector.fill(count)("#").mkString("")}") }
   }
 
   /**
-    * Stratified resampling
-    * Sample n ORDERED uniform random numbers (one for each particle) using a linear transformation of a U(0,1) RV
+    * Given a vector of doubles, returns a normalised vector with probabilities summing to one
+    * @param prob a vector of unnormalised probabilities
+    * @return a vector of normalised probabilities
     */
-  def stratifiedResampling[F[_], A](s: F[A], w: F[Double])(implicit f: Collection[F]): F[A] = {
-    val n = w.size
-    val k = f.range(1, n, 1).map(i => (i - 1 + scala.util.Random.nextDouble) / n)
-    val empiricalDist = ecdf(w)
-
-    val indices = f.map(k)(i => f.indexWhere(empiricalDist)(e => e > i))
-
-    f.map(indices)(i => f.get(s)(i-1))
+  def normalise[F[_]](prob: F[Double])(implicit f: Collection[F]): F[Double] = {
+    val total = f.sum(prob)
+    f.map(prob)(x => x/total)
   }
 
   /**
@@ -386,21 +393,43 @@ object ParticleFilter {
     cumSum(normalised)
   }
 
+ /**
+    * Multinomial Resampling, sample from a categorical distribution with probabilities
+    * equal to the particle weights 
+    */
+  def multinomialResampling[F[_], A](particles: F[A], weights: F[LogLikelihood])(implicit f: Collection[F]): F[A] = {
+    val indices = f.fill(f.size(particles).toInt)(Multinomial(DenseVector(f.toArray(weights))).draw)
+    f.map(indices)(i => f.get(particles)(i))
+  }
+
+  /**
+    * Stratified resampling
+    * Sample n ORDERED uniform random numbers (one for each particle) using a linear transformation of a U(0,1) RV
+    */
+  def stratifiedResampling[F[_], A](s: F[A], w: F[Double])(implicit f: Collection[F]): F[A] = {
+    val n = w.size
+    val empiricalDist = ecdf(w)
+
+    f.range(1, n, 1).map(i => {
+      val k = (i - 1 + scala.util.Random.nextDouble) / n
+      f.indexWhere(empiricalDist)(e => e > k)
+    }).
+    map(i => f.get(s)(i-1))
+  }
+
   /**
     * Generic systematic Resampling
-    * 
-    * Write SBT doctest scalacheck tests
     */
   def systematicResampling[F[_], A](s: F[A], w: F[Double])(implicit f: Collection[F]) = {
     val u = scala.util.Random.nextDouble // generate a uniform random number 
     val n = f.size(s)
-    val k = f.range(1, n, 1).map(i => (i - 1 + u) / n)
+    // val k = f.range(1, n, 1).map(i => (i - 1 + u) / n)
 
     val empiricalDist = ecdf(w)
 
-    val indices = f.map(k)(i => f.indexWhere(empiricalDist)(e => e > i))
-
-    f.map(indices)(i => f.get(s)(i-1))
+    f.range(1, n, 1).
+      map(i => f.indexWhere(empiricalDist)(e => e > ((i - 1 + u) / n))).
+      map(i => f.get(s)(i-1))
   }
 
   /**
@@ -408,20 +437,20 @@ object ParticleFilter {
     * Select particles in proportion to their weights, ie particle xi appears ki = n * wi times
     * Resample m (= n - total allocated particles) particles according to w = n * wi - ki using other resampling technique
     */
-  def residualResampling[A](particles: List[A], weights: List[Double]): List[A] = {
+  def residualResampling[A](particles: Vector[A], weights: Vector[Double]): Vector[A] = {
     val n = weights.length
     val normalisedWeights = normalise(weights)
     val ki = normalisedWeights.
       map (w => math.floor(w * n).toInt)
 
     val indices = ki.zipWithIndex.
-      map { case (n, i) => List.fill(n)(i) }.
+      map { case (n, i) => Vector.fill(n)(i) }.
       flatten
     val x = indices map { particles(_) }
     val m = n - indices.length
     val residualWeights = normalisedWeights.zip(ki) map { case (w, k) => n * w - k }
 
-    val i = multinomialResampling(List.range(1, m), residualWeights)
+    val i = multinomialResampling(Vector.range(1, m), residualWeights)
     x ++ (i map { particles(_) })
   }
 
@@ -431,19 +460,19 @@ object ParticleFilter {
     * @param interval the upper interval of the required credible interval
     * @return order statistics representing the credible interval of the samples vector
     */
-  def getOrderStatistic(samples: List[Double], interval: Double): CredibleInterval = {
+  def getOrderStatistic(samples: Vector[Double], interval: Double): CredibleInterval = {
     val index = math.floor(samples.size * interval).toInt
     val ordered = samples.sorted
 
     CredibleInterval(ordered(samples.size - index), ordered(index))
   }
 
-  def indentity[A](samples: List[A], weights: List[Double]) = samples
+  def indentity[A](samples: Vector[A], weights: Vector[Double]) = samples
 
   /**
     * Calculate the weighted mean of a particle cloud
     */
-  def weightedMean(x: List[State], w: List[Double]): State = {
+  def weightedMean(x: Vector[State], w: Vector[Double]): State = {
     val normalisedWeights = w map (_ / w.sum)
 
     x.zip(normalisedWeights).
@@ -454,8 +483,8 @@ object ParticleFilter {
   /**
     *  Calculate the mean of a state
     */
-  def meanState(x: List[State]): State = {
-    weightedMean(x, List.fill(x.length)(1.0))
+  def meanState(x: Vector[State]): State = {
+    weightedMean(x, Vector.fill(x.length)(1.0))
   }
 
   /**
@@ -466,7 +495,7 @@ object ParticleFilter {
     * @return a tuple of doubles, (lower, upper)
     */
   def getCredibleInterval(
-    s: List[State],
+    s: Vector[State],
     n: Int,
     interval: Double): IndexedSeq[CredibleInterval] = {
 
@@ -487,7 +516,7 @@ object ParticleFilter {
     * @param interval the interval for the probability interval between [0,1]
     * @return a sequence of tuples, (lower, upper) corresponding to each state reading
     */
-  def getallCredibleIntervals(s: List[State], interval: Double): IndexedSeq[CredibleInterval] = {
+  def getallCredibleIntervals(s: Vector[State], interval: Double): IndexedSeq[CredibleInterval] = {
     s.head.flatten.indices.flatMap(i => getCredibleInterval(s, i, interval))
   }
 
@@ -497,6 +526,6 @@ object ParticleFilter {
     * repeatedly drawing from the distribution and ordering the samples
     */
   def getCredibleIntervals(x0: Rand[State], interval: Double): IndexedSeq[CredibleInterval] = {
-    getallCredibleIntervals(x0.sample(1000).toList, interval)
+    getallCredibleIntervals(x0.sample(1000).toVector, interval)
   }
 }

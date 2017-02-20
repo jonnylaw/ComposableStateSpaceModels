@@ -39,7 +39,7 @@ object SeasStudentT extends App with TModel {
   val times = (1 to 7*24).
     map(_.toDouble).
     filter(_ => scala.util.Random.nextDouble < 0.95).
-    toList
+    toVector
 
   // simulate from the Student T POMP model, simulating states and observations at the times above
   Stream.emits[Task, Double](times).
@@ -66,7 +66,7 @@ object GetSeasTParams extends App with TModel {
     unsafeRun
 
   // create the marginal likelihood, using a particle filter
-  val mll = ParticleFilter.likelihood(data.toList, 200, ParticleFilter.multinomialResampling) compose unparamMod
+  val mll = ParticleFilter.likelihood(data.toVector, 200, ParticleFilter.multinomialResampling) compose unparamMod
 
   // specify the prior distribution over the parameters 
   def prior: Parameters => LogLikelihood = p => 0.0
