@@ -5,16 +5,24 @@ import breeze.stats.distributions.Rand._
 import breeze.stats.distributions.MarkovChain._
 import breeze.linalg.DenseMatrix
 import breeze.numerics._
-import fs2._
-import fs2.util.Suspendable
+import akka.stream.scaladsl._
+/**
+  * The state of the metropolis-hastings algorithms
+  * @param ll the log-likelihood of the observations given the latent state and the current parameters
+  * @param params the current set of parameters
+  * @param state the current path of the state
+  * @param accepted the total number of accepted moves in the metropolis hastings algorithm
+  */
+case class ParamsState(ll: LogLikelihood, params: Parameters, accepted: Int) extends Serializable
 
 /**
   * The state of the metropolis-hastings algorithms
   * @param ll the log-likelihood of the observations given the latent state and the current parameters
   * @param params the current set of parameters
+  * @param state the proposed path of the state from the particle filter
   * @param accepted the total number of accepted moves in the metropolis hastings algorithm
   */
-case class MetropState(ll: LogLikelihood, params: Parameters, accepted: Int)
+case class MetropState(ll: LogLikelihood, params: Parameters, state: Vector[State], accepted: Int) extends Serializable
 
 trait MetropolisHastings {
 
@@ -52,18 +60,18 @@ trait MetropolisHastings {
     * A single step of the metropolis hastings algorithm to be 
     * used with breeze implementation of Markov Chain.
     * This is a slight alteration to the implementation in breeze, 
-    * here MetropState holds on to the previous 
+    * here ParamsState holds on to the previous 
     * calculated pseudo marginal log-likelihood value so we 
     * don't need to run the previous particle filter again each iteration
     */
-  def mhStep: MetropState => Rand[MetropState] = p => {
+  def mhStep: ParamsState => Rand[ParamsState] = p => {
     for {
       propParams <- proposal(p.params)
       propll = logLikelihood(propParams)
       a = propll + logTransition(propParams, p.params) + prior(propParams) - logTransition(p.params, propParams) - p.ll - prior(p.params)
       u <- Uniform(0, 1)
       prop = if (log(u) < a) {
-        MetropState(propll, propParams, p.accepted + 1)
+        ParamsState(propll, propParams, p.accepted + 1)
       } else {
         p
       }
@@ -71,25 +79,19 @@ trait MetropolisHastings {
   }
 
   /**
-    * Use the Breeze Markov Chain to generate a process of MetropState
+    * Use the Breeze Markov Chain to generate a process of ParamsState
     * Calling .sample(n) on this will create a single site metropolis hastings, 
     * proposing parameters only from the initial supplied parameter values
     */
-  def markovIters: Process[MetropState] = {
-    val initState = MetropState(-1e99, initialParams, 0)
+  def markovParams = {
+    val initState = ParamsState(-1e99, initialParams, 0)
     MarkovChain(initState)(mhStep)
   }
-
-  def fromProcess[F[_]: Suspendable, A](iter: Process[A]): Stream[F, A] = {
-    Stream.unfold(iter.step){ case (a, p) => Some((a, p.step)) }
-  }
-
+  
   /**
     * Use the same step for iterations in a stream
     */
-  def iters[F[_]: Suspendable]: Stream[F, MetropState] = {
-    fromProcess[F, MetropState](markovIters)
-  }
+  def params = Source.fromIterator(() => markovParams.steps)
 }
 
 /**
@@ -124,5 +126,41 @@ case class ParticleMetropolisHastings(
   prior: Parameters => LogLikelihood) extends MetropolisHastings {
 
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = transitionProb(from, to)
+}
 
+/**
+  * Particle Metropolis hastings which also samples the state
+  */
+case class ParticleMetropolisState(
+  filter: Parameters => (LogLikelihood, Vector[State]),
+  initialParams: Parameters,
+  proposal: Parameters => Rand[Parameters],
+  prior: Parameters => LogLikelihood) extends MetropolisHastings {
+
+  override def logLikelihood = (p: Parameters) => filter(p)._1
+
+  def mhStepState: MetropState => Rand[MetropState] = s => {
+    for {
+      propParams <- proposal(s.params)
+      (propll, propState) = filter(propParams)
+      a = propll + logTransition(propParams, s.params) + prior(propParams) - 
+      logTransition(s.params, propParams) - s.ll - prior(s.params)
+      u <- Uniform(0, 1)
+      prop = if (log(u) < a) {
+        MetropState(propll, propParams, propState, s.accepted + 1)
+      } else {
+        s
+      }
+    } yield prop
+  }
+
+  def logTransition(from: Parameters, to: Parameters): LogLikelihood = 0.0
+
+  /**
+    * Return the state and the parameters
+    */
+  def iters: Process[MetropState] = {
+    val init = MetropState(-1e99, initialParams, Vector(), 0)
+    MarkovChain(init)(mhStepState)
+  }
 }

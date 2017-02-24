@@ -5,6 +5,7 @@ src/main/resources/*
 
 # scala stuff
 target/*
+src/target
 project/*
 .ensime
 *.jar

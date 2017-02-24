@@ -1,62 +1,65 @@
 package com.github.jonnylaw.examples
 
+import akka.stream.scaladsl._
+import akka.stream._
+import akka.actor.ActorSystem
+import akka.util.ByteString
+
 import breeze.linalg.{DenseVector}
 import breeze.stats.distributions.{Gamma, Gaussian, Rand}
 import breeze.numerics.{exp, log}
 import cats.data.Reader
 import cats.implicits._
 import com.github.jonnylaw.model._
-import fs2._
 import java.nio.file.Paths
 import scala.collection.parallel.immutable.ParVector
+import scala.concurrent.Future
+import scala.concurrent.ExecutionContext.Implicits.global
 
 trait SeasonalTestModel {
   val seasonalParam: Parameters = Parameters.leafParameter(
     Some(3.0),
     SdeParameter.brownianParameter(
-      m0 = DenseVector.fill(6)(0.5),
-      c0 = DenseVector.fill(6)(0.12),
-      mu = DenseVector.fill(6)(0.1),
-      sigma = DenseVector.fill(6)(0.5))
+      m0 = DenseVector.fill(12)(0.5),
+      c0 = DenseVector.fill(12)(0.12),
+      mu = DenseVector.fill(12)(0.1),
+      sigma = DenseVector.fill(12)(0.5))
   )
 
-  val mod = Model.seasonalModel(24, 3, Sde.brownianMotion)
+  val mod = Model.seasonalModel(24, 6, Sde.brownianMotion)
+
+  implicit val system = ActorSystem("SeasonalModel")
+  implicit val materializer = ActorMaterializer()
 }
 
 object SimSeasonalModel extends App with SeasonalTestModel {
-  SimulatedData(mod(seasonalParam)).
-    simRegular[Task](1.0).
-    take(200).
+  SimulateData(mod(seasonalParam)).
+    simRegular(1.0).
+    take(300).
     map((d: Data) => d.show).
-    intersperse("\n").
-    through(text.utf8Encode).
-    through(io.file.writeAll(Paths.get("data/SeasonalModelSims.csv"))).
-    run.
-    unsafeRun()
+    map(s => ByteString(s + "\n")).
+    runWith(FileIO.toPath(Paths.get("data/SeasonalModelSims.csv"))).
+    onComplete(_ => system.terminate())
 }
 
 object FilterSeasonal extends App with SeasonalTestModel {
-  val data = io.file.readAll[Task](Paths.get("data/SeasonalModelSims.csv"), 4096).
-    through(text.utf8Decode).
-    through(text.lines).
+  val data = FileIO.fromPath(Paths.get("data/SeasonalModelSims.csv")).
+    via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
+    map(_.utf8String).
     map(a => a.split(",")).
-    take(200).
-    map(d => TimedObservation(d(0).toDouble, d(1).toDouble))
+    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
+    take(300)
 
   val t0 = 0.0
 
-  val filter = ParticleFilter.filter[ParVector](ParticleFilter.systematicResampling, t0, 1000)
-
-  // I think there is something wrong with getIntervals
+  val filter = ParticleFilter.filter[ParVector](ParticleFilter.parMultinomialResampling, t0, 1000)
 
   data.
-    through(filter(mod(seasonalParam))).
+    via(filter(mod(seasonalParam))).
     map(ParticleFilter.getIntervals(mod(seasonalParam))).
     drop(1).
     map(_.show).
-    intersperse("\n").
-    through(text.utf8Encode).
-    through(io.file.writeAll(Paths.get("data/SeasonalModelFiltered.csv"))).
-    run.
-    unsafeRun()
+    map(s => ByteString(s + "\n")).
+    runWith(FileIO.toPath(Paths.get("data/SeasonalModelFiltered.csv"))).
+    onComplete(_ => system.terminate())
 }

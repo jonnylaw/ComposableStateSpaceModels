@@ -1,10 +1,18 @@
 package com.github.jonnylaw.examples
 
+import akka.stream.scaladsl._
+import akka.stream._
+import akka.actor.ActorSystem
+import akka.util.ByteString
+
 import com.github.jonnylaw.model._
 import java.nio.file.Paths
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
 import cats.implicits._
-import fs2.{io, text, Task, Stream}
+
+import scala.collection.parallel.immutable.ParVector
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 trait TModel {
   val tparams = Parameters.leafParameter(
@@ -31,56 +39,40 @@ trait TModel {
 
   val unparamMod = st |+| seasonal
   val mod = unparamMod(p)
+
+  implicit val system = ActorSystem("StudentT")
+  implicit val materializer = ActorMaterializer()
 }
 
 object SeasStudentT extends App with TModel {
-
   // simulate hourly data, with some missing
   val times = (1 to 7*24).
     map(_.toDouble).
-    filter(_ => scala.util.Random.nextDouble < 0.95).
-    toVector
+    filter(_ => scala.util.Random.nextDouble < 0.95)
 
   // simulate from the Student T POMP model, simulating states and observations at the times above
-  Stream.emits[Task, Double](times).
-    through(SimulatedData(mod).simPompModel(0.0)).
+  Source.apply(times).
+    via(SimulateData(mod).simPompModel(0.0)).
     map((x: Data) => x.show).
-    intersperse("\n").
-    through(text.utf8Encode).
-    through(io.file.writeAll(Paths.get("data/SeasTSims.csv"))).
-    run.
-    unsafeRun
+    runWith(Streaming.writeStreamToFile("data/SeasTSims.csv")).
+    onComplete(_ => system.terminate())
 }
 
 object GetSeasTParams extends App with TModel {
-  // provide a concurrency strategy
-  implicit val S = fs2.Strategy.fromFixedDaemonPool(8, threadName = "worker")
-
-  // read the data in as a Vector
-  val data: Vector[Data] = io.file.readAll[Task](Paths.get("data/SeasTSims.csv"), 4096).
-    through(text.utf8Decode).
-    through(text.lines).
-    map(a => a.split(", ")).
-    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
-    runLog.
-    unsafeRun
-
-  // create the marginal likelihood, using a particle filter
-  val mll = ParticleFilter.likelihood(data.toVector, 200, ParticleFilter.multinomialResampling) compose unparamMod
-
   // specify the prior distribution over the parameters 
   def prior: Parameters => LogLikelihood = p => 0.0
 
-  // create a stream of MCMC iterations
-  def iters(chain: Int) = ParticleMetropolis(mll.run, p, Parameters.perturb(0.05), prior).
-    iters[Task].
-    take(10000).
-    map(_.show).
-    intersperse("\n").
-    through(text.utf8Encode).
-    through(io.file.writeAll(Paths.get(s"data/seastMCMC-$chain.csv"))).
-    run
-
-  // run four chains in parallel
-  Task.parallelTraverse((1 to 4))(iters)
+  // read the data in
+  // create the marginal likelihood, using a particle filter
+  // create a stream of MCMC iterations and run two in parallel
+  Source(Vector(1, 2)).
+    mapAsync(2) { (chain: Int) =>
+      for {
+        data <- DataFromFile("data/SeasTSims.csv").observations.runWith(Sink.seq)
+        mll = ParticleFilter.likelihood[ParVector](data.toVector, ParticleFilter.parMultinomialResampling, 200).compose(unparamMod)
+        pmmh = ParticleMetropolis(mll.run, p, Parameters.perturb(0.05), prior)
+        io <- pmmh.params.take(10000).map(_.show).runWith(Streaming.writeStreamToFile(s"data/seastMCMC-$chain.csv"))
+      } yield io
+    }.
+    runWith(Sink.onComplete(_ => system.terminate))
 }

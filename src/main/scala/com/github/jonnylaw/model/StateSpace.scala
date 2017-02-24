@@ -6,7 +6,8 @@ import breeze.numerics.{sqrt, exp}
 import cats.{Semigroup, Applicative}
 import cats.data.Reader
 import cats.implicits._
-import fs2._
+import akka.stream._
+import akka.stream.scaladsl._
 
 trait Sde { self =>
   def initialState: Rand[State]
@@ -40,23 +41,27 @@ trait Sde { self =>
     } yield newState
   }
 
-  def simEuler(t0: Time, dt: TimeIncrement): Process[State] = {
+  def simEuler(t0: Time, dt: TimeIncrement) = {
     MarkovChain(initialState.draw)(stepEulerMaruyama(dt))
   }
 
-  def simProcess(t0: Time, dt: TimeIncrement): Process[State] = {
+  def simProcess(t0: Time, dt: TimeIncrement) = {
     MarkovChain(initialState.draw)(stepFunction(dt))
   }
 
-  def simStream[F[_]](t0: Time, dt: TimeIncrement): Stream[F, State] = {
-    fromProcess[F, State](simProcess(t0, dt))
+  def simStream(t0: Time, dt: TimeIncrement) = {
+    Source.fromIterator(() => simProcess(t0, dt).steps)
   }
 
-  def simStreamInit[F[_]](t0: Time, initialState: State, dt: TimeIncrement) = {
-    fromProcess[F, StateSpace](MarkovChain(StateSpace(t0, initialState))(s => for {
+  def simInit(t0: Time, initialState: State, dt: TimeIncrement) = {
+    MarkovChain(StateSpace(t0, initialState))(s => for {
       x <- stepFunction(dt)(s.state)
       t = s.time + dt
-    } yield StateSpace(t, x)))
+    } yield StateSpace(t, x))
+  }
+
+  def simInitStream(t0: Time, initialState: State, dt: TimeIncrement): Stream[StateSpace] = {
+    simInit(t0, initialState, dt).steps.toStream
   }
 }
 

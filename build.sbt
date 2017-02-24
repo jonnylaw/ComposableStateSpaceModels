@@ -2,7 +2,7 @@ name := "ComposableModels"
 
 organization := "com.github.jonnylaw"
 
-version := "0.3.4"
+version := "0.4.0"
 
 scalaVersion := "2.11.8"
 
@@ -15,11 +15,10 @@ resolvers ++= Seq(
 
 libraryDependencies  ++= Seq(
   "org.scalanlp" %% "breeze" % "0.12",
-  "org.scalatest" %% "scalatest" % "2.2.4" % "test",
   "com.github.fommil.netlib" % "all" % "1.1.2",
   "org.typelevel" %% "cats" % "0.9.0",
-  "co.fs2" %% "fs2-core" % "0.9.2",
-  "co.fs2" %% "fs2-io" % "0.9.2",
+  "com.typesafe.akka" %% "akka-stream" % "2.4.17",
+  "org.scalatest" %% "scalatest" % "2.2.4" % "test",
   "org.scalacheck" %% "scalacheck" % "1.13.4" % "test"
 )
 

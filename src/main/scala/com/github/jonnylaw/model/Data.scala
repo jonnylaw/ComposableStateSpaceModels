@@ -1,8 +1,13 @@
 package com.github.jonnylaw.model
 
+import akka.stream.scaladsl._
+import akka.stream._
+import akka.NotUsed
+import akka.util.ByteString
 import breeze.stats.distributions.{Rand, Exponential, Process, MarkovChain, Uniform}
-import fs2._
 import breeze.numerics.{exp, sqrt}
+import java.nio.file._
+import scala.concurrent.Future
 
 /**
   * A single observation of a time series
@@ -34,18 +39,18 @@ case class ObservationWithState(
   */
 case class TimedObservation(t: Time, observation: Observation) extends Data
 
-trait DataService {
-  def observations[F[_]]: Stream[F, Data]
+trait DataService[F] {
+  def observations: Source[Data, F]
 }
 
-case class SimulatedData(model: Model) extends DataService {
-  def observations[F[_]] = simRegular[F](0.1)
+case class SimulateData(model: Model) extends DataService[NotUsed] {
+  def observations: Source[Data, NotUsed] = simRegular(0.1)
 
   /**
     * Simulate a single step from a model, return a distribution over the possible values
     * of the next step
     * @param deltat the time difference between the previous and next realisation of the process
-    * @return a function from the previous datapoint to a Rand (Monadic distribution) representing 
+    * @return a function from the previous datapoint to a Rand (Monadic distribution) representing
     * the distribution of the next datapoint 
     */
   def simStep(deltat: TimeIncrement) = (d: ObservationWithState) =>  {
@@ -61,9 +66,9 @@ case class SimulatedData(model: Model) extends DataService {
     * Simulate from a POMP model on an irregular grid, given an initial time and a stream of times 
     * at which simulate from the model
     * @param t0 the start time of the process
-    * @return an Pipe transforming a Stream from Time to ObservationWithState 
+    * @return an Akka Flow transforming a Stream from Time to ObservationWithState 
     */
-  def simPompModel(t0: Time): Pipe[Task, Time, ObservationWithState] = {
+  def simPompModel(t0: Time) = {
     val init = for {
       x0 <- model.sde.initialState
       gamma = model.f(x0, t0)
@@ -71,7 +76,22 @@ case class SimulatedData(model: Model) extends DataService {
       y <- model.observation(gamma)
     } yield ObservationWithState(t0, y, eta, gamma, x0)
 
-    pipe.scan(init.draw)((d0, t: Time) => simStep(t - d0.t)(d0).draw)
+    Flow[Time].scan(init.draw)((d0, t: Time) => simStep(t - d0.t)(d0).draw)
+  }
+
+  /**
+    * Compute an empirical forecast, starting from a filtering distribution estimate
+    * @param s a PfState object, the output of a particle filter
+    */
+  def forecast[F[_]](s: PfState[F])(implicit f: Collection[F]) = {
+
+    val init = f.map(s.particles)(x => {
+      val gamma = model.f(x, s.t)
+      val eta = model.link(gamma)
+      ObservationWithState(s.t, s.observation.getOrElse(0.0), eta, gamma, x)
+    })
+
+    Flow[Time].scan(init)((d0, t: Time) => f.map(d0)(x => simStep(t - x.t)(x).draw))
   }
 
   /**
@@ -97,8 +117,8 @@ case class SimulatedData(model: Model) extends DataService {
     * @param dt the time increment between successive realisations of the POMP model
     * @return an Akka Stream containing a realisation of the process
     */
-  def simRegular[F[_]](dt: TimeIncrement): Stream[F, ObservationWithState] = {
-      fromProcess(simMarkov(dt))
+  def simRegular(dt: TimeIncrement): Source[ObservationWithState, NotUsed] = {
+    Source.fromIterator(() => simMarkov(dt).steps)
   }
 
   /**
@@ -175,5 +195,20 @@ object SimulateData {
       iterate(StateSpace(t0, x0))(x =>
         StateSpace(x.time + deltat, stepFunction(deltat)(x.state).draw)).
       takeWhile(s => s.time <= t0 + totalIncrement)
+  }
+}
+
+/**
+  * Read a csv file in, where the first column corresponds to the Time, represented as a Double
+  * and the second column represents the observation.
+  * @param file a java.nio.file.Path to a file
+  */
+case class DataFromFile(file: String) extends DataService[Future[IOResult]] {
+  def observations: Source[Data, Future[IOResult]] = {
+    FileIO.fromPath(Paths.get(file)).
+      via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
+      map(_.utf8String).
+      map(a => a.split(",")).
+      map(d => TimedObservation(d(0).toDouble, d(1).toDouble))
   }
 }

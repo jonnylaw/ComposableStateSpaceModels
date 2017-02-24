@@ -6,7 +6,6 @@ import breeze.linalg.{DenseVector, diag}
 import cats._
 import cats.implicits._
 import cats.data.Reader
-import fs2.Stream
 import scala.collection.parallel.immutable.ParVector
 import scala.reflect.ClassTag
 
@@ -46,30 +45,17 @@ package object model {
   }
 
   implicit def parVectorCollection = new Collection[ParVector] {
-    def pure[A](x: A): ParVector[A] = ParVector(x)
-
+    def map[A, B](fa: ParVector[A])(f: A => B): ParVector[B] = fa.map(f)
     def flatMap[A, B](fa: ParVector[A])(f: A => ParVector[B]): ParVector[B] = fa.flatMap(f)
-    def tailRecM[A, B](a: A)(f: A => ParVector[Either[A,B]]): ParVector[B] = ???
-
-    // Members declared in Collection
     def get[A](fa: ParVector[A])(i: Int): A = fa(i)
     def indexWhere[A](fa: ParVector[A])(cond: A => Boolean): Int = fa.indexWhere(cond)
-    def scanLeft[A, B, C](fa: ParVector[A],z: B)(f: (B, A) => B): ParVector[B] = fa.scanLeft(z)(f)
-
-    // Members declared in cats.Foldable
+    def scanLeft[A, B](fa: ParVector[A],z: B)(f: (B, A) => B): ParVector[B] = fa.scanLeft(z)(f)
     def foldLeft[A, B](fa: ParVector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
-    def foldRight[A, B](fa: ParVector[A],lb: cats.Eval[B])(f: (A, cats.Eval[B]) => cats.Eval[B]): cats.Eval[B] = fa.foldRight(lb)(f)
-
-    // Members declared in cats.MonoidK
     def empty[A]: ParVector[A] = ParVector()
-
-    // Members declared in cats.SemigroupK
+    def size[A](fa: ParVector[A]) = fa.size
     def combineK[A](x: ParVector[A], y: ParVector[A]): ParVector[A] = x ++ y
-
     def indices[A](fa: ParVector[A]) = fa.zipWithIndex.map(_._2)
-
     def toArray[A: ClassTag](fa: ParVector[A]): Array[A] = fa.toArray
-
     def fill[A](n: Int)(a: A): ParVector[A] = ParVector.fill(n)(a)
     def unzip[A, B](fa: ParVector[(A, B)]): (ParVector[A], ParVector[B]) = fa.unzip
     def max[A: Ordering](fa: ParVector[A]): A = fa.max
@@ -77,32 +63,17 @@ package object model {
     def zip[A, B](fa: ParVector[A], fb: ParVector[B]): ParVector[(A, B)] = fa.zip(fb)
   }
 
-  implicit def listCollection = new Collection[Vector] {
-    def pure[A](x: A): Vector[A] = Vector(x)
-
+  implicit def vectorCollection = new Collection[Vector] {
+    def map[A, B](fa: Vector[A])(f: A => B): Vector[B] = fa.map(f)
     def flatMap[A, B](fa: Vector[A])(f: A => Vector[B]): Vector[B] = fa.flatMap(f)
-    def tailRecM[A, B](a: A)(f: A => Vector[Either[A,B]]): Vector[B] = ???
-
-    // Members declared in Collection
     def get[A](fa: Vector[A])(i: Int): A = fa(i)
     def indexWhere[A](fa: Vector[A])(cond: A => Boolean): Int = fa.indexWhere(cond)
-    def scanLeft[A, B, C](fa: Vector[A],z: B)(f: (B, A) => B): Vector[B] = fa.scanLeft(z)(f)
-
-    // Members declared in cats.Foldable
+    def scanLeft[A, B](fa: Vector[A],z: B)(f: (B, A) => B): Vector[B] = fa.scanLeft(z)(f)
     def foldLeft[A, B](fa: Vector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
-    def foldRight[A, B](fa: Vector[A],lb: cats.Eval[B])(f: (A, cats.Eval[B]) => cats.Eval[B]): cats.Eval[B] = fa.foldRight(lb)(f)
-
-    // Members declared in cats.MonoidK
     def empty[A]: Vector[A] = Vector()
-
-    // Members declared in cats.SemigroupK
+    def size[A](fa: Vector[A]) = fa.size
     def combineK[A](x: Vector[A], y: Vector[A]): Vector[A] = x ++ y
-
-    /**
-      * Return the indices of a collection
-      */
     def indices[A](fa: Vector[A]) = fa.zipWithIndex.map(_._2)
-
     def fill[A](n: Int)(a: A) = Vector.fill(n)(a)
     def toArray[A: ClassTag](fa: Vector[A]): Array[A] = fa.toArray
     def unzip[A, B](fa: Vector[(A, B)]): (Vector[A], Vector[B]) = fa.unzip
@@ -143,15 +114,20 @@ package object model {
     }
   }
 
-  implicit def itersShow(implicit S: Show[Parameters]) = new Show[MetropState] {
+  implicit def itersShow(implicit S: Show[Parameters], T: Show[State]) = new Show[MetropState] {
     def show(a: MetropState): String = 
+      s"${S.show(a.params)}, ${a.state.map(T.show).mkString(", ")}, ${a.accepted}"
+  }
+
+  implicit def paramStateShow(implicit S: Show[Parameters]) = new Show[ParamsState] {
+    def show(a: ParamsState): String = 
       s"${S.show(a.params)}, ${a.accepted}"
   }
 
-  implicit def filterShow[F[_]: Collection](implicit S: Show[State]) = new Show[PfState[F]] {
+  implicit def filterShow[F[_]: Collection](implicit S: Show[State], f: Collection[F]) = new Show[PfState[F]] {
     def show(a: PfState[F]): String = a.observation match {
-      case Some(y) => s"${a.t}, $y, ${(a.particles map (S.show)).toList.mkString(", ")}, ${a.ess}"
-      case None => s"${a.t}, NA, ${(a.particles map (S.show)).toList.mkString(", ")}, ${a.ess}"
+      case Some(y) => s"${a.t}, $y, ${f.toVector(f.map(a.particles)(S.show)).mkString(", ")}, ${a.ess}"
+      case None => s"${a.t}, NA, ${f.toVector(f.map(a.particles)(S.show)).mkString(", ")}, ${a.ess}"
     }
   }
 
@@ -170,14 +146,6 @@ package object model {
 
   implicit def forecastOutShow(implicit S: Show[State]) = new Show[ForecastOut] {
     def show(a: ForecastOut): String = s"${a.t}, ${a.obs}, ${a.obsIntervals.toString}, ${a.eta}, ${a.etaIntervals.toString}, ${S.show(a.state)}, ${a.stateIntervals.mkString(", ")}"
-  }
-
-  /**
-    * Create an fs2 stream from a breeze Process
-    * @param iter a breeze Process
-    */
-  implicit def fromProcess[F[_], A](iter: Process[A]): Stream[F, A] = {
-    Stream.unfold(iter.step){ case (a, p) => Some((a, p.step)) }
   }
 
   /**
