@@ -1,8 +1,8 @@
 # Composable POMP Models
 
-This is a Scala library for partially observed Markov processes (POMP) with a continuous time latent state. Composable POMP models can be used to model a variety of univariate time series data. As of version 0.2, this library is built using [fs2 streams](https://github.com/functional-streams-for-scala/fs2).
+This is a Scala library for inference and filtering of state space models with a continuous time latent state. The library relies on Akka Streams.
 
-For library documentation, see the [guide](https://jonnylaw.github.io/ComposableStateSpaceModels), this is currently being updated for version 0.2.0 of the library.
+For library documentation, see the [guide](https://jonnylaw.github.io/ComposableStateSpaceModels).
 
 ## Quick Start
 
@@ -11,7 +11,7 @@ For library documentation, see the [guide](https://jonnylaw.github.io/Composable
 This library is built for Scala 2.11.8, add the following dependency to your `build.sbt` file in the project root.
 
 ```scala
-libraryDependencies += "com.github.jonnylaw" %% "composablemodels" % "0.2.0"
+libraryDependencies += "com.github.jonnylaw" %% "composablemodels" % "0.4.0"
 ```
 
 ### Interactive Installation
@@ -21,6 +21,6 @@ If you want to play around with the library interactively, then run sbt and ente
 ```bash
 $ sbt
 > set scalaVersion := "2.11.8"
-> set libraryDependencies += "com.github.jonnylaw" %% "composablemodels" % "0.2.0"
+> set libraryDependencies += "com.github.jonnylaw" %% "composablemodels" % "0.4.0"
 > console
 ```
