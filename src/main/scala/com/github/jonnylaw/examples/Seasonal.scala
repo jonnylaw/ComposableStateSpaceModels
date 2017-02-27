@@ -35,31 +35,52 @@ trait SeasonalTestModel {
 object SimSeasonalModel extends App with SeasonalTestModel {
   SimulateData(mod(seasonalParam)).
     simRegular(1.0).
-    take(300).
+    take(500).
     map((d: Data) => d.show).
-    map(s => ByteString(s + "\n")).
-    runWith(FileIO.toPath(Paths.get("data/SeasonalModelSims.csv"))).
+    runWith(Streaming.writeStreamToFile("data/SeasonalModelSims.csv")).
     onComplete(_ => system.terminate())
 }
 
 object FilterSeasonal extends App with SeasonalTestModel {
-  val data = FileIO.fromPath(Paths.get("data/SeasonalModelSims.csv")).
-    via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
-    map(_.utf8String).
-    map(a => a.split(",")).
-    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
-    take(300)
+  val data = DataFromFile("data/SeasonalModelSims.csv").
+    observations
 
   val t0 = 0.0
 
-  val filter = ParticleFilter.filter[ParVector](ParticleFilter.parMultinomialResampling, t0, 1000)
+  val filter = ParticleFilter.filter[Vector](Resampling.treeSystematicResampling, t0, 1000)
 
   data.
     via(filter(mod(seasonalParam))).
     map(ParticleFilter.getIntervals(mod(seasonalParam))).
     drop(1).
     map(_.show).
-    map(s => ByteString(s + "\n")).
-    runWith(FileIO.toPath(Paths.get("data/SeasonalModelFiltered.csv"))).
+    runWith(Streaming.writeStreamToFile("data/SeasonalModelFiltered.csv")).
+    onComplete(_ => system.terminate())
+}
+
+object DetermineSeasonalParameters extends App with SeasonalTestModel {
+  def prior(p: Parameters) = { p match {
+    case LeafParameter(Some(v), BrownianParameter(m, c, mu, sigma)) =>
+      Gamma(0.5, 1.0).logPdf(v) +
+      m.mapValues(Gaussian(0.5, 3.0).logPdf(_)).reduce(_+_) + 
+      c.mapValues(Gamma(0.05, 2.0).logPdf(_)).reduce(_+_) + 
+      mu.mapValues(Gaussian(0.1, 3.0).logPdf(_)).reduce(_+_) + 
+      sigma.mapValues(Gamma(0.2, 3.0).logPdf(_)).reduce(_+_)
+  }}
+
+
+  def iters(chain: Int): Future[IOResult] = for {
+    data <- DataFromFile("data/SeasonalModelSims.csv").observations.take(400).runWith(Sink.seq)
+    filter = ParticleFilter.likelihood[Vector](data.toVector,
+        Resampling.treeStratifiedResampling, 150).compose(mod)
+    pmmh = ParticleMetropolis(filter.run, seasonalParam, Parameters.perturb(0.05), prior)
+    io <- pmmh.
+        params.
+        take(10000).
+        map(_.show).
+        runWith(Streaming.writeStreamToFile(s"data/SeasonalModelParams-$chain.csv"))
+  } yield io
+
+  Future.sequence((1 to 2).map(iters)).
     onComplete(_ => system.terminate())
 }

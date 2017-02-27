@@ -10,6 +10,7 @@ import breeze.linalg.DenseVector
 import breeze.stats.distributions.{Gamma, Gaussian, Rand}
 import cats.data.Reader
 import cats.implicits._
+import cats._
 
 import com.github.jonnylaw.model._
 import Parameters._
@@ -19,6 +20,7 @@ import java.io._
 
 import scala.collection.parallel.immutable.ParVector
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 /**
   * Define a model to use throughout the examples in this file
@@ -71,7 +73,7 @@ object FilterSeasonalPoisson extends TestModel {
     val n = 1000 // number of particles for the particle filter
     val t0 = 0.0 // starting time of the filter (time of the first observation)
     setParallelismGlobally(8) // set the number of threads to use for the parallel particle filter
-    val filter = ParticleFilter.filter[ParVector](ParticleFilter.parMultinomialResampling, 0.0, n)
+    val filter = ParticleFilter.filter[ParVector](Resampling.parMultinomialResampling, 0.0, n)
 
     DataFromFile("data/seasonalPoissonSims.csv").
       observations.
@@ -120,24 +122,21 @@ object DetermineComposedParams extends TestModel {
       case _ => None
     }
 
-    setParallelismGlobally(8) // set the number of threads to use for the parallel particle filter
-
     // 1. read data from file
     // 2. compose model with particle filter to get function from Parameters => LogLikelihood
     // 3. Build the PMMH algorithm using the mll estimate from the particle filter
     // 4. write it to a file as a stream
-    val data = DataFromFile("data/seasonalPoissonSims.csv").observations.runWith(Sink.seq)
+    def iters(chain: Int) = for {
+      data <- DataFromFile("data/seasonalPoissonSims.csv").observations.runWith(Sink.seq)
+      filter = ParticleFilter.likelihood[Vector](data.sortBy(_.t).toVector, 
+        Resampling.treeSystematicResampling, 1500).
+      compose(model)
+      pmmh = ParticleMetropolis(filter.run, params, Parameters.perturb(0.05), p => prior(p).get)
+      io <- pmmh.params.take(100000).map(_.show).
+        runWith(Streaming.writeStreamToFile(s"data/seasonalPoissonParams-$chain.csv"))
+    } yield io
 
-    val filter = data map (d => ParticleFilter.likelihood[ParVector](d.toVector, ParticleFilter.parMultinomialResampling, 1500).
-      compose(model))
-
-    val pmmh = filter map (pf => ParticleMetropolis(pf.run, params, Parameters.perturb(0.05), p => prior(p).get))
-    
-    pmmh.flatMap(_.
-      params.
-      take(10000).
-      map(_.show).
-      runWith(Streaming.writeStreamToFile("data/seasonalPoissonParams.csv"))).
+    Future.sequence((1 to 2).map(iters)).
       onComplete(_ => system.terminate())
   }
 }
@@ -146,13 +145,14 @@ object PilotRunComposed extends App with TestModel {
   setParallelismGlobally(8) // set the number of threads to use for the parallel particle filter
 
   val particles = Vector(100, 200, 500, 1000, 2000)
+  val resample: Resample[Vector, Id, State] = Resampling.treeSystematicResampling _
 
   val res = for {
     data <- DataFromFile("data/seasonalPoissonSims.csv").observations.runWith(Sink.seq)
-  } yield Streaming.pilotRun(data.toVector, model, params, particles)
+    vars = Streaming.pilotRun[Vector](data.toVector, model, params, resample, particles)
+    io <- vars.map { case (n, v) => s"$n, $v" }.
+      runWith(Streaming.writeStreamToFile("data/ComposedPilotRun.csv"))
+  } yield io
 
-  res.flatMap(_.
-    map { case (n, v) => s"$n, $v" }.
-    runWith(Streaming.writeStreamToFile("data/ComposedPilotRun.csv"))).
-    onComplete(_ => system.terminate())
+  res.onComplete(_ => system.terminate())
 }

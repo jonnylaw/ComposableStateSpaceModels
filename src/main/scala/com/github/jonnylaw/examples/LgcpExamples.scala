@@ -39,7 +39,7 @@ object SimulateLGCP extends App with LgcpModel {
 }
 
 object FilteringLgcp extends App with LgcpModel {
-  val pf = FilterLgcp(model(params), ParticleFilter.parMultinomialResampling, 3)
+  val pf = FilterLgcp(model(params), Resampling.parMultinomialResampling, 3)
 
   // read from file and order the readings
   val data = DataFromFile("data/lgcpsims.csv").observations.runWith(Sink.seq)
@@ -70,7 +70,7 @@ object GetLgcpParams extends App with LgcpModel {
   // read in the LGCP simulated data using akka
   val res = for {
     data <- DataFromFile("data/lgcpsims.csv").observations.runWith(Sink.seq)
-    filter = Reader { (mod: Model) => FilterLgcp(mod, ParticleFilter.parMultinomialResampling, precision).
+    filter = Reader { (mod: Model) => FilterLgcp(mod, Resampling.parMultinomialResampling, precision).
       llFilter(data.toVector)(200)}
     mll = filter compose model
     pmmh = ParticleMetropolis(mll.run, params, Parameters.perturb(0.05), prior)

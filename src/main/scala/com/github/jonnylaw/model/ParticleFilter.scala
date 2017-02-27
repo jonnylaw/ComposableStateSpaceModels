@@ -1,25 +1,34 @@
 package com.github.jonnylaw.model
 
-import breeze.stats.distributions.{Rand, Uniform, Multinomial}
+import akka.stream.scaladsl._
+import akka.stream._
+import akka.NotUsed
+
+import breeze.stats.distributions.{Rand, Multinomial}
 import breeze.numerics.{exp, log}
 import breeze.linalg.DenseVector
 
 import cats._
 import cats.data.Reader
 import cats.implicits._
-
-import akka.stream.scaladsl._
-import akka.stream._
+import cats.instances._
 
 import scala.collection.parallel.immutable.ParVector
+import scala.collection.immutable.TreeMap
+import scala.concurrent._
 import scala.language.higherKinds
+import scala.language.implicitConversions
 import scala.reflect.ClassTag
+import simulacrum._
+import Collection.ops._
 
 /**
   * A typeclass representing a Collection with a few additional 
   * features required for implementing the particle filter
   */
-trait Collection[F[_]] {
+@typeclass trait Collection[F[_]] {
+  def pure[A](a: A): F[A]
+  def isEmpty[A](fa: F[A]): Boolean
   def map[A, B](fa: F[A])(f: A => B): F[B]
   def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B]
   def scanLeft[A, B](fa: F[A], z: B)(f: (B, A) => B): F[B]
@@ -34,6 +43,8 @@ trait Collection[F[_]] {
   def toVector[A](fa: F[A]): Vector[A]
   def unzip[A, B](fa: F[(A, B)]): (F[A], F[B])
   def zip[A, B](fa: F[A], fb: F[B]): F[(A, B)]
+  def drop[A](fa: F[A])(n: Int): F[A]
+  def toTreeMap[A: Ordering, B](fa: F[(A, B)]): TreeMap[A, B]
 }
 
 /**
@@ -104,9 +115,11 @@ case class ForecastOut(
   */
 case class ParamFilterState[F[_]](t: Time, observation: Option[Observation], ps: F[(Parameters, State)], ll: LogLikelihood)
 
-trait ParticleFilter[F[_]] {
+trait ParticleFilter[F[_], G[_]] {
   implicit val f: Collection[F]
+  implicit val g: Monad[G]
 
+//  implicit val ec: ExecutionContext
   import ParticleFilter._
 
   val mod: Model
@@ -116,27 +129,29 @@ trait ParticleFilter[F[_]] {
     PfState[F](t0, None, state, 0.0, particles)
   }
 
-  def resample: Resample[F, State]
+  def resample: Resample[F, G, State]
 
-  def stepFilter(s: PfState[F], y: Data): PfState[F] = {
+  def stepFilter(s: PfState[F], y: Data): G[PfState[F]] = {
     val dt = y.t - s.t
-    val x1 = f.map(s.particles)(x => mod.sde.stepFunction(dt)(x).draw)
-    val w = f.map(x1)(x => mod.dataLikelihood(mod.f(x, y.t), y.observation))
-    val max = f.max(w)
-    val w1 = f.map(w)(a => exp(a - max))
+    val x1 = s.particles map (x => mod.sde.stepFunction(dt)(x).draw)
+    val w = x1 map (x => mod.dataLikelihood(mod.f(x, y.t), y.observation))
+    val max = w.max
+    val w1 = w map (a => exp(a - max))
     val ll = s.ll + max + log(ParticleFilter.mean(w1))
-    val resampledX = resample(x1, w1)
     val ess = ParticleFilter.effectiveSampleSize(w1)
     
-    PfState(y.t, Some(y.observation), resampledX, ll, ess)
+    for {
+      resampledX <- resample(x1, w1)
+    } yield PfState(y.t, Some(y.observation), resampledX, ll, ess)
   }
 
   /**
     * Filter a collection of data and return an estimate of the loglikelihood
     */
-  def llFilter(data: Vector[Data])(n: Int) = {
-    val initState = initialiseState(n, data.minBy(_.t).t)
-    data.foldLeft(initState)(stepFilter).ll
+  def llFilter(data: Vector[Data])(n: Int): G[LogLikelihood] = {
+    val initState = g.pure(initialiseState(n, data.minBy(_.t).t))
+    data.foldLeft(initState)((s, y) => s flatMap(stepFilter(_, y))).
+      map(_.ll)
   }
 
   /**
@@ -146,30 +161,34 @@ trait ParticleFilter[F[_]] {
     * @param particles the number of particles to use in the particle approximation to the filtering distribution
     * @return (LogLikelihood, Vector[State]) The log likelihood and a sample from the posterior of the filtering distribution
     */
-  def filter(data: Vector[Data])(particles: Int): (LogLikelihood, Vector[State]) = {
-    val init = initialiseState(particles, data.minBy(_.t).t)
+  def filter(data: Vector[Data])(particles: Int): G[(LogLikelihood, Vector[State])] = ???
 
-    val states = data.scanLeft(init)(stepFilter)
+// {
+//     val init = g.pure(initialiseState(particles, data.minBy(_.t).t))
 
-    (states.last.ll, f.toVector(ParticleFilter.sampleOne(states.map(_.particles))))
-  }
+//     for {
+//       states: Vector[PfState[F]] <- data.scanLeft(init)((s, y) => s flatMap(stepFilter(_, y)))
+//       ll = states.last.ll
+//     } yield (ll, Resampling.sampleOne(states.map(_.particles)).toVector)
+//   }
 
   /**
     * Run a filter over a stream of data
     */
-  def filterStream(t0: Time)(particles: Int) = {
-    val initState = initialiseState(particles, t0)
+  def filterStream(t0: Time)(particles: Int): Flow[Data, G[PfState[F]], NotUsed] = {
+    val initState = g.pure(initialiseState(particles, t0))
 
-    Flow[Data].scan(initState)(stepFilter)
+    Flow[Data].scan(initState)((s, y) => s flatMap(stepFilter(_, y)))
   }
 }
 
 case class FilterLgcp(
   mod: Model,
-  resample: Resample[ParVector, State], 
-  precision: Int) extends ParticleFilter[ParVector] {
+  resample: Resample[ParVector, Id, State], 
+  precision: Int) extends ParticleFilter[ParVector, Id] {
 
   override val f = implicitly[Collection[ParVector]]
+  override val g = implicitly[Monad[Id]]
 
   def calcWeight(x: State, dt: TimeIncrement, t: Time): (State, Double, Double) = {
     // calculate the amount of realisations of the state we need
@@ -207,27 +226,58 @@ case class FilterLgcp(
   }
 }
 
+case class FilterAsync(
+  parallelism: Int, 
+  mod: Model, 
+  resample: Resample[Vector, Future, State])(
+  implicit ec: ExecutionContext) extends ParticleFilter[Vector, Future] {
+
+  override val f = implicitly[Collection[Vector]]
+  override val g = implicitly[Monad[Future]]
+
+  override def stepFilter(s: PfState[Vector], y: Data): Future[PfState[Vector]] = {
+    val dt = y.t - s.t
+
+    // advance the state and calculate the likelihood in parallel
+    // by transforming the vectors into ParVectors
+    val newState = s.particles.par map (x => mod.sde.stepFunction(dt)(x).draw)
+    val weight = newState.par map (x => mod.dataLikelihood(mod.f(x, y.t), y.observation))
+
+    // update the value of the log-likelihood, and effective sample size
+    val max = weight.max
+    val w1 = weight map (a => exp(a - max))
+    val ll = s.ll + max + log(ParticleFilter.mean(w1))
+    val ess = ParticleFilter.effectiveSampleSize(w1)
+
+    // resample using Future async
+    for {
+      resampledX <- resample(newState.toVector, w1.toVector)
+    } yield PfState(y.t, Some(y.observation), resampledX, ll, ess)
+  }
+
+}
+
 /**
   * A particle filter which can represent particle clouds as a Collection, Collection is a typeclass
   * which can currently has concrete methods for Vector and ParVector 
   * @param unparamModel
   */
-case class Filter[F[_]: Collection](
+case class Filter[F[_]: Collection, G[_]: Monad](
   mod: Model, 
-  resample: Resample[F, State]) extends ParticleFilter[F] {
+  resample: Resample[F, G, State]) extends ParticleFilter[F, G] {
 
   override val f = implicitly[Collection[F]]
-
+  override val g = implicitly[Monad[G]]
 }
 
 /**
-  * This class represents a particle filter which takes a sample from the joint-posterior of the parameters
+  * A particle filter which takes a sample from the joint-posterior of the parameters
   * and state p(x, theta | y) 
   * @param 
   */
 case class FilterState[F[_]: Collection](
   unparamModel: Parameters => Model, 
-  resample: Resample[F, (Parameters, State)]) {
+  resample: Resample[F, Id, (Parameters, State)]) {
 
   val f = implicitly[Collection[F]]
 
@@ -272,19 +322,19 @@ object ParticleFilter {
     * When given a Model, this can be used to filter an fs2 stream of data
     * eg:
     * val mod: Model
-    * val resample: Resample[F, State]
+    * val resample: Resample[F, G, State]
     * val pf = filter(resample, 0.0, 100)
     * val data: Source[NotUsed, Data] = // data as an fs2 stream
     * data.
     *   through(pf(mod))
     */
   def filter[F[_]: Collection](
-    resample: Resample[F, State], 
-    t0: Time, 
+    resample: Resample[F, Id, State],
+    t0: Time,
     n: Int
   ) = Reader { (mod: Model) =>
 
-    Filter[F](mod, resample).filterStream(t0)(n)
+    Filter[F, Id](mod, resample).filterStream(t0)(n)
   }
 
   /**
@@ -295,7 +345,7 @@ object ParticleFilter {
     * @param initState a collection of particles representing the state of the 
     */
   def filterFromPosterior[F[_]: Collection](
-    resample: Resample[F, (Parameters, State)], 
+    resample: Resample[F, Id, (Parameters, State)], 
     init: F[(Parameters, State)],
     t: Time)(unparamModel: Parameters => Model) = {
 
@@ -311,11 +361,11 @@ object ParticleFilter {
     */
   def filterLlState[F[_]: Collection](
     data: Vector[Data],
-    resample: Resample[F, State],
-    n: Int
+    resample: Resample[F, Id, State],
+n: Int
   ) = Reader { (mod: Model) =>
 
-    Filter[F](mod, resample).filter(data)(n)
+    Filter[F, Id](mod, resample).filter(data)(n)
   }
 
   /**
@@ -327,27 +377,12 @@ object ParticleFilter {
     * @param parameters the starting parameters of the filter
     * @return a value of logLikelihood
     */
-  def likelihood[F[_]](data: Vector[Data], resample: Resample[F, State], n: Int)(implicit f: Collection[F]) = Reader { (model: Model) =>
-    Filter[F](model, resample).
+  def likelihood[F[_]: Collection](data: Vector[Data], 
+    resample: Resample[F, Id, State], n: Int) = Reader { (model: Model) =>
+
+    Filter[F, Id](model, resample).
       llFilter(data.sortBy((d: Data) => d.t))(n)
   }
-
-  /**
-    * Sample one thing, uniformly, from a collection
-    */
-  def sampleOne[F[_], A](s: F[A])(implicit f: Collection[F]): A = {
-    val index = math.abs(scala.util.Random.nextInt) % f.size(s).toInt
-    f.get(s)(index)
-  }
-
-  /**
-    * Sample unifomly without replacement
-    */
-  def sampleMany[A](n: Int, s: Vector[A]) = {
-    val indices = breeze.linalg.shuffle(s.indices).take(n)
-    indices map (i => s(i))
-  }
-
 
   /**
     * Given an initial set of particles, representing an approximation of the posterior
@@ -429,7 +464,7 @@ object ParticleFilter {
     * @param weights the unnormalised weights
     */
   def effectiveSampleSize[F[_]](weights: F[Double])(implicit f: Collection[F]): Int = {
-    val normalisedWeights = normalise(weights)
+    val normalisedWeights = Resampling.normalise(weights)
     math.floor(1 / sum(f.map(normalisedWeights)(w => w * w))).toInt
   }
 
@@ -446,123 +481,6 @@ object ParticleFilter {
     h foreach { case (n, count) => println(s"$n: ${Vector.fill(count)("#").mkString("")}") }
   }
 
-  /**
-    * Given a vector of doubles, returns a normalised vector with probabilities summing to one
-    * @param prob a vector of unnormalised probabilities
-    * @return a vector of normalised probabilities
-    */
-  def normalise[F[_]](prob: F[Double])(implicit f: Collection[F]): F[Double] = {
-    val total = sum(prob)
-    f.map(prob)(x => x/total)
-  }
-
-  // def multinomialResampling[F[_], A](
-  //   particles: F[A], 
-  //   weights: F[LogLikelihood])(implicit f: Collection[F]): F[A] = {
-
-  //   val indices = f.fill(f.size(particles))(Multinomial(DenseVector(f.toArray(weights))).draw)
-  //   println(indices)
-
-  //   f.map(indices)(i => f.get(particles)(i))
-  // }
-
- /**
-    * Multinomial Resampling, sample from a categorical distribution with probabilities
-    * equal to the particle weights 
-    */
-  def serialMultinomialResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]) = {
-    val indices = Vector.fill(particles.size)(Multinomial(DenseVector(weights.toArray)).draw)
-
-    indices map (particles(_))
-  }
-
-
-  def parMultinomialResampling[A](particles: ParVector[A], weights: ParVector[LogLikelihood]) = {
-    val indices = ParVector.fill(particles.size)(Multinomial(DenseVector(weights.toArray)).draw)
-
-    indices map (particles(_))
-  }
-
-  /**
-    * Given a vector of log-likelihoods, normalise them and exp them without overflow
-    * @param prob 
-    */
-  def expNormalise[F[_]](prob: F[LogLikelihood])(implicit f: Collection[F]): F[Double] = {
-    val max = f.max(prob)
-    val w1 = f.map(prob)(w => exp(w - max))
-    val total = sum(w1)
-
-    f.map(w1)(w => w / total)
-  }
-
-  /**
-    * Generic cumulative sum
-    */
-  def cumSum[F[_], A](l: F[A])(implicit f: Collection[F], N: Numeric[A]): F[A] = {
-    f.scanLeft(l, N.zero)((a, b) => N.plus(a, b))
-  }
-
-  /**
-    * Calculate the empirical cumulative distribution function for a collection of weights
-    */
-  def ecdf[F[_]](w: F[Double])(implicit f: Collection[F]): F[Double] = {
-    cumSum(normalise(w))
-  }
-
-  /**
-    * Stratified resampling
-    * Sample n ORDERED uniform random numbers (one for each particle) using a linear transformation of a U(0,1) RV
-    */
-  def stratifiedResampling[F[_], A](s: F[A], w: F[Double])(implicit f: Collection[F]): F[A] = {
-    val n = f.size(w)
-    val empiricalDist: F[Double] = ecdf(w)
-
-    val indices = f.map(f.indices(s))(i => {
-      val k: Double = (i + scala.util.Random.nextDouble) / n
-      f.indexWhere(empiricalDist)((e: Double) => e > k)
-    })
-
-    f.map(indices)(i => f.get(s)(i-1))
-  }
-
-  /**
-    * Generic systematic Resampling
-    */
-  def systematicResampling[F[_], A](s: F[A], w: F[Double])(implicit f: Collection[F]) = {
-    val u = scala.util.Random.nextDouble // generate a uniform random number 
-    val n = f.size(s)
-
-    val empiricalDist = ecdf(w)
-
-    val indices = f.map(f.indices(s))(i => {
-      val k = (i + u) / n
-      f.indexWhere(empiricalDist)(e => e > k)
-    })
-
-    f.map(indices)(i => f.get(s)(i-1))
-  }
-
-  /**
-    * Residual Resampling
-    * Select particles in proportion to their weights, ie particle xi appears ki = n * wi times
-    * Resample m (= n - total allocated particles) particles according to w = n * wi - ki using other resampling technique
-    */
-  def residualResampling[A](particles: Vector[A], weights: Vector[Double]): Vector[A] = {
-    val n = weights.length
-    val normalisedWeights = expNormalise(weights)
-    val ki = normalisedWeights.
-      map (w => math.floor(w * n).toInt)
-
-    val indices = ki.zipWithIndex.
-      map { case (n, i) => Vector.fill(n)(i) }.
-      flatten
-    val x = indices map { particles(_) }
-    val m = n - indices.length
-    val residualWeights = normalisedWeights.zip(ki) map { case (w, k) => n * w - k }
-
-    val i = serialMultinomialResampling(Vector.range(1, m), residualWeights)
-    x ++ (i map { particles(_) })
-  }
 
   /**
     * Gets credible intervals for a vector of doubles
@@ -645,5 +563,4 @@ object ParticleFilter {
   def mean[F[_], A](s: F[A])(implicit f: Collection[F], N: Fractional[A]): A = {
     N.div(sum(s), N.fromInt(f.size(s)))
   }
-
 }

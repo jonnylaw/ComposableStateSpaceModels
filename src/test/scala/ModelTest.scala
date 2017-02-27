@@ -9,7 +9,6 @@ import cats.implicits._
 import cats.{Monoid, Applicative}
 import cats.data.Reader
 import scala.util.{Try, Failure, Success}
-import fs2._
 
 class ModelSuite extends FlatSpec with Matchers {
   // a simple linear model with no observation noise, for testing

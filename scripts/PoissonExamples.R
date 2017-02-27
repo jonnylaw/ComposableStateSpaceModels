@@ -77,5 +77,3 @@ poissonForecast %>%
 ################################
 # Determine Poisson Parameters #
 ################################
-
-params = c("mu")

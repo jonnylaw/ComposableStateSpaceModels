@@ -1,6 +1,6 @@
-library(tidyverse); library(gridExtra)
+library(tidyverse); library(gridExtra); library(ggthemes)
 
-theme_set(theme_minimal())
+theme_set(theme_few())
 
 seasonalSims = read_csv("data/SeasonalModelSims.csv", 
                        col_names = c("time", "observation", "eta", "gamma", 
@@ -30,6 +30,8 @@ grid.arrange(p1, p2)
 ####################
 # seasonal Filtered #
 ####################
+
+# I think I need to add the complex conjugate to the seasonal vector, so the states are identifiable
 
 seasonalFiltered = read_csv("data/SeasonalModelFiltered.csv", 
                            col_names = c("time", "observation", 
@@ -70,3 +72,27 @@ p3 = seasonalFiltered %>%
 # png("FilteringSeasonal.png")
 grid.arrange(p1, p2, p3, layout_matrix = rbind(c(1, 1), c(2, 3)))
 # dev.off()
+
+###################
+# Seasonal Params #
+###################
+
+params = c("v", sapply(1:12, function(i) paste0("m0", i, sep = "_")),
+                sapply(1:12, function(i) paste0("c0", i, sep = "_")),
+                sapply(1:12, function(i) paste0("mu", i, sep = "_")),
+                sapply(1:12, function(i) paste0("sigma", i, sep = "_")))
+
+actual_values = data_frame(params, 
+                           actual_value = c(3.0, rep(0.5, 12), rep(0.12, 12),
+                                            rep(0.1, 12), rep(0.5, 12)))
+
+chain1 = read_csv("data/SeasonalModelParams-1.csv", col_names = c(params, "accepted")) %>%
+  mutate(chain = 1, iteration = seq_len(n()))
+chain2 = read_csv("data/SeasonalModelParams-2.csv", col_names = c(params, "accepted")) %>%
+  mutate(chain = 1, iteration = seq_len(n()))
+
+bind_rows(chain1, chain2) %>%
+  plot_running_mean()
+
+bind_rows(chain1, chain2) %>%
+  traceplot()

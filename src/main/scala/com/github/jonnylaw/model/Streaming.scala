@@ -4,27 +4,30 @@ import akka.stream.scaladsl._
 import akka.stream._
 import akka.util.ByteString
 import breeze.stats.distributions.Rand
+import cats._
 import cats.data.Reader
 import java.io._
+import java.nio.file._
 import scala.concurrent._
 import scala.collection.parallel.immutable.ParVector
-import java.nio.file._
+import scala.language.higherKinds
 
 object Streaming {
 
   /**
-    * Perform a pilot run
+    * Perform a pilot run 
     */
-  def pilotRun(
+  def pilotRun[F[_]: Collection](
     data: Vector[Data], 
     model: Reader[Parameters, Model], 
     param: Parameters, 
+    resample: Resample[F, Id, State],
     particles: Vector[Int])(implicit mat: Materializer, ec: ExecutionContext) = { 
 
     val proposal = (p: Parameters) => Rand.always(p)
     val prior = (p: Parameters) => 0.0
 
-    def mll(n: Int) = ParticleFilter.likelihood[ParVector](data, ParticleFilter.systematicResampling, n).compose(model)
+    def mll(n: Int) = ParticleFilter.likelihood[F](data, resample, n).compose(model)
 
     def iters(n: Int): Future[(Int, Double)] = {
       val its = ParticleMetropolis(mll(n).run, param, proposal, prior).

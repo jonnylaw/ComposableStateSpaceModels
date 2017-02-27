@@ -84,15 +84,16 @@ pilot_run %>%
 #######################################
 # Sample from the prior distributions #
 #######################################
+params = c("m0", "c0", "mu", "sigma", 
+           sapply(1:6, function(i) paste("m0", i, sep = "_")),
+           sapply(1:6, function(i) paste("c0", i, sep = "_")),
+           sapply(1:6, function(i) paste("theta", i, sep = "_")),
+           sapply(1:6, function(i) paste("alpha", i, sep = "_")),
+           sapply(1:6, function(i) paste("sigma", i, sep = "_")))
 
 # Actual parameter values
-actual_params = data_frame(parameters = c("m0", "c0", "mu", "sigma", 
-                                          sapply(1:6, function(i) paste("m0", i, sep = "_")),
-                                          sapply(1:6, function(i) paste("c0", i, sep = "_")),
-                                          sapply(1:6, function(i) paste("theta", i, sep = "_")),
-                                          sapply(1:6, function(i) paste("alpha", i, sep = "_")),
-                                          sapply(1:6, function(i) paste("sigma", i, sep = "_"))),
-                           value = c(1.0, 1.0, 0.01, 0.1, rep(1.0, 6), rep(1.0, 6), rep(1.0, 6), rep(0.5, 6), rep(0.3), 6))
+actual_params = data_frame(parameters = params,
+                           value = c(1.0, 1.0, 0.01, 0.01, rep(1.0, 6), rep(1.0, 6), rep(1.0, 6), rep(0.5, 6), rep(0.3, 6))
 
 
 
@@ -101,8 +102,15 @@ actual_params = data_frame(parameters = c("m0", "c0", "mu", "sigma",
 #################################
 
 # Using random walk metropolis hastings
+chain1 = read_csv("data/seasonalPoissonParams-1.csv", col_names = c(params, "accepted")) %>% 
+  mutate(chain = 1, iteration = seq_len(n()))
+chain2 = read_csv("data/seasonalPoissonParams-2.csv", col_names = c(params, "accepted")) %>% 
+  mutate(chain = 2, iteration = seq_len(n()))
 
-params = read_csv("../data/")
+n = max(nrow(chain1), nrow(chain2))
+
+bind_rows(chain1[1:n,], chain2[1:n,]) %>%
+  plot_running_mean()
 
 ############
 # Forecast #

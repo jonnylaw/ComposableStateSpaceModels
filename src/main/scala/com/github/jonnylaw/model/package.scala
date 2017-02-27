@@ -2,12 +2,14 @@ package com.github.jonnylaw
 
 import breeze.stats.distributions.{Rand, Process}
 import breeze.stats.distributions.Rand._
-import breeze.linalg.{DenseVector, diag}
+import breeze.linalg.DenseVector
 import cats._
 import cats.implicits._
 import cats.data.Reader
 import scala.collection.parallel.immutable.ParVector
 import scala.reflect.ClassTag
+import scala.language.higherKinds
+import scala.collection.immutable.TreeMap
 
 package object model {
   type Observation = Double
@@ -20,7 +22,7 @@ package object model {
   type UnparamSde = Reader[SdeParameter, Sde]
   type StepFunction = (SdeParameter) => (State, TimeIncrement) => Rand[State]
   type State = Tree[DenseVector[Double]]
-  type Resample[F[_], A] = (F[A], F[LogLikelihood]) => F[A]
+  type Resample[F[_], G[_], A] = (F[A], F[LogLikelihood]) => G[F[A]]
 
   implicit def randMonad = new Monad[Rand] {
     def pure[A](x: A): Rand[A] = always(x)
@@ -45,6 +47,8 @@ package object model {
   }
 
   implicit def parVectorCollection = new Collection[ParVector] {
+    def pure[A](a: A): ParVector[A] = ParVector(a)
+    def isEmpty[A](fa: ParVector[A]): Boolean = fa.isEmpty
     def map[A, B](fa: ParVector[A])(f: A => B): ParVector[B] = fa.map(f)
     def flatMap[A, B](fa: ParVector[A])(f: A => ParVector[B]): ParVector[B] = fa.flatMap(f)
     def get[A](fa: ParVector[A])(i: Int): A = fa(i)
@@ -61,9 +65,14 @@ package object model {
     def max[A: Ordering](fa: ParVector[A]): A = fa.max
     def toVector[A](fa: ParVector[A]): Vector[A] = fa.toVector
     def zip[A, B](fa: ParVector[A], fb: ParVector[B]): ParVector[(A, B)] = fa.zip(fb)
+    def drop[A](fa: ParVector[A])(n: Int): ParVector[A] = fa.drop(n)
+    def toTreeMap[A: Ordering, B](fa: ParVector[(A, B)]): TreeMap[A, B] = 
+      TreeMap.empty[A, B] ++ fa
   }
 
   implicit def vectorCollection = new Collection[Vector] {
+    def pure[A](a: A): Vector[A] = Vector(a)
+    def isEmpty[A](fa: Vector[A]): Boolean = fa.isEmpty
     def map[A, B](fa: Vector[A])(f: A => B): Vector[B] = fa.map(f)
     def flatMap[A, B](fa: Vector[A])(f: A => Vector[B]): Vector[B] = fa.flatMap(f)
     def get[A](fa: Vector[A])(i: Int): A = fa(i)
@@ -80,6 +89,8 @@ package object model {
     def max[A: Ordering](fa: Vector[A]): A = fa.max
     def toVector[A](fa: Vector[A]): Vector[A] = fa
     def zip[A, B](fa: Vector[A], fb: Vector[B]): Vector[(A, B)] = fa.zip(fb)
+    def drop[A](fa: Vector[A])(n: Int): Vector[A] = fa.drop(n)
+    def toTreeMap[A: Ordering, B](fa: Vector[(A, B)]): TreeMap[A, B] = TreeMap.empty[A, B] ++ fa
   }
 
   // various shows for printing nicely
@@ -100,7 +111,7 @@ package object model {
   implicit def sdeParamShow = new Show[SdeParameter] {
     def show(p: SdeParameter): String = p match {
       case BrownianParameter(m0, c0, mu, sigma) =>
-        s"""${m0.data.mkString(", ")}, ${c0.data.mkString(", ")}, ${mu.data.mkString(", ")}, ${diag(sigma).data.mkString(", ")}"""
+        s"""${m0.data.mkString(", ")}, ${c0.data.mkString(", ")}, ${mu.data.mkString(", ")}, ${sigma.data.mkString(", ")}"""
       case OrnsteinParameter(m0, c0, theta, alpha, sigma) =>
         s"""${m0.data.mkString(", ")}, ${c0.data.mkString(", ")}, ${theta.data.mkString(", ")}, ${alpha.data.mkString(", ")}, ${sigma.data.mkString(", ")}"""
     }

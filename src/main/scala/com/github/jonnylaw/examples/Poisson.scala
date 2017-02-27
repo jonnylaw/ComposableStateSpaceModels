@@ -8,6 +8,7 @@ import akka.util.ByteString
 import breeze.linalg.{DenseVector}
 import breeze.stats.distributions.{Gamma, Gaussian, Rand}
 import breeze.numerics.{exp, log}
+import cats._
 import cats.data.Reader
 import cats.implicits._
 import com.github.jonnylaw.model._
@@ -63,13 +64,15 @@ object PilotRunPoisson extends App with PoissonTestModel {
     take(400).
     runWith(Sink.seq)
 
-  val particles = Vector(10, 20)
+  val particles = Vector(100, 200, 500, 1000, 2000)
+  val resample: Resample[Vector, Id, State] = Resampling.treeSystematicResampling _
 
   val res = for {
     data <- dataStream
-    out = Streaming.pilotRun(data.toVector, mod, poissonParam, particles)
-  } yield out.map { case (n, v) => ByteString(s"$n, $v\n") }.
-    runWith(FileIO.toPath(Paths.get("data/PoissonPilotRun.csv")))
+    out = Streaming.pilotRun[Vector](data.toVector, mod, poissonParam, resample, particles)
+    io <- out.map { case (n, v) => s"$n, $v\n" }.
+      runWith(Streaming.writeStreamToFile("data/PoissonPilotRun.csv"))
+  } yield io
 
   res.onComplete(_ => system.terminate())
 }
@@ -97,7 +100,7 @@ object DeterminePoissonPosterior extends App with PoissonTestModel {
   // stream in memory, could use scodec for this
   val res = for {
     data <- trainingData
-    pf = ParticleFilter.filterLlState[ParVector](data.toVector, ParticleFilter.systematicResampling, n).compose(mod)
+    pf = ParticleFilter.filterLlState[Vector](data.toVector, Resampling.treeSystematicResampling, n).compose(mod)
     pmmh = ParticleMetropolisState(pf.run, poissonParam, Parameters.perturb(0.025), prior)
     iters <- Source.fromIterator(() => pmmh.iters.steps).take(10000).runWith(Sink.seq)
   } yield Streaming.serialiseToFile(iters, "data/PoissonParams")
@@ -127,13 +130,12 @@ object FilterPoisson extends App with PoissonTestModel {
   }
 
   // calculate the mean of the parameters
-  val paramsState = ParticleFilter.sampleMany(100, its).
-    map(s => (s.params, s.state.last)).toVector.par
+  val paramsState = Resampling.sampleMany(100, its).
+    map(s => (s.params, s.state.last)).toVector
 
-  // calc
+  val resample: Resample[Vector, Id, (Parameters, State)] = Resampling.treeSystematicResampling
 
-  val filter = ParticleFilter.filterFromPosterior[ParVector](
-    ParticleFilter.systematicResampling, paramsState, t0)(mod.run)
+  val filter = ParticleFilter.filterFromPosterior[Vector](resample, paramsState, t0)(mod.run)
 
   testData.
     via(filter).
@@ -166,12 +168,13 @@ object OneStepForecastPoisson extends App with PoissonTestModel {
   val t0 = 400.0
 
   // Sample from the vector
-  val paramsState = ParticleFilter.sampleMany(100, its).
+  val paramsState = Resampling.sampleMany(100, its).
     map(s => (s.params, s.state.last)).
-    toVector.par
+    toVector
 
-  val filter = ParticleFilter.filterFromPosterior[ParVector](
-    ParticleFilter.systematicResampling, paramsState, t0)(mod.run)
+  val resample: Resample[Vector, Id, (Parameters, State)] = Resampling.treeSystematicResampling
+
+  val filter = ParticleFilter.filterFromPosterior[Vector](resample, paramsState, t0)(mod.run)
 
   testData.
     via(filter).
@@ -198,7 +201,7 @@ object LongTermForecast extends App with PoissonTestModel {
 
   println("Sampling from parameter dist")
   // Sample from the vector
-  val paramsState = ParticleFilter.sampleMany(10, its).
+  val paramsState = Resampling.sampleMany(10, its).
     map(s => (s.params, s.state.last))
 
   println(s"Parameter Dist Sample: ${paramsState.mkString(", ")}")

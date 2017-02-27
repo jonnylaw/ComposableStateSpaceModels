@@ -8,6 +8,7 @@ import breeze.stats.distributions.{Rand, Exponential, Process, MarkovChain, Unif
 import breeze.numerics.{exp, sqrt}
 import java.nio.file._
 import scala.concurrent.Future
+import scala.language.higherKinds
 
 /**
   * A single observation of a time series

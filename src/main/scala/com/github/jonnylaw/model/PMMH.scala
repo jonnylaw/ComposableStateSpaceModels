@@ -1,5 +1,6 @@
 package com.github.jonnylaw.model
 
+import akka.NotUsed
 import breeze.stats.distributions.{Uniform, Rand, MultivariateGaussian, Process, MarkovChain, ContinuousDistr}
 import breeze.stats.distributions.Rand._
 import breeze.stats.distributions.MarkovChain._
@@ -163,4 +164,6 @@ case class ParticleMetropolisState(
     val init = MetropState(-1e99, initialParams, Vector(), 0)
     MarkovChain(init)(mhStepState)
   }
+
+  def itersStream: Source[MetropState, NotUsed] = Source.fromIterator(() => iters.steps)
 }

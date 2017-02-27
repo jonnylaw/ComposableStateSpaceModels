@@ -69,7 +69,7 @@ object GetSeasTParams extends App with TModel {
     mapAsync(2) { (chain: Int) =>
       for {
         data <- DataFromFile("data/SeasTSims.csv").observations.runWith(Sink.seq)
-        mll = ParticleFilter.likelihood[ParVector](data.toVector, ParticleFilter.parMultinomialResampling, 200).compose(unparamMod)
+        mll = ParticleFilter.likelihood[ParVector](data.toVector, Resampling.parMultinomialResampling, 200).compose(unparamMod)
         pmmh = ParticleMetropolis(mll.run, p, Parameters.perturb(0.05), prior)
         io <- pmmh.params.take(10000).map(_.show).runWith(Streaming.writeStreamToFile(s"data/seastMCMC-$chain.csv"))
       } yield io
