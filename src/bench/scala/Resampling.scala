@@ -1,6 +1,8 @@
 import org.scalameter.api._
 import com.github.jonnylaw.model._
 import org.scalameter.picklers.Implicits._
+import scala.concurrent._
+import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 import cats.implicits._
 import scala.collection.parallel.immutable.ParVector
@@ -21,13 +23,20 @@ object ResamplingBenchmark extends Bench.LocalTime {
 
   performance of "Async Tree Map Systematic Resampling" in {
     using(input1) in { case (s, w, n) =>
-      Resampling.asyncTreeSystematicResampling(n)(s, w).value
+      Await.result(Resampling.asyncTreeSystematicResampling(n)(s, w), Duration.Inf)
     }
   }
 
   performance of "Serial Tree Map Systematic Resampling" in {
     using(input) in { case (s, w) =>
-      Resampling.treeSystematicResampling(s, w)
+      Await.result(Resampling.treeSystematicResampling(s, w), Duration.Inf)
     }
   }
+
+  performance of "Multinomial Resampling" in {
+    using(input) in { case (s, w) =>
+      Await.result(Resampling.multinomialResampling(s, w), Duration.Inf)
+    }
+  }
+
 }

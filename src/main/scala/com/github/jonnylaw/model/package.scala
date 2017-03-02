@@ -5,11 +5,12 @@ import breeze.stats.distributions.Rand._
 import breeze.linalg.DenseVector
 import cats._
 import cats.implicits._
-import cats.data.Reader
+import cats.data.{Reader, StateT}
 import scala.collection.parallel.immutable.ParVector
 import scala.reflect.ClassTag
 import scala.language.higherKinds
 import scala.collection.immutable.TreeMap
+import scala.concurrent.Future
 
 package object model {
   type Observation = Double
@@ -22,7 +23,7 @@ package object model {
   type UnparamSde = Reader[SdeParameter, Sde]
   type StepFunction = (SdeParameter) => (State, TimeIncrement) => Rand[State]
   type State = Tree[DenseVector[Double]]
-  type Resample[F[_], G[_], A] = (F[A], F[LogLikelihood]) => G[F[A]]
+  type Resample[A, F[_]] = (Vector[A], Vector[LogLikelihood]) => F[Vector[A]]
 
   implicit def randMonad = new Monad[Rand] {
     def pure[A](x: A): Rand[A] = always(x)
@@ -135,10 +136,10 @@ package object model {
       s"${S.show(a.params)}, ${a.accepted}"
   }
 
-  implicit def filterShow[F[_]: Collection](implicit S: Show[State], f: Collection[F]) = new Show[PfState[F]] {
-    def show(a: PfState[F]): String = a.observation match {
-      case Some(y) => s"${a.t}, $y, ${f.toVector(f.map(a.particles)(S.show)).mkString(", ")}, ${a.ess}"
-      case None => s"${a.t}, NA, ${f.toVector(f.map(a.particles)(S.show)).mkString(", ")}, ${a.ess}"
+  implicit def filterShow(implicit S: Show[State]) = new Show[PfState] {
+    def show(a: PfState): String = a.observation match {
+      case Some(y) => s"${a.t}, $y, ${a.particles.map(S.show).mkString(", ")}, ${a.ess}"
+      case None => s"${a.t}, NA, ${a.particles.map(S.show).mkString(", ")}, ${a.ess}"
     }
   }
 

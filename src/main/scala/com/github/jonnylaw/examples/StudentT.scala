@@ -8,6 +8,7 @@ import akka.util.ByteString
 import com.github.jonnylaw.model._
 import java.nio.file.Paths
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
+import cats._
 import cats.implicits._
 
 import scala.collection.parallel.immutable.ParVector
@@ -69,8 +70,8 @@ object GetSeasTParams extends App with TModel {
     mapAsync(2) { (chain: Int) =>
       for {
         data <- DataFromFile("data/SeasTSims.csv").observations.runWith(Sink.seq)
-        mll = ParticleFilter.likelihood[ParVector](data.toVector, Resampling.parMultinomialResampling, 200).compose(unparamMod)
-        pmmh = ParticleMetropolis(mll.run, p, Parameters.perturb(0.05), prior)
+        mll = (p: Parameters) => ParticleFilter.likelihood(data.toVector, Resampling.treeSystematicResampling _, 500)(unparamMod(p))
+        pmmh = ParticleMetropolisSerial(mll, p, Parameters.perturb(0.05), prior)
         io <- pmmh.params.take(10000).map(_.show).runWith(Streaming.writeStreamToFile(s"data/seastMCMC-$chain.csv"))
       } yield io
     }.

@@ -14,7 +14,6 @@ import cats.implicits._
 import com.github.jonnylaw.model._
 import java.nio.file.Paths
 import java.io._
-import scala.collection.parallel.immutable.ParVector
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -56,56 +55,50 @@ object SimPoissonModel extends App with PoissonTestModel {
   * Determine how many particles are required to run the MCMC
   */
 object PilotRunPoisson extends App with PoissonTestModel {
-  val dataStream = FileIO.fromPath(Paths.get("data/PoissonModelSims.csv")).
-    via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 256, allowTruncation = true)).
-    map(_.utf8String).
-    map(a => a.split(",")).
-    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
-    take(400).
+  val dataStream = DataFromFile("data/PoissonModelSims.csv").
+    observations.
     runWith(Sink.seq)
 
   val particles = Vector(100, 200, 500, 1000, 2000)
-  val resample: Resample[Vector, Id, State] = Resampling.treeSystematicResampling _
+  val resample: Resample[State, Id] = Resampling.treeSystematicResampling _
 
   val res = for {
     data <- dataStream
-    out = Streaming.pilotRun[Vector](data.toVector, mod, poissonParam, resample, particles)
-    io <- out.map { case (n, v) => s"$n, $v\n" }.
+    out = Streaming.pilotRun(data.toVector, mod, poissonParam, resample, particles)
+    io <- out.map { case (n, v) => s"$n, $v" }.
       runWith(Streaming.writeStreamToFile("data/PoissonPilotRun.csv"))
   } yield io
 
   res.onComplete(_ => system.terminate())
 }
 
-/**
-  * Use the first 400 simulations to determine the full-joint posterior of the poisson model
-  */
-object DeterminePoissonPosterior extends App with PoissonTestModel {
-  setParallelismGlobally(12)
-
-  // read in the data
-  val trainingData = FileIO.fromPath(Paths.get("data/PoissonModelSims.csv")).
-    via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 256, allowTruncation = true)).
-    map(_.utf8String).
-    map(a => a.split(",")).
-    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
-    take(400).
-    runWith(Sink.seq)
-
+object DeterminePoissonParams extends App with PoissonTestModel {
   // Choose n based on the pilot run, a rule of thumb is the variance of the log of the
   // estimated marginal likelihood is equal to one
-  val n = 200
+  val n = 500
 
   // serialize the output, however we are required to retain the output of the 
   // stream in memory, could use scodec for this
-  val res = for {
-    data <- trainingData
-    pf = ParticleFilter.filterLlState[Vector](data.toVector, Resampling.treeSystematicResampling, n).compose(mod)
-    pmmh = ParticleMetropolisState(pf.run, poissonParam, Parameters.perturb(0.025), prior)
-    iters <- Source.fromIterator(() => pmmh.iters.steps).take(10000).runWith(Sink.seq)
-  } yield Streaming.serialiseToFile(iters, "data/PoissonParams")
+  val res: Future[IOResult] = for {
+    data <- DataFromFile("data/PoissonModelSims.csv").observations.runWith(Sink.seq)
+    pf = (p: Parameters) => ParticleFilter.likelihood(data.toVector, Resampling.treeStratifiedResampling, n)(mod(p))
+    pmmh = ParticleMetropolisSerial(pf, poissonParam, Parameters.perturb(0.25), prior)
+    iters <- pmmh.
+      params.
+      take(10000).
+      zip(Source(Stream.from(1))).
+      map { case (s, i) => if (i % 100 == 0) { 
+        println(s"Accepted: ${s.accepted.toDouble/i}")
+        s
+      } else { 
+        s
+      }}.
+      map(_.show).
+      runWith(Streaming.writeStreamToFile("data/PoissonParams.csv"))
+  } yield iters
 
-  res.onComplete(_ => system.terminate())
+  res.
+    onComplete(_ => system.terminate())
 }
 
 /**
@@ -113,11 +106,8 @@ object DeterminePoissonPosterior extends App with PoissonTestModel {
   * samples from the joint-posterior of the state and parameters, p(x, theta | y) 
   */
 object FilterPoisson extends App with PoissonTestModel {
-  val testData = FileIO.fromPath(Paths.get("data/PoissonModelSims.csv")).
-    via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 256, allowTruncation = true)).
-    map(_.utf8String).
-    map(a => a.split(",")).
-    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
+  val testData = DataFromFile("data/PoissonModelSims.csv").
+    observations.
     drop(400).
     take(100)
 
@@ -133,9 +123,9 @@ object FilterPoisson extends App with PoissonTestModel {
   val paramsState = Resampling.sampleMany(100, its).
     map(s => (s.params, s.state.last)).toVector
 
-  val resample: Resample[Vector, Id, (Parameters, State)] = Resampling.treeSystematicResampling
+  val resample: Resample[(Parameters, State), Future] = Resampling.asyncTreeSystematicResampling(12)
 
-  val filter = ParticleFilter.filterFromPosterior[Vector](resample, paramsState, t0)(mod.run)
+  val filter = ParticleFilter.filterFromPosterior(resample, paramsState, t0)(mod.run)
 
   testData.
     via(filter).
@@ -152,11 +142,8 @@ object FilterPoisson extends App with PoissonTestModel {
   * Sampling from the joint posterior of the parameters and the state p(x, theta | y)
   */
 object OneStepForecastPoisson extends App with PoissonTestModel {
-  val testData = FileIO.fromPath(Paths.get("data/PoissonModelSims.csv")).
-    via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 256, allowTruncation = true)).
-    map(_.utf8String).
-    map(a => a.split(",")).
-    map(d => TimedObservation(d(0).toDouble, d(1).toDouble)).
+  val testData = DataFromFile("data/PoissonModelSims.csv").
+    observations.
     drop(400).
     take(100)
 
@@ -172,9 +159,9 @@ object OneStepForecastPoisson extends App with PoissonTestModel {
     map(s => (s.params, s.state.last)).
     toVector
 
-  val resample: Resample[Vector, Id, (Parameters, State)] = Resampling.treeSystematicResampling
+  val resample: Resample[(Parameters, State), Future] = Resampling.asyncTreeSystematicResampling(12)
 
-  val filter = ParticleFilter.filterFromPosterior[Vector](resample, paramsState, t0)(mod.run)
+  val filter = ParticleFilter.filterFromPosterior(resample, paramsState, t0)(mod.run)
 
   testData.
     via(filter).
@@ -183,6 +170,13 @@ object OneStepForecastPoisson extends App with PoissonTestModel {
     map(_.show).
     runWith(Streaming.writeStreamToFile("data/PoissonModelForecast.csv")).
     onComplete(_ => system.terminate())
+}
+
+/**
+  * Sample from the join posterior of the state and parameters p(x, theta | y)
+  */
+object DeterminePoissonPosterior extends App with PoissonTestModel {
+
 }
 
 /**

@@ -7,7 +7,7 @@ import akka.util.ByteString
 
 
 import breeze.linalg.DenseVector
-import breeze.stats.distributions.{Gamma, Gaussian, Rand}
+import breeze.stats.distributions._
 import cats.data.Reader
 import cats.implicits._
 import cats._
@@ -49,6 +49,38 @@ trait TestModel {
   val seasonal = Model.seasonalModel(24, 3, Sde.ornsteinUhlenbeck)
   val model = poisson |+| seasonal
 
+  // choose a prior for the parameter estimation
+  def priorDrift(p: Parameters) = p match {
+    case LeafParameter(_, BrownianParameter(m0, c0, mu, sigma)) =>
+      Some(
+        Gaussian(1.0, 3.0).logPdf(m0(0)) +
+          Gamma(0.5, 2.0).logPdf(c0(0)) +
+          Gaussian(0.0, 3.0).logPdf(mu(0)) +
+          Gamma(0.1, 3.0).logPdf(sigma(0)))
+    case _ => None
+  }
+
+  def priorDaily(p: Parameters) = p match {
+    case LeafParameter(_, OrnsteinParameter(m0, c0, theta, alpha, sigma)) =>
+      Some(
+        m0.mapValues(m => Gaussian(-0.5, 3.0).logPdf(m)).reduce(_+_) +
+          c0.mapValues(c => Gamma(0.3, 3.0).logPdf(c)).reduce(_+_) +
+          theta.mapValues(m => Gaussian(-1.0, 3.0).logPdf(m)).reduce(_+_) +
+          alpha.mapValues(a => Gamma(0.15, 3.0).logPdf(a)).reduce(_+_) +
+          sigma.mapValues(s => Gamma(1.0, 3.0).logPdf(s)).reduce(_+_))
+    case _ => None
+  }
+
+  def prior = (p: Parameters) => p match {
+    case BranchParameter(drift, daily) =>
+      for {
+        p1 <- priorDrift(drift)
+        p2 <- priorDaily(daily)
+      } yield p1 + p2
+    case _ => None
+  }
+
+  // Actor system is required to run the streaming examples
   implicit val system = ActorSystem("ComposedModel")
   implicit val materializer = ActorMaterializer()
 }
@@ -73,7 +105,10 @@ object FilterSeasonalPoisson extends TestModel {
     val n = 1000 // number of particles for the particle filter
     val t0 = 0.0 // starting time of the filter (time of the first observation)
     setParallelismGlobally(8) // set the number of threads to use for the parallel particle filter
-    val filter = ParticleFilter.filter[ParVector](Resampling.parMultinomialResampling, 0.0, n)
+
+    val resample: Resample[State, Id] = Resampling.multinomialResampling
+
+    val filter = ParticleFilter.filter(resample, 0.0, n)
 
     DataFromFile("data/seasonalPoissonSims.csv").
       observations.
@@ -86,41 +121,25 @@ object FilterSeasonalPoisson extends TestModel {
   }
 }
 
+object PilotRunComposed extends App with TestModel {
+  setParallelismGlobally(8) // set the number of threads to use for the parallel particle filter
+
+  val particles = Vector(100, 200, 500, 1000, 2000, 5000)
+  val resample: Resample[State, Id] = Resampling.treeSystematicResampling _
+
+  val res = for {
+    data <- DataFromFile("data/seasonalPoissonSims.csv").observations.runWith(Sink.seq)
+    vars = Streaming.pilotRun(data.toVector, model, params, resample, particles)
+    io <- vars.map { case (n, v) => s"$n, $v" }.
+      runWith(Streaming.writeStreamToFile("data/ComposedPilotRun.csv"))
+  } yield io
+
+  res.onComplete(_ => system.terminate())
+}
+
 object DetermineComposedParams extends TestModel {
   def main(args: Array[String]) = {
-    // read a file from memory
-
-    // choose a prior
-
-    def priorDrift(p: Parameters) = p match {
-      case LeafParameter(_, BrownianParameter(m0, c0, mu, sigma)) =>
-        Some(
-          Gaussian(1.0, 3.0).logPdf(m0(0)) +
-            Gamma(0.5, 2.0).logPdf(c0(0)) +
-            Gaussian(0.0, 3.0).logPdf(mu(0)) +
-            Gamma(0.1, 3.0).logPdf(sigma(0)))
-      case _ => None
-    }
-
-    def priorDaily(p: Parameters) = p match {
-      case LeafParameter(_, OrnsteinParameter(m0, c0, theta, alpha, sigma)) =>
-        Some(
-          m0.mapValues(m => Gaussian(-0.5, 3.0).logPdf(m)).reduce(_+_) +
-            c0.mapValues(c => Gamma(0.3, 3.0).logPdf(c)).reduce(_+_) +
-            theta.mapValues(m => Gaussian(-1.0, 3.0).logPdf(m)).reduce(_+_) +
-            alpha.mapValues(a => Gamma(0.15, 3.0).logPdf(a)).reduce(_+_) +
-            sigma.mapValues(s => Gamma(1.0, 3.0).logPdf(s)).reduce(_+_))
-      case _ => None
-    }
-
-    def prior = (p: Parameters) => p match {
-      case BranchParameter(drift, daily) =>
-        for {
-          p1 <- priorDrift(drift)
-          p2 <- priorDaily(daily)
-        } yield p1 + p2
-      case _ => None
-    }
+    val delta = args.head.toDouble
 
     // 1. read data from file
     // 2. compose model with particle filter to get function from Parameters => LogLikelihood
@@ -128,11 +147,13 @@ object DetermineComposedParams extends TestModel {
     // 4. write it to a file as a stream
     def iters(chain: Int) = for {
       data <- DataFromFile("data/seasonalPoissonSims.csv").observations.runWith(Sink.seq)
-      filter = ParticleFilter.likelihood[Vector](data.sortBy(_.t).toVector, 
-        Resampling.treeSystematicResampling, 1500).
-      compose(model)
-      pmmh = ParticleMetropolis(filter.run, params, Parameters.perturb(0.05), p => prior(p).get)
-      io <- pmmh.params.take(100000).map(_.show).
+      filter = (p: Parameters) => ParticleFilter.likelihood(data.sortBy(_.t).toVector, Resampling.treeSystematicResampling, 500)(model(p))
+      pmmh = ParticleMetropolisSerial(filter, params, Parameters.perturb(delta), p => prior(p).get)
+      io <- pmmh.
+        params.
+        take(100000).
+        via(Streaming.monitorStream).
+        map(_.show).
         runWith(Streaming.writeStreamToFile(s"data/seasonalPoissonParams-$chain.csv"))
     } yield io
 
@@ -141,18 +162,49 @@ object DetermineComposedParams extends TestModel {
   }
 }
 
-object PilotRunComposed extends App with TestModel {
-  setParallelismGlobally(8) // set the number of threads to use for the parallel particle filter
+/**
+  * Create multiple Metropolis Kernels and monitor the acceptance of each block
+  */
+object DetermineComposedParamsBlockwise extends App with TestModel {
+  // Proposal for the poisson parameters
+  def poissonPropose = (p: Parameters) => p match {
+    case LeafParameter(None, BrownianParameter(m, c, mu, sigma)) =>
+      for {
+        new_m <- Gaussian(m(0), 0.01)
+        new_c <- Gaussian(c(0), 0.01)
+        new_mu <- Gaussian(mu(0), 0.025)
+        new_sigma <- Gaussian(sigma(0), 0.025)
+      } yield Parameters.leafParameter(None, 
+        SdeParameter.brownianParameter(
+          DenseVector(new_m), 
+          DenseVector(new_c), 
+          DenseVector(new_mu), 
+          DenseVector(new_sigma)))
+  }
 
-  val particles = Vector(100, 200, 500, 1000, 2000)
-  val resample: Resample[Vector, Id, State] = Resampling.treeSystematicResampling _
+  def propose = (p: Parameters) => p match {
+    case BranchParameter(l, r) =>
+      for {
+        new_l <- poissonPropose(l)
+      } yield Parameters.branchParameter(new_l, r)
+  }
 
-  val res = for {
+  // run 
+  def iters(chain: Int) = for {
     data <- DataFromFile("data/seasonalPoissonSims.csv").observations.runWith(Sink.seq)
-    vars = Streaming.pilotRun[Vector](data.toVector, model, params, resample, particles)
-    io <- vars.map { case (n, v) => s"$n, $v" }.
-      runWith(Streaming.writeStreamToFile("data/ComposedPilotRun.csv"))
+    filter = (p: Parameters) => ParticleFilter.likelihood(data.sortBy(_.t).toVector, Resampling.treeSystematicResampling, 500)(model(p))
+    pmmh = ParticleMetropolisSerial(filter, params, propose, p => prior(p).get)
+    io <- pmmh.
+    params.
+    take(100000).
+    via(Streaming.monitorStream).
+    map(s => s.params match {
+      case BranchParameter(l, r) => l
+    }).
+    map(_.show).
+    runWith(Streaming.writeStreamToFile(s"data/SeasonalPoissonParamsBlock-$chain.csv"))
   } yield io
 
-  res.onComplete(_ => system.terminate())
+  Future.sequence((1 to 2).map(iters)).
+    onComplete(_ => system.terminate())
 }

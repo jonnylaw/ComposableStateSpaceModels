@@ -26,7 +26,7 @@ trait LinearTestModel {
     SdeParameter.brownianParameter(
       m0 = DenseVector(0.5),
       c0 = DenseVector(0.12),
-      mu = DenseVector(0.01),
+      mu = DenseVector(0.0),
       sigma = DenseVector(0.5))
   )
 
@@ -61,8 +61,8 @@ object FilterLinear extends App with LinearTestModel {
     
   val t0 = 0.0
 
-  val filter = ParticleFilter.filter[Vector](
-    Resampling.treeSystematicResampling, t0, 1000)
+  val filter = ParticleFilter.filter(
+    Resampling.treeSystematicResampling _, t0, 1000)
 
   data.
     via(filter(mod(linearParam))).
@@ -78,11 +78,11 @@ object FilterLinear extends App with LinearTestModel {
   */
 object PilotRunLinear extends App with LinearTestModel {
   val particles = Vector(100, 200, 500, 1000, 2000)
-  val resample: Resample[Vector, Id, State] = Resampling.treeSystematicResampling _
+  val resample: Resample[State, Id] = Resampling.treeSystematicResampling _
 
   val res = for {
     data <- DataFromFile("data/LinearModelSims.csv").observations.runWith(Sink.seq)
-    vars = Streaming.pilotRun[Vector](data.toVector, mod, linearParam, resample, particles)
+    vars = Streaming.pilotRun(data.toVector, mod, linearParam, resample, particles)
     io <- vars.map { case (n, v) => s"$n, $v" }.
       runWith(Streaming.writeStreamToFile("data/LinearPilotRun.csv"))
   } yield io
@@ -93,15 +93,21 @@ object PilotRunLinear extends App with LinearTestModel {
 object DetermineLinearParameters extends App with LinearTestModel {
   def iters(chain: Int): Future[IOResult] = for {
     data <- DataFromFile("data/LinearModelSims.csv").observations.take(400).runWith(Sink.seq)
-    filter = ParticleFilter.likelihood[Vector](data.toVector,
-        Resampling.treeStratifiedResampling, 150).compose(mod)
-    pmmh = ParticleMetropolis(filter.run, linearParam, Parameters.perturb(0.05), prior)
+    filter = (p: Parameters) => ParticleFilter.likelihood(data.toVector, Resampling.treeStratifiedResampling _, 150)(mod(p))
+    pmmh = ParticleMetropolisSerial(filter, linearParam, Parameters.perturb(0.05), prior)
     io <- pmmh.
-        params.
-        take(10000).
-        map(_.show).
-        runWith(Streaming.writeStreamToFile(s"data/LinearModelParams-$chain.csv"))
-  } yield io
+      params.
+      take(10000).
+      zip(Source(Stream.from(1))).
+      map { case (s, i) => if (i % 100 == 0) { 
+        println(s"Iteration: $i, Accepted: ${s.accepted.toDouble/i}");
+        s
+      } else { 
+        s 
+      }}.
+      map(_.show).
+      runWith(Streaming.writeStreamToFile(s"data/LinearModelParams-$chain.csv"))
+    } yield io
 
   Future.sequence((1 to 2).map(iters)).
     onComplete(_ => system.terminate())
@@ -112,13 +118,9 @@ object LinearFullPosterior extends App with LinearTestModel {
  
   val res = for {
     data <- DataFromFile("data/LinearModelSims.csv").observations.take(400).runWith(Sink.seq)
-    filter = ParticleFilter.filterLlState[Vector](data.toVector,
-        Resampling.treeSystematicResampling, 150).compose(mod)
-    pmmh = ParticleMetropolisState(filter.run, linearParam, Parameters.perturb(0.05), prior)
-    io <- pmmh.
-    itersStream.
-    take(10000).
-    map(state => {
+    filter = (p: Parameters) => ParticleFilter.filterLlState(data.toVector, Resampling.treeSystematicResampling _, 150)(mod(p))
+    pmmh = ParticleMetropolisState(filter, linearParam, Parameters.perturb(0.05), prior)
+    io <- pmmh.iters.take(10000).map(state => {
       val serializer = serialization.findSerializerFor(state)
       serializer.toBinary(state)
     }).
@@ -129,15 +131,6 @@ object LinearFullPosterior extends App with LinearTestModel {
   res.onComplete(_ => system.terminate())
 }
 
-// object FilterLinear extends App with LinearTestModel {
-//   val posterior: Vector[MetropState] = deserialise(new FileInputStream("data/LinearModelPosterior")) match {
-//     case p: Vector[MetropState] => p
-//   }
-
-//   val ps = Resampling.sampleMany(100, posterior)
-  
-// }
-
 /**
   * Perform a one step forecast of the data
   */
@@ -145,8 +138,8 @@ object OneStepForecastLinear extends App with LinearTestModel {
   val data = DataFromFile("data/LinearModelSims.csv").
     observations
 
-  val filter = ParticleFilter.filter[ParVector](Resampling.parMultinomialResampling, 0.0, 1000).
-    compose(mod)
+  val filter = (p: Parameters) => 
+    ParticleFilter.filter(Resampling.treeSystematicResampling _, 0.0, 1000)(mod(p))
 
   // set the prediction interval, predict five minutes ahead from each observation
   val dt = 5.0/60

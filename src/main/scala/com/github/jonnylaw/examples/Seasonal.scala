@@ -8,6 +8,7 @@ import akka.util.ByteString
 import breeze.linalg.{DenseVector}
 import breeze.stats.distributions.{Gamma, Gaussian, Rand}
 import breeze.numerics.{exp, log}
+import cats._
 import cats.data.Reader
 import cats.implicits._
 import com.github.jonnylaw.model._
@@ -20,13 +21,13 @@ trait SeasonalTestModel {
   val seasonalParam: Parameters = Parameters.leafParameter(
     Some(3.0),
     SdeParameter.brownianParameter(
-      m0 = DenseVector.fill(12)(0.5),
-      c0 = DenseVector.fill(12)(0.12),
-      mu = DenseVector.fill(12)(0.1),
-      sigma = DenseVector.fill(12)(0.5))
+      m0 = DenseVector.fill(2)(0.5),
+      c0 = DenseVector.fill(2)(0.12),
+      mu = DenseVector.fill(2)(0.1),
+      sigma = DenseVector.fill(2)(0.5))
   )
 
-  val mod = Model.seasonalModel(24, 6, Sde.brownianMotion)
+  val mod = Model.seasonalModel(24, 1, Sde.brownianMotion)
 
   implicit val system = ActorSystem("SeasonalModel")
   implicit val materializer = ActorMaterializer()
@@ -47,7 +48,7 @@ object FilterSeasonal extends App with SeasonalTestModel {
 
   val t0 = 0.0
 
-  val filter = ParticleFilter.filter[Vector](Resampling.treeSystematicResampling, t0, 1000)
+  val filter = ParticleFilter.filter(Resampling.treeSystematicResampling, t0, 1000)
 
   data.
     via(filter(mod(seasonalParam))).
@@ -58,7 +59,23 @@ object FilterSeasonal extends App with SeasonalTestModel {
     onComplete(_ => system.terminate())
 }
 
+object SeasonalPilotRun extends App with SeasonalTestModel {
+  val particles = Vector(100, 200, 500, 1000, 2000)
+  val resample: Resample[State, Id] = Resampling.treeSystematicResampling _
+
+  val res = for {
+    data <- DataFromFile("data/LinearModelSims.csv").observations.runWith(Sink.seq)
+    vars = Streaming.pilotRun(data.toVector, mod, seasonalParam, resample, particles)
+    io <- vars.map { case (n, v) => s"$n, $v" }.
+      runWith(Streaming.writeStreamToFile("data/LinearPilotRun.csv"))
+  } yield io
+
+  res.onComplete(_ => system.terminate())
+}
+
 object DetermineSeasonalParameters extends App with SeasonalTestModel {
+  val particles = args.head.toInt
+
   def prior(p: Parameters) = { p match {
     case LeafParameter(Some(v), BrownianParameter(m, c, mu, sigma)) =>
       Gamma(0.5, 1.0).logPdf(v) +
@@ -68,12 +85,12 @@ object DetermineSeasonalParameters extends App with SeasonalTestModel {
       sigma.mapValues(Gamma(0.2, 3.0).logPdf(_)).reduce(_+_)
   }}
 
+  def resample: Resample[State, Id] = Resampling.treeStratifiedResampling _
 
   def iters(chain: Int): Future[IOResult] = for {
     data <- DataFromFile("data/SeasonalModelSims.csv").observations.take(400).runWith(Sink.seq)
-    filter = ParticleFilter.likelihood[Vector](data.toVector,
-        Resampling.treeStratifiedResampling, 150).compose(mod)
-    pmmh = ParticleMetropolis(filter.run, seasonalParam, Parameters.perturb(0.05), prior)
+    filter = (p: Parameters) => ParticleFilter.likelihood(data.toVector, resample, particles)(mod(p))
+    pmmh = ParticleMetropolisSerial(filter, seasonalParam, Parameters.perturb(0.05), prior)
     io <- pmmh.
         params.
         take(10000).

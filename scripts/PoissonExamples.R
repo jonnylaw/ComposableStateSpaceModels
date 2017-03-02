@@ -17,6 +17,36 @@ poissonSims %>%
   facet_wrap(~key, ncol = 1, scales = "free_y") +
   theme(legend.position = "none")
 
+#####################
+# Poisson Pilot Run #
+#####################
+
+pilot_run = read_csv("data/PoissonPilotRun.csv", col_names = c("particles", "variance"))
+
+pilot_run %>%
+  ggplot(aes(x = particles, y = variance)) +
+  geom_line() + 
+  geom_point()
+
+
+################################
+# Determine Poisson Parameters #
+################################
+
+params = c("m0", "c0", "mu", "sigma")
+
+actual_values = data_frame(parameter = params, 
+                           actual_value = c(0.5, 0.12, 0.1, 0.5))
+
+chain1 = read_csv("data/PoissonParams.csv", col_names = c(params, "accepted")) %>%
+  mutate(chain = 1, iteration = seq_len(n()))
+
+plot_running_mean(chain1)
+
+traceplot(chain1, parameters = params)
+
+plot_density(chain1, parameters = params)
+
 ####################
 # Poisson Filtered #
 ####################
@@ -46,17 +76,6 @@ png("FilteringPoisson.png")
 grid.arrange(p1, p2, ncol = 1)
 dev.off()
 
-#####################
-# Poisson Pilot Run #
-#####################
-
-pilot_run = read_csv("data/PoissonPilotRun.csv", col_names = c("particles", "variance"))
-
-pilot_run %>%
-  ggplot(aes(x = particles, y = variance)) +
-  geom_line() + 
-  geom_point()
-
 ####################
 # Poisson Forecast #
 ####################
@@ -73,7 +92,3 @@ poissonForecast %>%
   ggplot(aes(x = time, y = value, linetype = key)) +
   geom_line() +
   geom_ribbon(aes(ymin = observation_lower, ymax = observation_upper), alpha = 0.5)
-
-################################
-# Determine Poisson Parameters #
-################################

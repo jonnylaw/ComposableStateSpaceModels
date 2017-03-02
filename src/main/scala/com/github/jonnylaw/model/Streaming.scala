@@ -2,6 +2,7 @@ package com.github.jonnylaw.model
 
 import akka.stream.scaladsl._
 import akka.stream._
+import akka.NotUsed
 import akka.util.ByteString
 import breeze.stats.distributions.Rand
 import cats._
@@ -17,29 +18,42 @@ object Streaming {
   /**
     * Perform a pilot run 
     */
-  def pilotRun[F[_]: Collection](
+  def pilotRun(
     data: Vector[Data], 
     model: Reader[Parameters, Model], 
     param: Parameters, 
-    resample: Resample[F, Id, State],
+    resample: Resample[State, Id],
     particles: Vector[Int])(implicit mat: Materializer, ec: ExecutionContext) = { 
 
     val proposal = (p: Parameters) => Rand.always(p)
     val prior = (p: Parameters) => 0.0
 
-    def mll(n: Int) = ParticleFilter.likelihood[F](data, resample, n).compose(model)
+    def mll(n: Int) = ParticleFilter.likelihood(data, resample, n)(model(param))
 
     def iters(n: Int): Future[(Int, Double)] = {
-      val its = ParticleMetropolis(mll(n).run, param, proposal, prior).
-        params.
+      val lls = Source.repeat(1).
+        map(i => mll(n)).
         take(100).
         runWith(Sink.seq)
 
-      its map (s => (n, breeze.stats.variance(s.map(_.ll))))
+      lls map (ll => (n, breeze.stats.variance(ll)))
     }
 
     Source.apply(particles).
       mapAsyncUnordered(4){ iters }
+  }
+
+  def monitorStream: Flow[ParamsState, ParamsState, NotUsed] = {
+    Flow[ParamsState].
+      zip(Source(Stream.from(1))).
+      map { case (s, i) => {
+        if (i % 100 == 0 ) {
+          println(s"Iteration: $i, accepted: ${s.accepted.toDouble / i}")
+          s
+        } else {
+          s
+        }}}
+
   }
 
   /**
@@ -52,7 +66,7 @@ object Streaming {
       toMat(FileIO.toPath(Paths.get(file)))(Keep.right)
   }
 
-  def serialize(value: Any): Array[Byte] = {
+  def serialise(value: Any): Array[Byte] = {
     val stream: ByteArrayOutputStream = new ByteArrayOutputStream()
     val oos = new ObjectOutputStream(stream)
     oos.writeObject(value)
@@ -60,10 +74,12 @@ object Streaming {
     stream.toByteArray
   }
 
-  def serialiseToFile(value: Any, file: String): Unit = {
+  def serialiseToFile(value: Any, file: String)(
+    implicit ec: ExecutionContext): Future[Unit] = Future {
+
     val bos = new BufferedOutputStream(new FileOutputStream(file, true))
 
-    bos.write(serialize(value))
+    bos.write(serialise(value))
     bos.close()
   }
 

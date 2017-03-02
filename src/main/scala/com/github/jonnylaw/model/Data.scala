@@ -84,15 +84,15 @@ case class SimulateData(model: Model) extends DataService[NotUsed] {
     * Compute an empirical forecast, starting from a filtering distribution estimate
     * @param s a PfState object, the output of a particle filter
     */
-  def forecast[F[_]](s: PfState[F])(implicit f: Collection[F]) = {
+  def forecast(s: PfState) = {
 
-    val init = f.map(s.particles)(x => {
+    val init = s.particles map (x => {
       val gamma = model.f(x, s.t)
       val eta = model.link(gamma)
       ObservationWithState(s.t, s.observation.getOrElse(0.0), eta, gamma, x)
     })
 
-    Flow[Time].scan(init)((d0, t: Time) => f.map(d0)(x => simStep(t - x.t)(x).draw))
+    Flow[Time].scan(init)((d0, t: Time) => d0 map (x => simStep(t - x.t)(x).draw))
   }
 
   /**

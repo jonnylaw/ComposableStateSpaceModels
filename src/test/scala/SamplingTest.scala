@@ -16,7 +16,7 @@ object SamplingScalaCheck extends Properties("ParticleFilter") {
   val unnormalisedProbs = Gen.nonEmptyContainerOf[Vector, Double](probability)
 
   property("multinomial resampling sample should return a list of the same length") = Prop.forAll(unnormalisedProbs) { w =>
-    Resampling.serialMultinomialResampling(w, w).size == w.size
+    Resampling.multinomialResampling(w, w).size == w.size
   }
 
   property("Tree systematic resampling sample should return a list of the same length") = Prop.forAll(unnormalisedProbs) { w =>
@@ -31,7 +31,7 @@ object SamplingScalaCheck extends Properties("ParticleFilter") {
     suchThat(_.size >= 4)
 
   property("Tree async resampling sample should return a list of the same length") = Prop.forAll(asyncListProbs) { w =>
-    Await.result(Resampling.asyncTreeSystematicResampling(4)(w, w), 10.seconds).size == w.size
+    Await.result(Resampling.asyncTreeSystematicResampling(4)(w, w), Duration.Inf).size == w.size
   }
 
   // property("tree Residual resampling sample should return a list of the same length") = Prop.forAll(unnormalisedProbs) { w =>

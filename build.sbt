@@ -9,7 +9,7 @@ lazy val basic = Project(
   settings = Defaults.coreDefaultSettings ++ Seq(
     name := "ComposableModels",
     organization := "com.github.jonnylaw",
-    version := "0.4.0",
+    version := "0.5.0",
     scalaVersion := "2.11.8",
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-Xlint"),
 

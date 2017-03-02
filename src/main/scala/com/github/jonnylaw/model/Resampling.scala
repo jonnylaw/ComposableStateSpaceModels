@@ -83,8 +83,8 @@ object Resampling {
   /**
     * An efficient implementation of of systematic resampling
     */
-  def treeSystematicResampling[A](
-    particles: Vector[A], weights: Vector[LogLikelihood]): Vector[A] = {
+  def treeSystematicResampling[A](particles: Vector[A], 
+    weights: Vector[LogLikelihood]) = {
 
     val ecdf = treeEcdf(particles, weights)
 
@@ -100,7 +100,8 @@ object Resampling {
     * Stratified resampling implemented using a TreeMap
     * Sample n ORDERED uniform random numbers (one for each particle) using a linear transformation of a U(0,1) RV
     */
-  def treeStratifiedResampling[A](s: Vector[A], w: Vector[Double]): Vector[A] = {
+  def treeStratifiedResampling[A](s: Vector[A], w: Vector[Double]) = {
+
     val n = s.size
     val ecdf = treeEcdf(s, w)
 
@@ -113,15 +114,9 @@ object Resampling {
     * Multinomial Resampling, sample from a categorical distribution with probabilities
     * equal to the particle weights 
     */
-  def serialMultinomialResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]) = {
+  def multinomialResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]) = {
+
     val indices = Vector.fill(particles.size)(Multinomial(DenseVector(weights.toArray)).draw)
-
-    indices map (particles(_))
-  }
-
-
-  def parMultinomialResampling[A](particles: ParVector[A], weights: ParVector[LogLikelihood]) = {
-    val indices = ParVector.fill(particles.size)(Multinomial(DenseVector(weights.toArray)).draw)
 
     indices map (particles(_))
   }
@@ -171,7 +166,8 @@ object Resampling {
     val m = n - indices.length
     val residualWeights = normalisedWeights.zip(ki) map { case (w, k) => n * w - k }
 
-    val i = serialMultinomialResampling(Vector.range(1, m), residualWeights)
+
+    val i = multinomialResampling(Vector.range(1, m), residualWeights)
     x ++ (i map { particles(_) })
   }
 
