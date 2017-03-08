@@ -4,7 +4,7 @@ import akka.stream.scaladsl._
 import akka.stream._
 import akka.NotUsed
 
-import breeze.stats.distributions.{Rand, Multinomial}
+import breeze.stats.distributions.{Rand, Multinomial, Binomial}
 import breeze.numerics.{exp, log}
 import breeze.linalg.DenseVector
 
@@ -37,15 +37,15 @@ object Resampling {
     * position in the empirical cumulative distribution function represented by a 
     * treeMap
     */
-  def findAllInTreeMap[A](ks: Vector[Double], ecdf: TreeMap[Double, A]): Vector[A] = {
-    def loop(acc: Vector[A], remMap: TreeMap[Double, A], remK: Vector[Double]): Vector[A] = remK match {
-      case Vector() => acc
-      case k +: ks => {
-        val m = remMap.from(k)
-        loop(acc :+ m.head._2, m, ks)
+  def findAllInTreeMap[F[_], A](ks: Vector[Double], ecdf: TreeMap[Double, A]): Vector[A] = {
+    def loop(acc: Vector[A], remMap: TreeMap[Double, A], remK: Vector[Double]): Vector[A] = {
+      if (remK.isEmpty) {
+        acc
+      } else {
+         val m = remMap.from(remK.head)
+        loop(acc :+ m.head._2, m, remK.tail)
       }
     }
-
     loop(Vector(), ecdf, ks)
   }
 
@@ -53,7 +53,7 @@ object Resampling {
     * Create an empirical cumulative distribution function from a set of particles and associated
     * weights, and represent it as a treeMap
     */
-  def treeEcdf[A](items: Vector[A], prob: Vector[Double]): TreeMap[Double, A] = {
+  def treeEcdf[F[_], A](items: Vector[A], prob: Vector[Double]): TreeMap[Double, A] = {
     val normalisedWeights = normalise(prob)
 
     TreeMap.empty[Double, A] ++ (normalisedWeights.scanLeft(0.0)(_ + _).drop(1)).zip(items)
@@ -83,8 +83,7 @@ object Resampling {
   /**
     * An efficient implementation of of systematic resampling
     */
-  def treeSystematicResampling[A](particles: Vector[A], 
-    weights: Vector[LogLikelihood]) = {
+  def treeSystematicResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]) = {
 
     val ecdf = treeEcdf(particles, weights)
 
@@ -101,11 +100,11 @@ object Resampling {
     * Sample n ORDERED uniform random numbers (one for each particle) using a linear transformation of a U(0,1) RV
     */
   def treeStratifiedResampling[A](s: Vector[A], w: Vector[Double]) = {
-
     val n = s.size
     val ecdf = treeEcdf(s, w)
 
-    val ks = Vector.range(0, n).map(i => (i + scala.util.Random.nextDouble) / n)
+    val ks = Vector.range(0, n).
+      map(i => (i + scala.util.Random.nextDouble) / n)
 
     findAllInTreeMap(ks, ecdf)
   }
@@ -114,8 +113,7 @@ object Resampling {
     * Multinomial Resampling, sample from a categorical distribution with probabilities
     * equal to the particle weights 
     */
-  def multinomialResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]) = {
-
+  def multinomialResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]): Vector[A] = {
     val indices = Vector.fill(particles.size)(Multinomial(DenseVector(weights.toArray)).draw)
 
     indices map (particles(_))
@@ -174,9 +172,9 @@ object Resampling {
   /**
     * Sample one thing, uniformly, from a collection F
     */
-  def sampleOne[F[_], A](s: F[A])(implicit f: Collection[F]): A = {
-    val index = math.abs(scala.util.Random.nextInt) % f.size(s).toInt
-    f.get(s)(index)
+  def sampleOne[A](s: Seq[A]): A = {
+    val index = math.abs(scala.util.Random.nextInt) % s.size
+    s(index)
   }
 
   /**

@@ -12,6 +12,7 @@ sealed trait SdeParameter {
   def perturb(delta: Double): Rand[SdeParameter]
   def perturbIndep(delta: Vector[Double]): Rand[SdeParameter]
   def map(f: Double => Double): SdeParameter
+  def toMap: Map[String, Double]
 }
 
 case class BrownianParameter(
@@ -51,6 +52,11 @@ case class BrownianParameter(
 
   def map(f: Double => Double): SdeParameter = {
     SdeParameter.brownianParameter(m0.mapValues(f), c0.mapValues(f), mu.mapValues(f), sigma.mapValues(f))
+  }
+
+  def toMap: Map[String, Double] = {
+    SdeParameter.denseVectorMap(m0, "m0") ++ SdeParameter.denseVectorMap(c0, "c0") ++
+      SdeParameter.denseVectorMap(mu, "mu") ++ SdeParameter.denseVectorMap(sigma, "sigma")
   }
 }
 
@@ -103,6 +109,12 @@ case class OrnsteinParameter(
   def map(f: Double => Double): SdeParameter = {
     SdeParameter.ornsteinParameter(m0.mapValues(f), c0.mapValues(f), theta.mapValues(f), alpha.mapValues(f), sigma.mapValues(f))
   }
+
+  def toMap: Map[String, Double] = {
+    SdeParameter.denseVectorMap(m0, "m0") ++ SdeParameter.denseVectorMap(c0, "c0") ++
+      SdeParameter.denseVectorMap(theta, "theta") ++ SdeParameter.denseVectorMap(alpha, "alpha") ++
+      SdeParameter.denseVectorMap(sigma, "sigma")
+  }
 }
 
 object SdeParameter {
@@ -124,5 +136,11 @@ object SdeParameter {
     sigma: DenseVector[Double]): SdeParameter = {
 
     OrnsteinParameter(m0, c0, theta, alpha, sigma)
+  }
+
+  def denseVectorMap(s: DenseVector[Double], name: String): Map[String, Double] = {
+    s.data.zipWithIndex.
+      map { case (value, i) => (name + "_" + i -> value) }.
+      foldLeft(Map[String, Double]())((acc, a) => acc + a)
   }
 }

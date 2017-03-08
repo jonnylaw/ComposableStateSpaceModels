@@ -1,6 +1,6 @@
-library(tidyverse); library(gridExtra)
+library(tidyverse); library(gridExtra); library(extrafont)
 
-theme_set(theme_minimal())
+theme_set(theme_solarized_2(light = FALSE))
 
 ########################
 # Plot Brownian Motion #
@@ -27,6 +27,8 @@ ou_process = read_csv("data/ornsteinUhlenbeck.csv",
 
 ou_process %>%
   gather(key, value, -time) %>%
-  ggplot(aes(x = time, y = value, linetype = key)) +
-  geom_line()
+  ggplot(aes(x = time, y = value, linetype = key, colour = key)) +
+  geom_line() +
+  theme(legend.position = "bottom", text = element_text(family = "Georgia"))
 
+ggsave("Figures/ouProcess.png")

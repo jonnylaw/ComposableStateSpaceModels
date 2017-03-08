@@ -1,6 +1,6 @@
-library(tidyverse); library(gridExtra)
+library(tidyverse); library(gridExtra); library(ggthemes); library(extrafont)
 
-theme_set(theme_minimal())
+theme_set(theme_solarized_2(light = F))
 
 seasonalSims = read_csv("data/seasonalPoissonSims.csv", 
                         col_names = c("time", "observation", "eta", "gamma", 
@@ -10,21 +10,15 @@ seasonalSims = read_csv("data/seasonalPoissonSims.csv",
 # Plot seasonal Sims #
 #####################
 
-p1 = seasonalSims %>%
-  select(time, eta, observation) %>%
-  gather(key, value, -time) %>%
-  ggplot(aes(x = time, y = value, linetype = key)) +
-  geom_line() +
-  theme(legend.position = "bottom")
-
-p2 = seasonalSims %>%
-  select(time, contains("state")) %>%
+seasonalSims %>%
+  select(time, observation, eta) %>%
   gather(key, value, -time) %>%
   ggplot(aes(x = time, y = value, colour = key)) +
-  geom_line()
-# facet_wrap(~key, ncol = 1)
+  geom_line() +
+  facet_wrap(~key, ncol = 1, strip.position = "right") +
+  theme(text = element_text(family = "Georgia"), legend.position = "none")
 
-grid.arrange(p1, p2)
+ggsave("Figures/ComposedModel.png")
 
 ####################
 # seasonal Filtered #

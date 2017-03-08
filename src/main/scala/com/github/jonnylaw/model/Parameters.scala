@@ -20,6 +20,8 @@ sealed trait Parameters {
 
   def map(f: Double => Double): Parameters
 
+  def toMap: Map[String, Double]
+
   override def toString = this.flatten.mkString(", ")
 }
 case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends Parameters {
@@ -51,6 +53,11 @@ case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends 
   def map(f: Double => Double): Parameters = {
     Parameters.leafParameter(scale.map(f), sdeParam.map(f))
   }
+
+  def toMap: Map[String, Double] = scale match {
+    case Some(v) => sdeParam.toMap + ("scale" -> v)
+    case None => sdeParam.toMap
+  }
 }
 
 case class BranchParameter(left: Parameters, right: Parameters) extends Parameters {
@@ -77,6 +84,8 @@ case class BranchParameter(left: Parameters, right: Parameters) extends Paramete
   def map(f: Double => Double): Parameters = {
     Parameters.branchParameter(left.map(f), right.map(f))
   }
+
+  def toMap: Map[String, Double] = left.toMap ++ right.toMap
 }
 
 case object EmptyParameter extends Parameters {
@@ -85,6 +94,7 @@ case object EmptyParameter extends Parameters {
   def sum(that: Parameters): Try[Parameters] = Success(that)
   def flatten = Vector()
   def map(f: Double => Double): Parameters = EmptyParameter
+  def toMap: Map[String, Double] = Map[String, Double]()
 }
 
 object Parameters {

@@ -57,11 +57,12 @@ package object model {
     def scanLeft[A, B](fa: ParVector[A],z: B)(f: (B, A) => B): ParVector[B] = fa.scanLeft(z)(f)
     def foldLeft[A, B](fa: ParVector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
     def empty[A]: ParVector[A] = ParVector()
+    def append[A](fa: ParVector[A])(a: A): ParVector[A] = a +: fa
     def size[A](fa: ParVector[A]) = fa.size
     def combineK[A](x: ParVector[A], y: ParVector[A]): ParVector[A] = x ++ y
     def indices[A](fa: ParVector[A]) = fa.zipWithIndex.map(_._2)
     def toArray[A: ClassTag](fa: ParVector[A]): Array[A] = fa.toArray
-    def fill[A](n: Int)(a: A): ParVector[A] = ParVector.fill(n)(a)
+    def fill[A](n: Int)(a: => A): ParVector[A] = ParVector.fill(n)(a)
     def unzip[A, B](fa: ParVector[(A, B)]): (ParVector[A], ParVector[B]) = fa.unzip
     def max[A: Ordering](fa: ParVector[A]): A = fa.max
     def toVector[A](fa: ParVector[A]): Vector[A] = fa.toVector
@@ -81,10 +82,11 @@ package object model {
     def scanLeft[A, B](fa: Vector[A],z: B)(f: (B, A) => B): Vector[B] = fa.scanLeft(z)(f)
     def foldLeft[A, B](fa: Vector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
     def empty[A]: Vector[A] = Vector()
+    def append[A](fa: Vector[A])(a: A): Vector[A] = a +: fa
     def size[A](fa: Vector[A]) = fa.size
     def combineK[A](x: Vector[A], y: Vector[A]): Vector[A] = x ++ y
     def indices[A](fa: Vector[A]) = fa.zipWithIndex.map(_._2)
-    def fill[A](n: Int)(a: A) = Vector.fill(n)(a)
+    def fill[A](n: Int)(a: => A) = Vector.fill(n)(a)
     def toArray[A: ClassTag](fa: Vector[A]): Array[A] = fa.toArray
     def unzip[A, B](fa: Vector[(A, B)]): (Vector[A], Vector[B]) = fa.unzip
     def max[A: Ordering](fa: Vector[A]): A = fa.max
@@ -126,9 +128,13 @@ package object model {
     }
   }
 
-  implicit def itersShow(implicit S: Show[Parameters], T: Show[State]) = new Show[MetropState] {
+  implicit def stateSpaceShow(implicit S: Show[State]) = new Show[StateSpace] {
+    def show(a: StateSpace): String = s"${a.time}, ${S.show(a.state)}"
+  }
+
+  implicit def itersShow(implicit S: Show[Parameters], T: Show[StateSpace]) = new Show[MetropState] {
     def show(a: MetropState): String = 
-      s"${S.show(a.params)}, ${a.state.map(T.show).mkString(", ")}, ${a.accepted}"
+      s"${S.show(a.params)}, ${T.show(a.sde)}, ${a.accepted}"
   }
 
   implicit def paramStateShow(implicit S: Show[Parameters]) = new Show[ParamsState] {

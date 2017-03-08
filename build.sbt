@@ -1,4 +1,16 @@
 lazy val Benchmark = config("bench") extend Test
+enablePlugins(MicrositesPlugin)
+
+lazy val micrositeSettings = Seq(
+  micrositeName := "composable-models",
+  micrositeDescription := "Bayesian inference for Composable State Space Models",
+  micrositeBaseUrl := "/ComposableStateSpaceModels",
+  micrositeDocumentationUrl := "/ComposableStateSpaceModels/",
+  micrositeGithubOwner := "jonnylaw",
+  micrositeGithubRepo := "ComposableStateSpaceModels",
+  micrositeExternalIncludesDirectory := (resourceDirectory in Compile).value / "Figures",
+  micrositeHighlightTheme := "solarized-dark"
+)
 
 /**  This allows running ScalaMeter benchmarks in separate sbt configuration.
   *  It means, that when you want run your benchmarks you should type `bench:test` in sbt console.
@@ -6,13 +18,12 @@ lazy val Benchmark = config("bench") extend Test
 lazy val basic = Project(
   "basic-with-separate-config",
   file("."),
-  settings = Defaults.coreDefaultSettings ++ Seq(
+  settings = Defaults.coreDefaultSettings ++ micrositeSettings ++ Seq(
     name := "ComposableModels",
     organization := "com.github.jonnylaw",
     version := "0.5.0",
     scalaVersion := "2.11.8",
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-Xlint"),
-
     publishMavenStyle := true,
     publishArtifact in Test := false,
     publishTo := {
@@ -29,6 +40,9 @@ lazy val basic = Project(
       "org.typelevel" %% "cats" % "0.9.0",
       "com.typesafe.akka" %% "akka-stream" % "2.4.17",
       "com.github.mpilquist" %% "simulacrum" % "0.10.0",
+      "io.spray" %%  "spray-json" % "1.3.3",
+       "com.github.julien-truffaut"  %%  "monocle-core" % "1.4.0",
+      "com.github.julien-truffaut"  %%  "monocle-macro" % "1.4.0",
       "org.scalatest" %% "scalatest" % "2.2.4" % "test",
       "org.scalacheck" %% "scalacheck" % "1.13.4" % "test",
       "com.storm-enroute" %% "scalameter" % "0.7" % "bench"

@@ -45,26 +45,12 @@ trait DataService[F] {
 }
 
 case class SimulateData(model: Model) extends DataService[NotUsed] {
-  def observations: Source[Data, NotUsed] = simRegular(0.1)
+  def observations: Source[Data, NotUsed] = simRegular(1.0)
+
+  def simStep(deltat: TimeIncrement) = SimulateData.simStep(model)(deltat)
 
   /**
-    * Simulate a single step from a model, return a distribution over the possible values
-    * of the next step
-    * @param deltat the time difference between the previous and next realisation of the process
-    * @return a function from the previous datapoint to a Rand (Monadic distribution) representing
-    * the distribution of the next datapoint 
-    */
-  def simStep(deltat: TimeIncrement) = (d: ObservationWithState) =>  {
-    for {
-      x1 <- model.sde.stepFunction(deltat)(d.sdeState)
-      gamma = model.f(x1, d.t + deltat)
-      eta = model.link(gamma)
-      y1 <- model.observation(gamma)
-    } yield ObservationWithState(d.t + deltat, y1, eta, gamma, x1)
-  }
-
-  /**
-    * Simulate from a POMP model on an irregular grid, given an initial time and a stream of times 
+    * Simulate from a POMP model on an irregular grid, given an initial time and a stream of times
     * at which simulate from the model
     * @param t0 the start time of the process
     * @return an Akka Flow transforming a Stream from Time to ObservationWithState 
@@ -78,21 +64,6 @@ case class SimulateData(model: Model) extends DataService[NotUsed] {
     } yield ObservationWithState(t0, y, eta, gamma, x0)
 
     Flow[Time].scan(init.draw)((d0, t: Time) => simStep(t - d0.t)(d0).draw)
-  }
-
-  /**
-    * Compute an empirical forecast, starting from a filtering distribution estimate
-    * @param s a PfState object, the output of a particle filter
-    */
-  def forecast(s: PfState) = {
-
-    val init = s.particles map (x => {
-      val gamma = model.f(x, s.t)
-      val eta = model.link(gamma)
-      ObservationWithState(s.t, s.observation.getOrElse(0.0), eta, gamma, x)
-    })
-
-    Flow[Time].scan(init)((d0, t: Time) => d0 map (x => simStep(t - x.t)(x).draw))
   }
 
   /**
@@ -197,6 +168,63 @@ object SimulateData {
         StateSpace(x.time + deltat, stepFunction(deltat)(x.state).draw)).
       takeWhile(s => s.time <= t0 + totalIncrement)
   }
+
+  /**
+    * Simulate a single step from a model, return a distribution over the possible values
+    * of the next step
+    * @param model the model to simulate a step from
+    * @param deltat the time difference between the previous and next realisation of the process
+    * @return a function from the previous datapoint to a Rand (Monadic distribution) representing
+    * the distribution of the next datapoint 
+    */
+  def simStep(model: Model)(deltat: TimeIncrement) = { (d: ObservationWithState) =>
+    for {
+      x1 <- model.sde.stepFunction(deltat)(d.sdeState)
+      gamma = model.f(x1, d.t + deltat)
+      eta = model.link(gamma)
+      y1 <- model.observation(gamma)
+    } yield ObservationWithState(d.t + deltat, y1, eta, gamma, x1)
+  }
+
+  /**
+    * Compute an empirical forecast, starting from a filtering distribution estimate
+    * @param unparamModel a function from Parameters to Model
+    * @param t the time to start the forecast
+    * @param s the joint posterior of the parameters and state at time t, p(x, theta | y)
+    */
+  def forecast(unparamModel: Parameters => Model, t: Time)(s: Rand[(Parameters, State)]) = {
+
+    val init: Rand[(Parameters, ObservationWithState)] = s map { case (p, x) => {
+      val gamma = unparamModel(p).f(x, t)
+      val eta = unparamModel(p).link(gamma)
+      (p, ObservationWithState(t, 0.0, eta, gamma, x))
+    }}
+
+    def step = SimulateData
+
+    Flow[Time].
+      scan(init)((d0, ts: Time) => {
+        for {
+          (p, x) <- d0
+          x1 <- simStep(unparamModel(p))(ts - x.t)(x)
+        } yield (p, x1)}).
+      map {_.map(_._2) }. // only keep the forecast, discard the parameters
+      drop(1) // drop the initial state
+  }
+
+  def summariseForecast(mod: Model, interval: Double) = { (forecast: Vector[ObservationWithState]) =>
+
+    val stateIntervals = ParticleFilter.getallCredibleIntervals(forecast.map(_.sdeState).toVector, 0.995)
+    val statemean = ParticleFilter.meanState(forecast.map(_.sdeState).toVector)
+    val meanEta = breeze.stats.mean(forecast.map(_.eta))
+    val etaIntervals = ParticleFilter.getOrderStatistic(forecast.map(_.eta).toVector, 0.995)
+    val obs = forecast.map(x => mod.observation(x.gamma).draw)
+    val obsIntervals = ParticleFilter.getOrderStatistic(obs, 0.995)
+
+    ForecastOut(forecast.head.t, breeze.stats.mean(obs), obsIntervals,
+      meanEta, etaIntervals, statemean, stateIntervals)
+  }
+
 }
 
 /**

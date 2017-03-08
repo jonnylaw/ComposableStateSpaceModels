@@ -64,10 +64,10 @@ object SeasonalPilotRun extends App with SeasonalTestModel {
   val resample: Resample[State, Id] = Resampling.treeSystematicResampling _
 
   val res = for {
-    data <- DataFromFile("data/LinearModelSims.csv").observations.runWith(Sink.seq)
+    data <- DataFromFile("data/SeasonalModelSims.csv").observations.runWith(Sink.seq)
     vars = Streaming.pilotRun(data.toVector, mod, seasonalParam, resample, particles)
     io <- vars.map { case (n, v) => s"$n, $v" }.
-      runWith(Streaming.writeStreamToFile("data/LinearPilotRun.csv"))
+      runWith(Streaming.writeStreamToFile("data/SeasonalPilotRun.csv"))
   } yield io
 
   res.onComplete(_ => system.terminate())

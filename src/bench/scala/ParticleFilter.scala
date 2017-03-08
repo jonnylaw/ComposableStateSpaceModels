@@ -14,10 +14,10 @@ import scala.concurrent.duration._
 import breeze.linalg.DenseVector
 import com.github.jonnylaw.examples._
 
-object StepFilterBenchmark extends Bench.LocalTime with TestModel {
-  val sizes = Gen.exponential("size")(100, 20000, 2)
-  val filter = Filter(model(params), Resampling.treeSystematicResampling)
-  val input = sizes map (n => filter.initialiseState(n, 0.0))
+object StepFilterBenchmark extends Bench.LocalTime with TrafficModel {
+  val sizes: Gen[Int] = Gen.exponential("size")(100, 6400, 2)
+  val filter = Filter(weeklyMod(simPrior.draw), Resampling.treeSystematicResampling)
+  val input: Gen[PfState] = sizes map (n => filter.initialiseState(n, 0.0))
 
   performance of "Serial Particle Filter" in {
     using(input) in (init =>
@@ -25,28 +25,24 @@ object StepFilterBenchmark extends Bench.LocalTime with TestModel {
     )
   }
 
-  val asyncPf = Filter(model(params), Resampling.asyncTreeSystematicResampling(4) _)
-
-  val asyncInput = sizes map (n => asyncPf.initialiseState(n, 0.0))
-
-  performance of "Serial with async resampling Particlefilter" in {
-    using(asyncInput) in ( init =>
-      Await.result(asyncPf.stepFilter(init, TimedObservation(1.0, 1.0)), Duration.Inf)
-    )
-  }
+  val resample: Resample[State, Future] = Resampling.asyncTreeSystematicResampling(4) _
 
   val threads = Gen.enumeration("threads")(1, 2, 4)
 
-  val parallelPf = (n: Int) => FilterAsync(model(params), Resampling.asyncTreeSystematicResampling(n) _)
+  val asyncPf = FilterAsync(weeklyMod(simPrior.draw), resample)
+
+  val initState = (n: Int) => asyncPf.initialiseState(n, 0.0)
+
+  val parallelPfThreads = (threads: Int) => FilterAsync(weeklyMod(simPrior.draw), Resampling.asyncTreeSystematicResampling(threads) _)
 
   val parallelInput = for {
     s <- sizes
     t <- threads
-  } yield (asyncPf.initialiseState(s, 0.0), t)
+  } yield (initState(s), t)
 
   performance of "Parallel Filter" in {    
     using(parallelInput) in { case (init, threads) =>
-      Await.result(parallelPf(threads).stepFilter(init, TimedObservation(1.0, 1.0)), Duration.Inf)
+      Await.result(parallelPfThreads(threads).stepFilter(init, TimedObservation(1.0, 1.0)), Duration.Inf)
     }
   }
 }
@@ -62,7 +58,7 @@ object FilterBenchmark extends Bench.LocalTime with TestModel {
 
   performance of "Sequential Filter, systematic resampling" in {
     using (sizes) in { n =>
-      Await.result(filter.llFilter(data.toVector)(n), Duration.Inf)
+      filter.llFilter(data.toVector)(n)
     }
   }
 }

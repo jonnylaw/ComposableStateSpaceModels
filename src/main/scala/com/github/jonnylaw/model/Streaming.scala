@@ -12,6 +12,7 @@ import java.nio.file._
 import scala.concurrent._
 import scala.collection.parallel.immutable.ParVector
 import scala.language.higherKinds
+import spray.json._
 
 object Streaming {
 
@@ -33,6 +34,11 @@ object Streaming {
     def iters(n: Int): Future[(Int, Double)] = {
       val lls = Source.repeat(1).
         map(i => mll(n)).
+        zip(Source(Stream.from(1))).
+        map { case (ll, i) => {
+          println(s"particles $n: current ll: $ll, iteration: $i")
+          ll
+        }}.
         take(100).
         runWith(Sink.seq)
 
@@ -43,6 +49,9 @@ object Streaming {
       mapAsyncUnordered(4){ iters }
   }
 
+  /**
+    * Given output from the PMMH algorithm, monitor the acceptance rate online
+    */
   def monitorStream: Flow[ParamsState, ParamsState, NotUsed] = {
     Flow[ParamsState].
       zip(Source(Stream.from(1))).
@@ -53,14 +62,36 @@ object Streaming {
         } else {
           s
         }}}
+  }
 
+  /**
+    * Read from a JSON file containing the output from a PMMH run
+    */
+  def readPosterior(file: String, burnIn: Int)(implicit f: JsonFormat[MetropState]): Source[MetropState, Future[IOResult]] = {
+    FileIO.fromPath(Paths.get(file)).
+      via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
+      map(_.utf8String).
+      drop(burnIn). // discard burn in iterations
+      map(_.parseJson.convertTo[MetropState])
+  }
+
+  /**
+    * Create a distribution from a sequence, possibly utilising a transformation f
+    * @param s a sequence of draws from a distribution, possibly from an MCMC runexamples
+    * @param f a function to transform the draws from the distribution
+    * @return a monadic distribution, Rand, which can be sampled from
+    */
+  def createDist[A, B](s: Seq[A])(f: A => B): Rand[B] = new Rand[B] {
+    def draw = {
+      f(Resampling.sampleOne(s.toVector))
+    }
   }
 
   /**
     * An Akka Sink to write a stream of strings to a file
     * @param file the path of a file to write to
     */
-  def writeStreamToFile(file: String): Sink[String, Future[IOResult]]  = {
+  def writeStreamToFile(file: String): Sink[String, Future[IOResult]] = {
     Flow[String].
       map(s => ByteString(s + "\n")).
       toMat(FileIO.toPath(Paths.get(file)))(Keep.right)

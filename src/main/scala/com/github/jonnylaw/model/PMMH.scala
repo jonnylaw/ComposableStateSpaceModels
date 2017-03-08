@@ -4,7 +4,7 @@ import akka.NotUsed
 import breeze.stats.distributions.{Uniform, Rand, MultivariateGaussian, Process, MarkovChain, ContinuousDistr}
 import breeze.stats.distributions.Rand._
 import breeze.stats.distributions.MarkovChain._
-import breeze.linalg.DenseMatrix
+import breeze.linalg.{DenseMatrix, DenseVector}
 import breeze.numerics._
 import akka.stream.scaladsl._
 import cats._
@@ -28,7 +28,7 @@ case class ParamsState(ll: LogLikelihood, params: Parameters, accepted: Int) ext
   * @param state the proposed path of the state from the particle filter
   * @param accepted the total number of accepted moves in the metropolis hastings algorithm
   */
-case class MetropState(ll: LogLikelihood, params: Parameters, state: Vector[State], accepted: Int) extends Serializable
+case class MetropState(ll: LogLikelihood, params: Parameters, sde: StateSpace, accepted: Int) extends Serializable
 
 trait MetropolisHastings[G[_]] {
   implicit def g: Monad[G]
@@ -189,10 +189,10 @@ case class ParticleMetropolisHastingAsync(
 }
 
 /**
-  * Particle Metropolis hastings which also samples the state
+  * Particle Metropolis hastings which also samples the final value of the state
   */
 case class ParticleMetropolisState(
-  pf: Parameters => Id[(LogLikelihood, Vector[State])],
+  pf: Parameters => Id[(LogLikelihood, Vector[StateSpace])],
   initialParams: Parameters,
   proposal: Parameters => Rand[Parameters],
   prior: Parameters => LogLikelihood) extends MetropolisHastings[Id] {
@@ -209,7 +209,7 @@ case class ParticleMetropolisState(
       logTransition(s.params, propParams) - s.ll - prior(s.params)
       u = Uniform(0, 1).draw
       prop = if (log(u) < a) {
-        MetropState(state._1, propParams, state._2, s.accepted + 1)
+        MetropState(state._1, propParams, state._2.last, s.accepted + 1)
       } else {
         s
       }
@@ -219,12 +219,50 @@ case class ParticleMetropolisState(
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = 0.0
 
   def iters: Source[MetropState, NotUsed] = {
-    val init = MetropState(-1e99, initialParams, Vector(), 0)
-    Source.unfold(init)(s => Some((mhStepState(s), s)))
+    val init = MetropState(-1e99, initialParams, StateSpace(0.0, Tree.leaf(DenseVector())), 0)
+    Source.unfold(init)(s => Some((mhStepState(s), s))).drop(1)
   }
 
   def params: Source[ParamsState, NotUsed] = {
     val initState = ParamsState(-1e99, initialParams, 0)
     Source.unfold(initState)(state => Some((mhStep(state), state)))
+  }
+}
+
+case class ParticleMetropolisStateAsync(
+  pf: Parameters => Future[(LogLikelihood, Vector[StateSpace])],
+  initialParams: Parameters,
+  proposal: Parameters => Rand[Parameters],
+  prior: Parameters => LogLikelihood)(implicit val ec: ExecutionContext) extends MetropolisHastings[Future] {
+
+  def g = implicitly[Monad[Future]]
+
+  override def logLikelihood: Parameters => Future[LogLikelihood] = p => pf(p).map(_._1)
+
+  def mhStepState: MetropState => Future[MetropState] = s => {
+    val propParams = proposal(s.params).draw
+    for {
+      state <- pf(propParams)
+      a = state._1 + logTransition(propParams, s.params) + prior(propParams) - 
+      logTransition(s.params, propParams) - s.ll - prior(s.params)
+      u = Uniform(0, 1).draw
+      prop = if (log(u) < a) {
+        MetropState(state._1, propParams, state._2.last, s.accepted + 1)
+      } else {
+        s
+      }
+    } yield prop
+  }
+
+  def logTransition(from: Parameters, to: Parameters): LogLikelihood = 0.0
+
+  def iters: Source[MetropState, NotUsed] = {
+    val init = MetropState(-1e99, initialParams, StateSpace(0.0, Tree.leaf(DenseVector())), 0)
+    Source.unfoldAsync(init)(state => mhStepState(state) map ((s: MetropState) => Some((s, state)))).drop(1)
+  }
+
+  def params: Source[ParamsState, NotUsed] = {
+    val initState = ParamsState(-1e99, initialParams, 0)
+    Source.unfoldAsync(initState)(state => mhStep(state) map ((s: ParamsState) => Some((s, state))))
   }
 }

@@ -1,6 +1,6 @@
 package com.github.jonnylaw.model
 
-import breeze.numerics.{cos, sin, sqrt, exp, log}
+import breeze.numerics.{cos, sin, sqrt, exp, log, lgamma}
 import breeze.stats.distributions._
 import breeze.linalg.{DenseMatrix, DenseVector}
 
@@ -75,6 +75,11 @@ object Model {
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
+  def negativeBinomial(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => NegativeBinomialModel(sde(param.sdeParam), param)
+    case _ => throw new Exception("Can't build model from branch parameter")
+  }}
+
   /**
     * Models form a semigroup, they can be combined to form a composed model
     */
@@ -129,19 +134,53 @@ private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) ext
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
-
   def dataLikelihood = (eta, y) => p.scale match {
     case Some(v) => 1/v * StudentsT(df).logPdf((y - eta) / v)
     case None => throw new Exception("No scale parameter provided to Student T Model")
   }
 }
 
+private final case class NegativeBinomialModel(sde: Sde, p: LeafParameter) extends Model {
   /**
-    * A seasonal model
-    * @param period the period of the seasonality
-    * @param harmonics the number of harmonics to use in the seasonal model
-    * @param sde a solution to a diffusion process representing the latent state
+    * Transform the the usual parameterisation of the Negative Binomial Distribution
+    * @param mu representing the transformed latent state eta
+    * @param sigma the standard deviation passed in from the parameters p
+    * @return the parameters of the standard Negative Binomial distribution (r, p)
     */
+  def parameteriseMean(mu: Double, sigma: Double) = {
+    val p = (sigma*sigma - mu) / sigma*sigma
+    val r = mu*mu / (sigma*sigma - mu)
+
+    (r, p)
+  }
+
+  def observation = x => p.scale match {
+    case Some(v) => {
+      val (r, p) = parameteriseMean(link(x), v)
+      NegativeBinomial(r, p).map(_.toDouble): Rand[Double]
+    }
+    case None => throw new Exception("No scale parameter provided to Negativebinomial Model")
+  }
+
+  override def link(x: Gamma) = exp(x)
+
+  def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
+
+  def dataLikelihood = (eta, y) => p.scale match {
+    case Some(v) => {
+      val (r, p) = parameteriseMean(eta, v)
+      NegativeBinomial(r, p).logProbabilityOf(y.toInt)
+    }
+    case None => throw new Exception("No scale parameter provided to Negativebinomial Model")
+  }
+}
+
+/**
+  * A seasonal model
+  * @param period the period of the seasonality
+  * @param harmonics the number of harmonics to use in the seasonal model
+  * @param sde a solution to a diffusion process representing the latent state
+  */
 private final case class SeasonalModel(
   period: Int, 
   harmonics: Int, 
@@ -199,7 +238,7 @@ private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model 
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
-  def dataLikelihood = (state, y) => y.toInt * state - exp(state) - breeze.numerics.lgamma(y.toInt + 1)
+  def dataLikelihood = (state, y) => y.toInt * state - exp(state) - lgamma(y.toInt + 1)
 }
 
   /**
