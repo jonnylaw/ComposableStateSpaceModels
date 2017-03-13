@@ -10,9 +10,6 @@ import scala.util.Try
   * from the Composed Models Package
   */
 trait DataProtocols extends DefaultJsonProtocol {
-  implicit val dataFormat: RootJsonFormat[TimedObservation] = 
-    jsonFormat(TimedObservation.apply, "time", "observation")
-
   implicit def denseVectorFormat = new RootJsonFormat[DenseVector[Double]] {
     def write(vec: DenseVector[Double]) = JsArray(vec.data.map(_.toJson).toVector)
     def read(value: JsValue) = value match {
@@ -37,7 +34,8 @@ trait DataProtocols extends DefaultJsonProtocol {
   }
 
   implicit val leafParamFormat = jsonFormat2(LeafParameter.apply)
-  implicit val branchParamFormat: JsonFormat[BranchParameter] = lazyFormat(jsonFormat2(BranchParameter.apply))
+  implicit val branchParamFormat: JsonFormat[BranchParameter] = 
+    lazyFormat(jsonFormat2(BranchParameter.apply))
 
   implicit def paramsFormat = new RootJsonFormat[Parameters] {
     def write(obj: Parameters) = {
@@ -84,7 +82,20 @@ trait DataProtocols extends DefaultJsonProtocol {
 
   implicit val stateSpaceFormat = jsonFormat2(StateSpace)
 
-  implicit val metropFormat: RootJsonFormat[MetropState] = jsonFormat4(MetropState.apply)
+  implicit val metropFormat = jsonFormat4(MetropState.apply)
 
-  implicit val pmmhFormat: RootJsonFormat[ParamsState] = jsonFormat3(ParamsState.apply)
+  implicit val pmmhFormat = jsonFormat3(ParamsState.apply)
+
+  implicit val tdFormat = jsonFormat2(TimedObservation.apply)
+
+  implicit val osFormat = jsonFormat5(ObservationWithState.apply)
+
+  implicit def dataFormat = new RootJsonFormat[Data] {
+   def write(obj: Data): JsValue = obj match {
+     case t: TimedObservation => t.toJson
+     case o: ObservationWithState => o.toJson
+   }
+    def read(value: JsValue) = Try(value.convertTo[TimedObservation]).
+      getOrElse(value.convertTo[ObservationWithState])
+  }
 }

@@ -75,8 +75,13 @@ object Model {
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def negativeBinomial(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
-    case param: LeafParameter => NegativeBinomialModel(sde(param.sdeParam), param)
+  // def negativeBinomial(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+  //   case param: LeafParameter => NegativeBinomialModel(sde(param.sdeParam), param)
+  //   case _ => throw new Exception("Can't build model from branch parameter")
+  // }}
+
+  def zeroInflatedPoisson(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => ZeroInflatedPoisson(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
@@ -128,52 +133,58 @@ object Model {
 
 private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) extends Model {
   def observation = x => p.scale match {
-    case Some(v) => StudentsT(df) map (a => a * v + x)
+    case Some(logv) => {
+      val v = exp(logv)
+      StudentsT(df) map (a => a * v + x)
+    }
     case None => throw new Exception("No scale parameter provided to Student T Model")
   }
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
   def dataLikelihood = (eta, y) => p.scale match {
-    case Some(v) => 1/v * StudentsT(df).logPdf((y - eta) / v)
+    case Some(logv) => {
+      val v = exp(logv) // convert v to the correct scale
+      1/v * StudentsT(df).logPdf((y - eta) / v)
+    }
     case None => throw new Exception("No scale parameter provided to Student T Model")
   }
 }
 
-private final case class NegativeBinomialModel(sde: Sde, p: LeafParameter) extends Model {
-  /**
-    * Transform the the usual parameterisation of the Negative Binomial Distribution
-    * @param mu representing the transformed latent state eta
-    * @param sigma the standard deviation passed in from the parameters p
-    * @return the parameters of the standard Negative Binomial distribution (r, p)
-    */
-  def parameteriseMean(mu: Double, sigma: Double) = {
-    val p = (sigma*sigma - mu) / sigma*sigma
-    val r = mu*mu / (sigma*sigma - mu)
+// private final case class NegativeBinomialModel(sde: Sde, p: LeafParameter) extends Model {
+//   /**
+//     * Transform the the usual parameterisation of the Negative Binomial Distribution
+//     * @param mu representing the transformed latent state eta
+//     * @param sigma the standard deviation passed in from the parameters p
+//     * @return the parameters of the standard Negative Binomial distribution (r, p)
+//     */
+//   def parameteriseMean(mu: Double, sigma: Double) = {
+//     val p = (sigma*sigma - mu) / sigma*sigma
+//     val r = mu*mu / (sigma*sigma - mu)
 
-    (r, p)
-  }
+//     (r, p)
+//   }
 
-  def observation = x => p.scale match {
-    case Some(v) => {
-      val (r, p) = parameteriseMean(link(x), v)
-      NegativeBinomial(r, p).map(_.toDouble): Rand[Double]
-    }
-    case None => throw new Exception("No scale parameter provided to Negativebinomial Model")
-  }
+//   def observation = x => p.scale match {
+//     case Some(v) => {
+//       val (r, p) = parameteriseMean(link(x), v)
+//       NegativeBinomial(r, p).map(_.toDouble): Rand[Double]
+//     }
+//     case None => throw new Exception("No scale parameter provided to Negativebinomial Model")
+//   }
 
-  override def link(x: Gamma) = exp(x)
+//   override def link(x: Gamma) = exp(x)
 
-  def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
+//   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
-  def dataLikelihood = (eta, y) => p.scale match {
-    case Some(v) => {
-      val (r, p) = parameteriseMean(eta, v)
-      NegativeBinomial(r, p).logProbabilityOf(y.toInt)
-    }
-    case None => throw new Exception("No scale parameter provided to Negativebinomial Model")
-  }
-}
+//   def dataLikelihood = (eta, y) => p.scale match {
+//     case Some(v) => {
+//       val (r, p) = parameteriseMean(eta, v)
+//       NegativeBinomial(r, p).logProbabilityOf(y.toInt)
+//     }
+//     case None => throw new Exception("No scale parameter provided to Negativebinomial Model")
+//   }
+// }
 
 /**
   * A seasonal model
@@ -187,7 +198,10 @@ private final case class SeasonalModel(
   sde: Sde, p: LeafParameter) extends Model {
 
   def observation = x => p.scale match {
-    case Some(v) => Gaussian(x, v)
+    case Some(logv) => {
+      val v = exp(logv)
+      Gaussian(x, v)
+    }
     case None => throw new Exception("No SD parameter provided to SeasonalModel")
   }
 
@@ -202,7 +216,10 @@ private final case class SeasonalModel(
   def f(s: State, t: Time) = s.fold(0.0)(x => buildF(harmonics, t) dot x)(_ + _)
 
   def dataLikelihood = (eta, y) => p.scale match {
-    case Some(v) => Gaussian(eta, v).logPdf(y)
+    case Some(logv) => {
+      val v = exp(logv)
+      Gaussian(eta, v).logPdf(y)
+    }
     case None => throw new Exception("No SD parameter provided to SeasonalModel")
   }
 }
@@ -214,23 +231,29 @@ private final case class SeasonalModel(
     */
 private final case class LinearModel(sde: Sde, p: LeafParameter) extends Model {
   def observation = x => p.scale match {
-    case Some(v) => Gaussian(x, v)
+    case Some(logv) => {
+      val v = exp(logv)
+      Gaussian(x, v)
+    }
     case None => throw new Exception("Must provide SD parameter for LinearModel")
   }
   
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
   def dataLikelihood = (eta, y) => p.scale match {
-    case Some(v) =>  Gaussian(eta, v).logPdf(y)
+    case Some(logv) => {
+      val v = exp(logv)
+      Gaussian(eta, v).logPdf(y)
+    }
     case None => throw new Exception("Must provide SD parameter for LinearModel")
   }
 }
 
-  /**
-    * The Poisson unparameterised model with a one dimensional latent state
-    * @param sde a solution to a diffusion process representing the evolution of the latent space
-    * @return a Poisson UnparamModel which can be composed with other UnparamModels
-    */
+/**
+  * The Poisson unparameterised model with a one dimensional latent state
+  * @param sde a solution to a diffusion process representing the evolution of the latent space
+  * @return a Poisson UnparamModel which can be composed with other UnparamModels
+  */
 private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model {
   def observation = x => Poisson(link(x)) map (_.toDouble): Rand[Double]
 
@@ -238,7 +261,42 @@ private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model 
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
-  def dataLikelihood = (state, y) => y.toInt * state - exp(state) - lgamma(y.toInt + 1)
+  def dataLikelihood = (state, y) => Poisson(link(state)).logProbabilityOf(y.toInt)
+}
+
+/**
+  * The zero inflated Poisson model is useful for count data displaying excess zeros
+  * The rate, eta(t) is the expected Poisson count at time t, and the scale parameter 
+  * is the probability of extra zeros (so must lie between 0 and 1)
+  */
+private final case class ZeroInflatedPoisson(sde: Sde, params: LeafParameter) extends Model {
+  def observation = x => params.scale match {
+    case Some(v) => {
+      val p = exp(v) / (1 + exp(v))
+      for {
+        u <- Uniform(0, 1)
+        nonZero <- Poisson(link(x))
+        next = if (u < p) 0 else nonZero
+      } yield next
+    }
+    case None => throw new Exception("Must provide probability parameter for zero inflated Poisson Model")
+  }
+
+  override def link(x: Double) = exp(x)
+
+  def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
+
+  def dataLikelihood = (state, y) =>  params.scale match {
+    case Some(v) => {
+      val p = exp(v) / (1 + exp(v)) // transform the "scale" to be between zero and one
+      if (y.toInt == 0) {
+        log(p + (1 - p) * exp(-exp(state))) // this looks bad, can be improved
+      } else {
+        -log(1 + exp(v)) + y.toInt * state - exp(state) - lgamma(y.toInt + 1)
+      }
+    }
+    case None => throw new Exception("Must provide probability parameter for zero inflated Poisson Model")
+  }
 }
 
   /**

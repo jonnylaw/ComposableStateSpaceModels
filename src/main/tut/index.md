@@ -59,7 +59,7 @@ sims.
   runWith(Streaming.writeStreamToFile("data/ornsteinUhlenbeck.csv"))
 ```
 
-![Ornstein Uhlenbeck Process](img/ouProcess.png)
+![Ornstein Uhlenbeck Process](img/ouProcess.png =500x300)
 
 Notice, the state space is multidimensional, and as such is represented by a `DenseVector`. A single state is represented by a LeafState, this will become clear when considering composition of models. The figure shows a representation of the Ornstein-Uhlenbeck process with `theta = 6.0, alpha = 0.05, sigma = 1.0`.
 
@@ -81,7 +81,7 @@ poissonSims.
   runWith(Streaming.writeStreamToFile("data/PoissonModelSims.csv"))
 ```
 
-![Poisson Model](img/PoissonModel.png)
+![Poisson Model](img/PoissonModel.png =500x300)
 
 The figure shows the state space, which varies along the whole real line and the transformed state space and Eta, which is strictly positive. The linking function, g, is the log-link.
 
@@ -119,7 +119,7 @@ composedSims.
   runWith(Streaming.writeStreamToFile("data/seasonalPoissonSims.csv"))
 ```
 
-![Composed Model](img/ComposedModel.png)
+![Composed Model](img/ComposedModel.png =500x300)
 
 ## Statistical Inference: The Particle Filter
 
@@ -137,7 +137,7 @@ val filter = ParticleFilter.filter(Resampling.treeSystematicResampling, t0, 100)
 `filter` is no an Akka Streams `Flow`, which represents a transformation on a live stream. This flow takes in `Data` and retruns `PfState` containing the current estimate of the log-likelihood, the current estimated state, the effective sample size of the particles along with the time and current observation. Next, we run the particle filter over the observed data stream and calculate credible intervals of the state, using the 100 measurements simulated from the composed model. 
 
 ```tut
-composedSims.
+val filteredPoisson = composedSims.
   via(filter(composedMod(composedParams))).
   map(ParticleFilter.getIntervals(composedMod(composedParams))).
   map(_.show).
@@ -147,7 +147,7 @@ composedSims.
 The figure below shows the actual simulated state, plotted next to the estimate state and 99% [credible intervals](https://en.wikipedia.org/wiki/Credible_interval).
 
 
-![Filtered Poisson Model](img/FilteredPoisson.png)
+![Filtered Poisson Model](img/FilteredPoisson.png =500x300)
 
 ## Inference for the Joint State and Parameter Posterior Distribution
 
@@ -161,7 +161,7 @@ def prior: Parameters => LogLikelihood = p => 0.0
 
 Create a function from Parameters => LogLikelihood by composing the model (Parameters => Model) with the filter (Model => LogLikelihood). The data simulated as a stream and consumed using `Sink.seq` is an asynchronous computation which returns a `Future[Seq[Data]]`. In order to access the sequence of observations inside of the `Future`, we need to map over the value:
 
-```tut
+```
 val res = for {
   data <- poissonSims.take(500).runWith(Sink.seq)
   mll = (p: Parameters) => ParticleFilter.filterLlState(data.toVector, Resampling.treeSystematicResampling, 500)(poissonMod(p))
@@ -179,7 +179,7 @@ Note that the algorithm has been initialised at the same parameter values we use
 Shutdown the Actor system:
 
 ```tut
-res.onComplete(_ => system.terminate())
+filteredPoisson.onComplete(_ => system.terminate())
 ```
 
 For more information on how to use the library, see the [examples](https://github.com/jonnylaw/ComposableStateSpaceModels/tree/master/src/main/scala/com/github/jonnylaw/examples) directory for runnable code.

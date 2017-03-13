@@ -266,3 +266,23 @@ case class ParticleMetropolisStateAsync(
     Source.unfoldAsync(initState)(state => mhStep(state) map ((s: ParamsState) => Some((s, state))))
   }
 }
+
+object MetropolisHastings {
+  /**
+    * Function to tune the target acceptance rate for the PMMH algorithm
+    * Using a Multivariate Normal Proposal Distribution
+    * @param threads the number of threads to tune the MCMC on
+    * @param initScale the initial scale to use, which multiplies the covariance matrix of the proposal distribution
+    * @param initCovariance the initial covariance matrix for the proposal MVN distribution
+    * @param pmmh a function from the scale and covariance of the proposal distribution to the stream of parameters
+    */
+  def tuningPhase(threads: Int)(initScale: Double, initCovariance: DenseMatrix[Double])(
+    pmmh: (Double, DenseMatrix[Double]) => Source[ParamsState, NotUsed]) = ???
+    
+  //   Source(1 to threads).
+  //     mapAsync(threads){ _ =>
+  //       pmmh(initScale, initCovariance).
+  //       take(100).
+  //     }
+  // }
+}

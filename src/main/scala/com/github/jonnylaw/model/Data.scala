@@ -241,3 +241,17 @@ case class DataFromFile(file: String) extends DataService[Future[IOResult]] {
       map(d => TimedObservation(d(0).toDouble, d(1).toDouble))
   }
 }
+
+/**
+  * Read a JSON file
+  */
+case class DataFromJson(file: String) extends DataService[Future[IOResult]] with DataProtocols {
+  import spray.json._
+
+  def observations: Source[Data, Future[IOResult]] = {
+    FileIO.fromPath(Paths.get(file)).
+      via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
+      map(_.utf8String).
+      map(_.parseJson.convertTo[TimedObservation])
+  }
+}

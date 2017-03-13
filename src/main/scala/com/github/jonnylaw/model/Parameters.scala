@@ -1,18 +1,33 @@
 package com.github.jonnylaw.model
 
 import breeze.linalg.{DenseMatrix, DenseVector}
+import breeze.stats.covmat
 import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}
 import breeze.numerics.exp
 import cats._
 import cats.implicits._
 import scala.util.{Try, Success, Failure}
 
-sealed trait Parameters {
+sealed trait Parameters { self =>
   def sum(that: Parameters): Try[Parameters]
 
   def perturb(delta: Double): Rand[Parameters]
 
-  def perturbIndep(delta: Array[Double]): Rand[Parameters]
+  /**
+    * Adds the value delta to the parameters
+    */
+  def add(delta: DenseVector[Double]): Parameters = self match {
+    case BranchParameter(l, r) =>
+      Parameters.branchParameter(l.add(delta(0 to l.length - 1)), r.add(delta(l.length to -1)))
+    case LeafParameter(scale, sdeParam) => scale match {
+      case Some(v) => 
+        val sde = sdeParam.add(delta(1 to -1))
+        Parameters.leafParameter(Some(v + delta(0)), sde)
+      case None =>
+        Parameters.leafParameter(None, sdeParam.add(delta))
+    }
+    case EmptyParameter => Parameters.emptyParameter
+  }
 
   def flatten: Vector[Double]
 
@@ -20,9 +35,40 @@ sealed trait Parameters {
 
   def map(f: Double => Double): Parameters
 
-  def toMap: Map[String, Double]
+  def toMap: Map[String, Double] = self match {
+    case BranchParameter(l, r) => l.toMap ++ r.toMap
+    case LeafParameter(s, sde) => s match {
+      case Some(v) => Map("scale" -> v) ++ sde.toMap
+      case None => sde.toMap
+    }
+    case EmptyParameter => Map[String, Double]()
+  }
 
-  override def toString = this.flatten.mkString(", ")
+  /**
+    * Propose a new value of the parameters using a Multivariate Normal distribution
+    * Using the cholesky decomposition of the covariance matrix
+    * @param scale a scaling factor for the proposal distribution
+    * @param sigma the covariance of the proposal distribution
+    * @return a distribution over the parameters which can be drawn from
+    */
+  def perturbMvn(scale: Double, sigma: DenseMatrix[Double]): Rand[Parameters] = {
+    MultivariateGaussian(DenseVector.zeros[Double](sigma.cols), scale * scale * sigma) map { innov =>
+      self.add(innov)
+    }
+  }
+
+  /**
+    * Propose a new value of the parameters using a Multivariate Normal distribution
+    * using the eigen decomposition of the covariance matrix
+    * @param scale a scaling factor for the proposal distribution
+    * @param sigma the covariance of the proposal distribution
+    * @return a distribution over the parameters which can be drawn from
+    */
+  def perturbMvnEigen(scale: Double, sigma: DenseMatrix[Double]): Rand[Parameters] = {
+    MultivariateNormal(DenseVector.zeros[Double](sigma.cols), scale * scale * sigma) map { innov =>
+      self.add(innov)
+    }
+  }
 }
 case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends Parameters {
 
@@ -48,15 +94,8 @@ case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends 
     } yield Parameters.leafParameter(v, sde)
   }
 
-  def perturbIndep(delta: Array[Double]): Rand[Parameters] = ???
-
   def map(f: Double => Double): Parameters = {
     Parameters.leafParameter(scale.map(f), sdeParam.map(f))
-  }
-
-  def toMap: Map[String, Double] = scale match {
-    case Some(v) => sdeParam.toMap + ("scale" -> v)
-    case None => sdeParam.toMap
   }
 }
 
@@ -77,24 +116,18 @@ case class BranchParameter(left: Parameters, right: Parameters) extends Paramete
     } yield Parameters.branchParameter(l, r)
   }
 
-  def perturbIndep(delta: Array[Double]): Rand[Parameters] = ???
-
   def flatten: Vector[Double] = left.flatten ++ right.flatten
 
   def map(f: Double => Double): Parameters = {
     Parameters.branchParameter(left.map(f), right.map(f))
   }
-
-  def toMap: Map[String, Double] = left.toMap ++ right.toMap
 }
 
 case object EmptyParameter extends Parameters {
   def perturb(delta: Double): Rand[Parameters] = Rand.always(Parameters.emptyParameter)
-  def perturbIndep(delta: Array[Double]): Rand[Parameters] = Rand.always(Parameters.emptyParameter)
   def sum(that: Parameters): Try[Parameters] = Success(that)
   def flatten = Vector()
   def map(f: Double => Double): Parameters = EmptyParameter
-  def toMap: Map[String, Double] = Map[String, Double]()
 }
 
 object Parameters {
@@ -143,4 +176,22 @@ object Parameters {
   def perturb(delta: Double): Parameters => Rand[Parameters] = p => {
     p.perturb(delta)
   }
+
+  def perturbMvn(scale: Double, sigma: DenseMatrix[Double]) = { (p: Parameters) =>
+    p.perturbMvn(scale, sigma)
+  }
+
+  def perturbMvnEigen(scale: Double, sigma: DenseMatrix[Double]) = { (p: Parameters) =>
+    p.perturbMvnEigen(scale, sigma)
+  }
+
+  /**
+    * Calculate the covariance of a sequence of parameters
+    */
+  def covariance(samples: Seq[Parameters]): DenseMatrix[Double] = {
+    val dim = samples.head.flatten.size
+    val m = new DenseMatrix(10000, dim, samples.map(_.flatten.toArray).toArray.transpose.flatten)
+    covmat.matrixCovariance(m)
+  }
+
 }

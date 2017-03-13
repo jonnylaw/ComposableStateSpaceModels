@@ -10,9 +10,11 @@ sealed trait SdeParameter {
   def length: Int = this.flatten.length
   def sum(that: SdeParameter): Try[SdeParameter]
   def perturb(delta: Double): Rand[SdeParameter]
-  def perturbIndep(delta: Vector[Double]): Rand[SdeParameter]
+  def add(delta: DenseVector[Double]): SdeParameter
   def map(f: Double => Double): SdeParameter
   def toMap: Map[String, Double]
+  def m0: DenseVector[Double]
+  def c0: DenseVector[Double]
 }
 
 case class BrownianParameter(
@@ -31,24 +33,22 @@ case class BrownianParameter(
     val dimension = m0.size
     for {
       meanInit <- MultivariateGaussian(m0, diag(DenseVector.fill(dimension)(delta)))
-      cInnov <- MultivariateGaussian(
-        DenseVector.zeros[Double](dimension),
-        diag(DenseVector.fill(dimension)(delta))
-      )
-      covInit = c0 :* exp(cInnov)
+      covInit <- MultivariateGaussian(c0, diag(DenseVector.fill(dimension)(delta)))
       m <- MultivariateGaussian(mu, diag(DenseVector.fill(dimension)(delta)))
-      sInnov <- MultivariateGaussian(
-        DenseVector.zeros[Double](dimension),
-        diag(DenseVector.fill(dimension)(delta))
-      )
-      s = sigma :* exp(sInnov)
+      s <- MultivariateGaussian(sigma, diag(DenseVector.fill(dimension)(delta)))
     } yield SdeParameter.brownianParameter(meanInit, covInit, m, s)
   }
 
-  def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???
+  def add(delta: DenseVector[Double]): SdeParameter = {
+    val dim = m0.size
+    SdeParameter.brownianParameter(
+      m0 :+ delta(0 to dim - 1),
+      c0 :+ delta(dim to 2 * dim - 1),
+      mu :+ delta(2 * dim to 3 * dim - 1),
+      sigma :+ delta(3 * dim to -1))
+  }
 
-  def flatten: Vector[Double] =
-    m0.data.toVector ++ c0.data.toVector ++ mu.data.toVector ++ sigma.data.toVector
+  def flatten: Vector[Double] = m0.data.toVector ++ c0.data.toVector ++ mu.data.toVector ++ sigma.data.toVector
 
   def map(f: Double => Double): SdeParameter = {
     SdeParameter.brownianParameter(m0.mapValues(f), c0.mapValues(f), mu.mapValues(f), sigma.mapValues(f))
@@ -77,31 +77,23 @@ case class OrnsteinParameter(
     val dimension = m0.size
     for {
       meanInit <- MultivariateGaussian(m0, diag(DenseVector.fill(dimension)(delta)))
-      cInnov <- MultivariateGaussian(
-        DenseVector.zeros[Double](dimension),
-        diag(DenseVector.fill(dimension)(delta)))
-      covInit = c0 :* exp(cInnov)
+      covInit <- MultivariateGaussian(c0, diag(DenseVector.fill(dimension)(delta)))
       t <- MultivariateGaussian(theta, diag(DenseVector.fill(dimension)(delta)))
-      aInnov <- MultivariateGaussian(
-        DenseVector.zeros[Double](dimension),
-        diag(DenseVector.fill(dimension)(delta)))
-      a = alpha :* exp(aInnov)
-      sInnov <- MultivariateGaussian(
-        DenseVector.zeros[Double](dimension),
-        diag(DenseVector.fill(dimension)(delta)))
-      s = sigma :* exp(sInnov)
+      a <- MultivariateGaussian(alpha, diag(DenseVector.fill(dimension)(delta)))
+      s <- MultivariateGaussian(sigma, diag(DenseVector.fill(dimension)(delta)))
     } yield SdeParameter.ornsteinParameter(meanInit, covInit, t, a, s)
   }
 
-  def perturbIndep(delta: Vector[Double]): Rand[SdeParameter] = ???
-  //     innov <- MultivariateGaussian(
-  //       DenseVector.zeros[Double](3 * theta.length),
-  //       diag(DenseVector.fill(3 * theta.length)(delta)))
-  //     t = theta + innov(0 to theta.length - 1)
-  //     a = alpha :* exp(innov(theta.length to 2 * theta.length - 1))
-  //     s = sigma :* exp(innov(2 * theta.length to -1))
-  //   } yield SdeParameter.ornsteinParameter(t, a, s)
-  // }
+  def add(delta: DenseVector[Double]): SdeParameter = {
+    val dim = m0.size
+    SdeParameter.ornsteinParameter(
+      m0 :+ delta(0 to dim - 1), 
+      c0 :+ delta(dim to 2 * dim - 1),
+      theta :+ delta(2 * dim to 3 * dim - 1),
+      alpha :+ delta(3 * dim to 4 * dim - 1),
+      sigma :+ delta(4 * dim to -1))
+  }
+
 
   def flatten: Vector[Double] =
     m0.data.toVector ++ c0.data.toVector ++ theta.data.toVector ++ alpha.data.toVector ++ sigma.data.toVector

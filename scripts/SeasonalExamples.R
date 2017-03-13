@@ -35,8 +35,6 @@ grid.arrange(p1, p2)
 # seasonal Filtered #
 ####################
 
-# I think I need to add the complex conjugate to the seasonal vector, so the states are identifiable
-
 seasonalFiltered = read_csv("data/SeasonalModelFiltered.csv", 
                            col_names = c("time", "observation", 
                                          "pred_eta", "lower_eta", "upper_eta",
@@ -76,6 +74,17 @@ p3 = seasonalFiltered %>%
 # png("FilteringSeasonal.png")
 grid.arrange(p1, p2, p3, layout_matrix = rbind(c(1, 1), c(2, 3)))
 # dev.off()
+
+#############
+# Pilot Run #
+#############
+
+pilot_run = read_csv("data/SeasonalPilotRun.csv", col_names = c("particles", "variance"))
+
+pilot_run %>%
+  ggplot(aes(x = particles, y = variance)) +
+  geom_line() + 
+  geom_point()
 
 ###################
 # Seasonal Params #

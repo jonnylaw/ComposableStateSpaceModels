@@ -33,14 +33,4 @@ object SamplingScalaCheck extends Properties("ParticleFilter") {
   property("Tree async resampling sample should return a list of the same length") = Prop.forAll(asyncListProbs) { w =>
     Await.result(Resampling.asyncTreeSystematicResampling(4)(w, w), Duration.Inf).size == w.size
   }
-
-  // property("tree Residual resampling sample should return a list of the same length") = Prop.forAll(unnormalisedProbs) { w =>
-  //   Resampling.treeResidualResampling(w, w).size == w.size
-  // }
-
-  // val epsilon = 1e-4f
-  // implicit val doubleEq = TolerantNumerics.tolerantDoubleEquality(epsilon)
-
-  // // take the log of the unnormalised probabilities
-  // val logLikelihoods = unnormalisedProbs map (_.map(math.log))
 }

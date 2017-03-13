@@ -68,12 +68,13 @@ grid.arrange(p1, p2, p3, layout_matrix = rbind(c(1, 1), c(2, 3)))
 # Pilot run for composed Model #
 ################################
 
-pilot_run = read_csv("data/ComposedPilotRun.csv")
+pilot_run = read_csv("data/ComposedPilotRun.csv", col_names = c("particles", "variance"))
 
 pilot_run %>%
-  ggplot(aes(x = particles, y = mll_variance)) +
+  ggplot(aes(x = particles, y = variance, colour = "holla")) +
   geom_point() +
-  geom_line()
+  geom_line() +
+  theme(legend.position = "none")
 
 #######################################
 # Sample from the prior distributions #

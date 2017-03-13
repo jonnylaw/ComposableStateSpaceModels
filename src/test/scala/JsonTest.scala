@@ -1,27 +1,53 @@
 import cats.implicits._
 import breeze.linalg.DenseVector
 import com.github.jonnylaw.model._
-import org.scalatest._
+import org.scalacheck.Prop.forAll
+import org.scalacheck._
+import Arbitrary.arbitrary
 import spray.json._
 
-// TODO: Convert this into scalacheck
-class JsonSuite extends FlatSpec with Matchers with DataProtocols {
-  "Nested State" should "Serialise and deserialise to JSON" in {
-    val x0: State = Tree.leaf(DenseVector(1.0, 2.0, 3.0)) |+| Tree.leaf(DenseVector(2.0))
+class JsonSuite extends Properties("Json") with DataProtocols {
+  val denseVector = (n: Int) => Gen.containerOfN[Array, Double](n, arbitrary[Double]).
+    map(a => DenseVector(a))
 
-    assert(x0 == x0.toJson.compactPrint.parseJson.convertTo[State])
+  val genLeafState: Gen[State] = for {
+    v <- denseVector(1)
+  } yield Tree.leaf(v)
+
+  val genBranchState: Gen[State] = for {
+    left <- genLeafState
+    right <- genLeafState
+  } yield Tree.branch(left, right)
+
+  val genState: Gen[State] = Gen.oneOf(genBranchState, genLeafState)
+
+  property("toJson should serialise State to Json") = Prop.forAll(genState) { x0 =>
+    x0 == x0.toJson.compactPrint.parseJson.convertTo[State]
   }
 
-  "Nested Parameters" should "Serialise and deserialise to JSON" in {
-    val sdeParameter = SdeParameter.brownianParameter(
-      DenseVector(1.0),
-      DenseVector(1.0),
-      DenseVector(1.0),
-      DenseVector(1.0))
-    val p: Parameters = Parameters.leafParameter(None, sdeParameter)
+  val genBrownian: Gen[SdeParameter] = for {
+    v <- denseVector(1)
+  } yield SdeParameter.brownianParameter(v, v, v, v)
 
-    val combParams = p |+| p
+  val genOrnstein: Gen[SdeParameter] = for {
+    v <- denseVector(1)
+  } yield SdeParameter.ornsteinParameter(v, v, v, v, v)
 
-    assert(p == p.toJson.compactPrint.parseJson.convertTo[Parameters])
+  val genSde: Gen[SdeParameter] = Gen.oneOf(genBrownian, genOrnstein)
+
+  val genLeaf = for {
+    v <- arbitrary[Double]
+    sde <- genSde
+  } yield Parameters.leafParameter(Some(v), sde)
+
+  val genBranch = for {
+    left <- genLeaf
+    right <- genLeaf
+  } yield Parameters.branchParameter(left, right)
+
+  val genParams: Gen[Parameters] = Gen.oneOf(genLeaf, genBranch)
+
+  property("toJson should serialise Parameters to Json") = Prop.forAll(genParams) { p =>
+    p == p.toJson.compactPrint.parseJson.convertTo[Parameters]
   }
 }

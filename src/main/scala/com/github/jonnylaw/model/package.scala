@@ -134,7 +134,7 @@ package object model {
 
   implicit def itersShow(implicit S: Show[Parameters], T: Show[StateSpace]) = new Show[MetropState] {
     def show(a: MetropState): String = 
-      s"${S.show(a.params)}, ${T.show(a.sde)}, ${a.accepted}"
+      s"${S.show(a.params)}, ${a.accepted}"
   }
 
   implicit def paramStateShow(implicit S: Show[Parameters]) = new Show[ParamsState] {

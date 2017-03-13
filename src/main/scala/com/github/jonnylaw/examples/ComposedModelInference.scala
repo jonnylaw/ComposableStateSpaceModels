@@ -6,7 +6,7 @@ import akka.actor.ActorSystem
 import akka.util.ByteString
 
 
-import breeze.linalg.DenseVector
+import breeze.linalg.{DenseVector, DenseMatrix}
 import breeze.stats.distributions._
 import cats.data.Reader
 import cats.implicits._
@@ -21,6 +21,7 @@ import java.io._
 import scala.collection.parallel.immutable.ParVector
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import spray.json._
 
 /**
   * Define a model to use throughout the examples in this file
@@ -32,7 +33,7 @@ trait TestModel {
       DenseVector(0.0), 
       DenseVector(1.0), 
       DenseVector(0.01), 
-      DenseVector(0.01)))
+      DenseVector(0.3)))
 
   val seasonalParams = Parameters.leafParameter(
     None,
@@ -96,8 +97,48 @@ object SimulateSeasonalPoisson extends App with TestModel {
   Source.apply(times).
     via(SimulateData(model(params)).simPompModel(0.0)).
     map((x: Data) => x.show).
-    runWith(Streaming.writeStreamToFile("data/seasonalPoissonSims.csv")).
+    runWith(Streaming.writeStreamToFile("data/SeasonalPoissonSims.csv")).
     onComplete(_ => system.terminate())
+}
+
+object PilotRunComposed extends App with TestModel {
+  val particles = Vector(100, 200, 500, 1000, 2000, 5000)
+  val resample: Resample[State, Id] = Resampling.treeSystematicResampling _
+
+  val res = for {
+    data <- DataFromFile("data/SeasonalPoissonSims.csv").observations.runWith(Sink.seq)
+    vars = Streaming.pilotRun(data.toVector, model, params, resample, particles)
+    io <- vars.map { case (n, v) => s"$n, $v" }.
+      runWith(Streaming.writeStreamToFile("data/ComposedPilotRun.csv"))
+  } yield io
+
+  res.onComplete(_ => system.terminate())
+}
+
+object DetermineComposedParams extends TestModel with DataProtocols {
+  def main(args: Array[String]) = {
+    val scale = args.head.toDouble
+    val sigma = DenseMatrix.eye[Double](34)
+
+    // 1. read data from file
+    // 2. compose model with particle filter to get function from Parameters => LogLikelihood
+    // 3. Build the PMMH algorithm using the mll estimate from the particle filter
+    // 4. write it to a file as a stream
+    def iters(chain: Int) = for {
+      data <- DataFromFile("data/SeasonalPoissonSims.csv").observations.runWith(Sink.seq)
+      filter = (p: Parameters) => ParticleFilter.likelihood(data.sortBy(_.t).toVector, Resampling.treeSystematicResampling, 250)(model(p))
+      pmmh = ParticleMetropolisSerial(filter, params, Parameters.perturbMvnEigen(scale, sigma), p => prior(p).get)
+      io <- pmmh.
+        params.
+        take(100000).
+        via(Streaming.monitorStream).
+        map(_.toJson.compactPrint).
+        runWith(Streaming.writeStreamToFile(s"data/seasonalPoissonParams-$chain.json"))
+    } yield io
+
+    Future.sequence((1 to 2).map(iters)).
+      onComplete(_ => system.terminate())
+  }
 }
 
 object FilterSeasonalPoisson extends TestModel {
@@ -110,101 +151,13 @@ object FilterSeasonalPoisson extends TestModel {
 
     val filter = ParticleFilter.filter(resample, 0.0, n)
 
-    DataFromFile("data/seasonalPoissonSims.csv").
+    DataFromFile("data/SeasonalPoissonSims.csv").
       observations.
       via(filter(model(params))).
       map(ParticleFilter.getIntervals(model(params))).
       drop(1).
       map(_.show).
-      runWith(Streaming.writeStreamToFile("data/seasonalPoissonFiltered.csv")).
+      runWith(Streaming.writeStreamToFile("data/SeasonalPoissonFiltered.csv")).
       onComplete(_ => system.terminate())
   }
-}
-
-object PilotRunComposed extends App with TestModel {
-  setParallelismGlobally(8) // set the number of threads to use for the parallel particle filter
-
-  val particles = Vector(100, 200, 500, 1000, 2000, 5000)
-  val resample: Resample[State, Id] = Resampling.treeSystematicResampling _
-
-  val res = for {
-    data <- DataFromFile("data/seasonalPoissonSims.csv").observations.runWith(Sink.seq)
-    vars = Streaming.pilotRun(data.toVector, model, params, resample, particles)
-    io <- vars.map { case (n, v) => s"$n, $v" }.
-      runWith(Streaming.writeStreamToFile("data/ComposedPilotRun.csv"))
-  } yield io
-
-  res.onComplete(_ => system.terminate())
-}
-
-object DetermineComposedParams extends TestModel {
-  def main(args: Array[String]) = {
-    val delta = args.head.toDouble
-
-    // 1. read data from file
-    // 2. compose model with particle filter to get function from Parameters => LogLikelihood
-    // 3. Build the PMMH algorithm using the mll estimate from the particle filter
-    // 4. write it to a file as a stream
-    def iters(chain: Int) = for {
-      data <- DataFromFile("data/seasonalPoissonSims.csv").observations.runWith(Sink.seq)
-      filter = (p: Parameters) => ParticleFilter.likelihood(data.sortBy(_.t).toVector, Resampling.treeSystematicResampling, 500)(model(p))
-      pmmh = ParticleMetropolisSerial(filter, params, Parameters.perturb(delta), p => prior(p).get)
-      io <- pmmh.
-        params.
-        take(100000).
-        via(Streaming.monitorStream).
-        map(_.show).
-        runWith(Streaming.writeStreamToFile(s"data/seasonalPoissonParams-$chain.csv"))
-    } yield io
-
-    Future.sequence((1 to 2).map(iters)).
-      onComplete(_ => system.terminate())
-  }
-}
-
-/**
-  * Create multiple Metropolis Kernels and monitor the acceptance of each block
-  */
-object DetermineComposedParamsBlockwise extends App with TestModel {
-  // Proposal for the poisson parameters
-  def poissonPropose = (p: Parameters) => p match {
-    case LeafParameter(None, BrownianParameter(m, c, mu, sigma)) =>
-      for {
-        new_m <- Gaussian(m(0), 0.01)
-        new_c <- Gaussian(c(0), 0.01)
-        new_mu <- Gaussian(mu(0), 0.025)
-        new_sigma <- Gaussian(sigma(0), 0.025)
-      } yield Parameters.leafParameter(None, 
-        SdeParameter.brownianParameter(
-          DenseVector(new_m), 
-          DenseVector(new_c), 
-          DenseVector(new_mu), 
-          DenseVector(new_sigma)))
-  }
-
-  def propose = (p: Parameters) => p match {
-    case BranchParameter(l, r) =>
-      for {
-        new_l <- poissonPropose(l)
-      } yield Parameters.branchParameter(new_l, r)
-  }
-
-  // run 
-  def iters(chain: Int) = for {
-    data <- DataFromFile("data/seasonalPoissonSims.csv").observations.runWith(Sink.seq)
-    filter = (p: Parameters) => ParticleFilter.likelihood(data.sortBy(_.t).toVector, Resampling.treeSystematicResampling, 500)(model(p))
-    pmmh = ParticleMetropolisSerial(filter, params, propose, p => prior(p).get)
-    io <- pmmh.
-    params.
-    take(100000).
-    via(Streaming.monitorStream).
-    map(s => s.params match {
-      case BranchParameter(l, r) => l
-    }).
-    map(_.show).
-    runWith(Streaming.writeStreamToFile(s"data/SeasonalPoissonParamsBlock-$chain.csv"))
-  } yield io
-
-  Future.sequence((1 to 2).map(iters)).
-    onComplete(_ => system.terminate())
 }

@@ -4,11 +4,12 @@ import akka.stream.scaladsl._
 import akka.stream._
 import akka.actor.ActorSystem
 import akka.util.ByteString
-import java.nio.file.Paths
-import com.github.jonnylaw.model._
 import breeze.stats.distributions.{Gaussian, MultivariateGaussian, Gamma}
 import breeze.linalg.{DenseVector, diag}
+import breeze.numerics.log
 import cats.implicits._
+import com.github.jonnylaw.model._
+import java.nio.file.Paths
 import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
@@ -20,15 +21,15 @@ object SimulateBrownianMotion extends App {
 
   val p = SdeParameter.brownianParameter(
     DenseVector.fill(2)(1.0),
-    DenseVector.fill(2)(1.0),
+    DenseVector.fill(2)(log(1.0)),
     DenseVector.fill(2)(-0.3),
-    DenseVector.fill(2)(0.3))
+    DenseVector.fill(2)(log(0.3)))
 
   val p1 = SdeParameter.brownianParameter(
     DenseVector.fill(2)(1.0),
-    DenseVector.fill(2)(1.0),
+    DenseVector.fill(2)(log(1.0)),
     DenseVector.fill(2)(0.3),
-    DenseVector.fill(2)(0.3))
+    DenseVector.fill(2)(log(0.3)))
 
   val sde1 = Sde.brownianMotion(p)
   val sde2 = Sde.brownianMotion(p1)
@@ -51,10 +52,10 @@ object SimOrnstein extends App {
 
   val p = SdeParameter.ornsteinParameter(
     DenseVector.fill(2)(0.0),
-    DenseVector.fill(2)(3.0),
+    DenseVector.fill(2)(log(3.0)),
     theta = DenseVector(2.0, 1.0), 
-    alpha = DenseVector.fill(2)(0.5),
-    sigma = DenseVector.fill(2)(0.3))
+    alpha = DenseVector.fill(2)(log(0.5)),
+    sigma = DenseVector.fill(2)(log(0.3)))
 
   val sde = Sde.ornsteinUhlenbeck
 

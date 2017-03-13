@@ -66,20 +66,21 @@ trait Sde { self =>
 }
 
 private final case class BrownianMotion(p: BrownianParameter) extends Sde {
+  val params = BrownianParameter(p.m0, p.c0.mapValues(x => exp(x)), p.mu, p.sigma.mapValues(x => exp(x)))
 
-  def dimension: Int = p.mu.size
+  def dimension: Int = params.mu.size
 
   def initialState: Rand[State] = {
-    val init = p.m0.data.zip(p.c0.data).map { case (m, c) => Gaussian(m, c).draw }
+    val init = params.m0.data.zip(params.c0.data).map { case (m, c) => Gaussian(m, c).draw }
     Rand.always(init) map (x => Tree.leaf(DenseVector(x)))
   }
 
-  def drift(state: State) = Tree.leaf(p.mu)
+  def drift(state: State) = Tree.leaf(params.mu)
 
-  def diffusion(state: State) = Tree.leaf(diag(p.sigma))
+  def diffusion(state: State) = Tree.leaf(diag(params.sigma))
 
   override def stepFunction(dt: TimeIncrement)(s: State) = {
-    val res = s map (x => (x.data, p.mu.data, p.sigma.data).zipped.
+    val res = s map (x => (x.data, params.mu.data, params.sigma.data).zipped.
       map { case (a: Double, m: Double, s: Double) =>
         Gaussian(a + m * dt, Math.sqrt(s * dt)).draw
       })
@@ -88,29 +89,32 @@ private final case class BrownianMotion(p: BrownianParameter) extends Sde {
 }
 
 private final case class OrnsteinUhlenbeck(p: OrnsteinParameter) extends Sde {
+  val params = OrnsteinParameter(p.m0, p.c0.mapValues(x => exp(x)), p.theta, 
+    p.alpha.mapValues(x => exp(x)), p.sigma.mapValues(x => exp(x)))
+
   override def stepFunction(dt: TimeIncrement)(s: State) = {
     val res = s map { x => 
-      val mean = (x.data, p.alpha.data, p.theta.data).zipped.
+      val mean = (x.data, params.alpha.data, params.theta.data).zipped.
         map { case (state, a, t) => t + (state - t) * exp(- a * dt) }
-      val variance = (p.sigma.data, p.alpha.data).zipped.
+      val variance = (params.sigma.data, params.alpha.data).zipped.
         map { case (s, a) => (s*s/2*a)*(1-exp(-2*a*dt)) }
       mean.zip(variance) map { case (a, v) => Gaussian(a, sqrt(v)).draw() }
     }
     Rand.always(res map (DenseVector(_)))
   }
 
-  def dimension: Int = p.theta.size
+  def dimension: Int = params.theta.size
 
   def initialState: Rand[State] = {
-    val init = p.m0.data.zip(p.c0.data).map { case (m, c) => Gaussian(m, c).draw }
+    val init = params.m0.data.zip(params.c0.data).map { case (m, c) => Gaussian(m, c).draw }
     Rand.always(init) map (x => Tree.leaf(DenseVector(x)))
   }
 
   def drift(state: State) = {
-    val c = state map (x => p.theta - x)
-    c map ((x: DenseVector[Double]) => diag(p.alpha) * x)
+    val c = state map (x => params.theta - x)
+    c map ((x: DenseVector[Double]) => diag(params.alpha) * x)
   }
-  def diffusion(state: State) = Tree.leaf(diag(p.sigma))
+  def diffusion(state: State) = Tree.leaf(diag(params.sigma))
 }
 
 /**

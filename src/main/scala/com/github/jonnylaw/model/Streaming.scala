@@ -6,6 +6,7 @@ import akka.NotUsed
 import akka.util.ByteString
 import breeze.stats.distributions.Rand
 import cats._
+import cats.implicits._
 import cats.data.Reader
 import java.io._
 import java.nio.file._
@@ -36,7 +37,6 @@ object Streaming {
         map(i => mll(n)).
         zip(Source(Stream.from(1))).
         map { case (ll, i) => {
-          println(s"particles $n: current ll: $ll, iteration: $i")
           ll
         }}.
         take(100).
