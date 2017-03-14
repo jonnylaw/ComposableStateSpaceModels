@@ -7,6 +7,7 @@ import akka.util.ByteString
 
 
 import breeze.linalg.{DenseVector, DenseMatrix}
+import breeze.linalg.eigSym
 import breeze.stats.distributions._
 import cats.data.Reader
 import cats.implicits._
@@ -127,7 +128,7 @@ object DetermineComposedParams extends TestModel with DataProtocols {
     def iters(chain: Int) = for {
       data <- DataFromFile("data/SeasonalPoissonSims.csv").observations.runWith(Sink.seq)
       filter = (p: Parameters) => ParticleFilter.likelihood(data.sortBy(_.t).toVector, Resampling.treeSystematicResampling, 250)(model(p))
-      pmmh = ParticleMetropolisSerial(filter, params, Parameters.perturbMvnEigen(scale, sigma), p => prior(p).get)
+      pmmh = ParticleMetropolisSerial(filter, params, Parameters.perturbMvnEigen(eigSym(sigma)), p => prior(p).get)
       io <- pmmh.
         params.
         take(100000).

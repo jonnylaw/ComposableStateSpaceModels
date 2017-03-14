@@ -6,6 +6,7 @@ import akka.actor.ActorSystem
 import akka.util.ByteString
 
 import breeze.linalg.{DenseVector, DenseMatrix}
+import breeze.linalg.cholesky
 import breeze.stats.distributions.{Gamma, Gaussian, Rand}
 import breeze.numerics.{exp, log}
 import cats._
@@ -100,7 +101,7 @@ object DetermineSeasonalParameters extends App with SeasonalTestModel with DataP
   def iters(chain: Int): Future[IOResult] = for {
     data <- DataFromFile("data/SeasonalModelSims.csv").observations.take(400).runWith(Sink.seq)
     filter = (p: Parameters) => ParticleFilter.likelihood(data.toVector, resample, 300)(mod(p))
-    pmmh = ParticleMetropolisSerial(filter, seasonalParam, Parameters.perturbMvn(scale, sigma), prior)
+    pmmh = ParticleMetropolisSerial(filter, seasonalParam, Parameters.perturbMvn(cholesky(sigma)), prior)
     io <- pmmh.
       params.
       take(10000).

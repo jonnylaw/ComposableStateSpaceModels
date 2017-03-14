@@ -1,9 +1,10 @@
 package com.github.jonnylaw.model
 
-import breeze.linalg.{DenseMatrix, DenseVector}
+import breeze.linalg.{DenseMatrix, DenseVector, diag}
+import breeze.linalg.eigSym._
 import breeze.stats.covmat
-import breeze.stats.distributions.{Rand, Gaussian, MultivariateGaussian}
-import breeze.numerics.exp
+import breeze.stats.distributions._
+import breeze.numerics.{exp, sqrt}
 import cats._
 import cats.implicits._
 import scala.util.{Try, Success, Failure}
@@ -47,25 +48,27 @@ sealed trait Parameters { self =>
   /**
     * Propose a new value of the parameters using a Multivariate Normal distribution
     * Using the cholesky decomposition of the covariance matrix
-    * @param scale a scaling factor for the proposal distribution
-    * @param sigma the covariance of the proposal distribution
+    * @param cholesky the cholesky decomposition of the covariance of the proposal distribution
     * @return a distribution over the parameters which can be drawn from
     */
-  def perturbMvn(scale: Double, sigma: DenseMatrix[Double]): Rand[Parameters] = {
-    MultivariateGaussian(DenseVector.zeros[Double](sigma.cols), scale * scale * sigma) map { innov =>
+  def perturbMvn(chol: DenseMatrix[Double])(implicit rand: RandBasis = Rand): Rand[Parameters] = new Rand[Parameters] {
+    def draw = {
+      val innov = chol * DenseVector.rand(chol.cols, rand.gaussian(0, 1))
       self.add(innov)
     }
   }
 
   /**
     * Propose a new value of the parameters using a Multivariate Normal distribution
-    * using the eigen decomposition of the covariance matrix
-    * @param scale a scaling factor for the proposal distribution
-    * @param sigma the covariance of the proposal distribution
+    * using the eigenvalue decomposition of the covariance matrix
+    * @param eigen the eigenvalue decomposition of the covariance matrix of the proposal distribution
     * @return a distribution over the parameters which can be drawn from
     */
-  def perturbMvnEigen(scale: Double, sigma: DenseMatrix[Double]): Rand[Parameters] = {
-    MultivariateNormal(DenseVector.zeros[Double](sigma.cols), scale * scale * sigma) map { innov =>
+  def perturbMvnEigen(eigen: EigSym[DenseVector[Double], DenseMatrix[Double]])
+    (implicit rand: RandBasis = Rand): Rand[Parameters] = new Rand[Parameters] {
+    def draw = {
+      val q = eigen.eigenvectors * diag(eigen.eigenvalues.mapValues(x => sqrt(x)))
+      val innov = q * DenseVector.rand(eigen.eigenvalues.length, rand.gaussian(0, 1))
       self.add(innov)
     }
   }
@@ -177,12 +180,12 @@ object Parameters {
     p.perturb(delta)
   }
 
-  def perturbMvn(scale: Double, sigma: DenseMatrix[Double]) = { (p: Parameters) =>
-    p.perturbMvn(scale, sigma)
+  def perturbMvn(chol: DenseMatrix[Double]) = { (p: Parameters) =>
+    p.perturbMvn(chol)
   }
 
-  def perturbMvnEigen(scale: Double, sigma: DenseMatrix[Double]) = { (p: Parameters) =>
-    p.perturbMvnEigen(scale, sigma)
+  def perturbMvnEigen(eigen: EigSym[DenseVector[Double], DenseMatrix[Double]]) = { (p: Parameters) =>
+    p.perturbMvnEigen(eigen)
   }
 
   /**
@@ -190,7 +193,7 @@ object Parameters {
     */
   def covariance(samples: Seq[Parameters]): DenseMatrix[Double] = {
     val dim = samples.head.flatten.size
-    val m = new DenseMatrix(10000, dim, samples.map(_.flatten.toArray).toArray.transpose.flatten)
+    val m = new DenseMatrix(samples.size, dim, samples.map(_.flatten.toArray).toArray.transpose.flatten)
     covmat.matrixCovariance(m)
   }
 

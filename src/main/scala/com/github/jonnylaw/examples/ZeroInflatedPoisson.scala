@@ -5,6 +5,7 @@ import akka.stream._
 import akka.util.ByteString
 import akka.actor.ActorSystem
 import breeze.linalg.{DenseVector, DenseMatrix}
+import breeze.linalg.cholesky
 import breeze.stats.distributions._
 import breeze.numerics.log
 import cats.implicits._
@@ -56,7 +57,7 @@ object ZipModelPosterior extends App with ZipModel with DataProtocols {
   def iters(chain: Int): Future[IOResult] = for {
     data <- DataFromJson("data/ZiPoissonModel.json").observations.take(400).runWith(Sink.seq)
     pf = (param: Parameters) => ParticleFilter.filterLlState(data.toVector, Resampling.treeSystematicResampling, 100)(model(param))
-    pmmh = ParticleMetropolisState(pf, p, Parameters.perturbMvn(0.15, DenseMatrix.eye[Double](p.length + 1)), prior)
+    pmmh = ParticleMetropolisState(pf, p, Parameters.perturbMvn(cholesky(DenseMatrix.eye[Double](p.length))), prior)
     io <- pmmh.
       iters.
       take(10000).

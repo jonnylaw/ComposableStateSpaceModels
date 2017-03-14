@@ -5,6 +5,7 @@ import akka.stream._
 import akka.NotUsed
 import akka.util.ByteString
 import breeze.stats.distributions.Rand
+import breeze.linalg.DenseMatrix
 import cats._
 import cats.implicits._
 import cats.data.Reader
@@ -66,14 +67,28 @@ object Streaming {
 
   /**
     * Read from a JSON file containing the output from a PMMH run
+    * @param file a string pointing to the JSON file to read
+    * @param burnIn the number of iterations to drop from the front of the PMMH run
+    * @param thin keep every thin'th iteration, specify thin = 1 for no thinning
     */
-  def readPosterior(file: String, burnIn: Int)(implicit f: JsonFormat[MetropState]): Source[MetropState, Future[IOResult]] = {
+  def readPosterior(file: String, burnIn: Int, thin: Int)
+    (implicit f: JsonFormat[MetropState]): Source[MetropState, Future[IOResult]] = {
     FileIO.fromPath(Paths.get(file)).
       via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
       map(_.utf8String).
       drop(burnIn). // discard burn in iterations
+      zip(Source(Stream.from(1))).
+      filter { case (_, i) => i % thin == 0 }.
+      map(_._1).
       map(_.parseJson.convertTo[MetropState])
   }
+
+  /** Calculate the covariance of a posterior distribution sampled from the PMMH
+    **/
+  def posteriorCovariance(iters: Seq[MetropState]) = {
+    Parameters.covariance(iters.map(_.params))
+  }
+
 
   /**
     * Create a distribution from a sequence, possibly utilising a transformation f
