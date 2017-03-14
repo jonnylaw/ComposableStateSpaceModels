@@ -1,4 +1,4 @@
-library(tidyverse); library(gridExtra); library(ggthemes)
+library(tidyverse); library(gridExtra); library(ggmcmc); library(coda)
 source("scripts/PlotMCMC.R")
 
 theme_set(theme_solarized_2(light = FALSE))
@@ -99,13 +99,18 @@ actual_values = data_frame(parameter = params,
                            actual_value = c(3.0, rep(0.5, (h*2)), rep(0.12, (h*2)),
                                             rep(0.1, (h*2)), rep(0.5, (h*2))))
 
-chain1 = read_csv("data/SeasonalModelParams-1.csv", col_names = c(params, "accepted")) %>%
-  mutate(chain = 1, iteration = seq_len(n()))
-chain2 = read_csv("data/SeasonalModelParams-2.csv", col_names = c(params, "accepted")) %>%
-  mutate(chain = 2, iteration = seq_len(n()))
+read_chain = function(file, params) {
+  chain = lapply(readLines(file), function(x) fromJSON(x)$params) %>% 
+    unlist() %>%
+    matrix(ncol = 9, byrow = T) %>%
+    as_data_frame()
+  
+  colnames(chain) = params
+  
+  chain
+}
 
-chains = bind_rows(chain1, chain2)
+chains = mcmc.list(mcmc(read_chain("data/SeasonalModelParams-1.json", params)), 
+  mcmc(read_chain("data/SeasonalModelParams-2.json", params))) %>% ggs()
 
-plot_running_mean(chains, parameters = "v")
-
-traceplot(chains, parameters = "v")
+ggmcmc(chain)

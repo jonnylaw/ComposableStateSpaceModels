@@ -65,6 +65,29 @@ object Streaming {
         }}}
   }
 
+  def monitorStateStream: Flow[MetropState, MetropState, NotUsed] = {
+    Flow[MetropState].
+      zip(Source(Stream.from(1))).
+      map { case (s, i) => {
+        if (i % 100 == 0 ) {
+          println(s"Iteration: $i, accepted: ${s.accepted.toDouble / i}")
+          s
+        } else {
+          s
+        }}}
+  }
+
+  /**
+    * Given a stream, drop all but every nth element
+    * @param n the thinning parameter, n = 5 will keep every 5th element
+    */
+  def thinStream[A](n: Int): Flow[A, A, NotUsed] = {
+    Flow[A].
+      zip(Source(Stream.from(1))).
+      filter { case (_, i) => i % n == 0 }.
+      map(_._1)
+  }
+
   /**
     * Read from a JSON file containing the output from a PMMH run
     * @param file a string pointing to the JSON file to read
@@ -76,19 +99,20 @@ object Streaming {
     FileIO.fromPath(Paths.get(file)).
       via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
       map(_.utf8String).
+      via(thinStream(thin)).
       drop(burnIn). // discard burn in iterations
-      zip(Source(Stream.from(1))).
-      filter { case (_, i) => i % thin == 0 }.
-      map(_._1).
       map(_.parseJson.convertTo[MetropState])
   }
 
-  /** Calculate the covariance of a posterior distribution sampled from the PMMH
-    **/
-  def posteriorCovariance(iters: Seq[MetropState]) = {
-    Parameters.covariance(iters.map(_.params))
+  def readParamPosterior(file: String, burnIn: Int, thin: Int)
+    (implicit f: JsonFormat[ParamsState]): Source[ParamsState, Future[IOResult]] = {
+    FileIO.fromPath(Paths.get(file)).
+      via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
+      map(_.utf8String).
+      via(thinStream(thin)).
+      drop(burnIn). // discard burn in iterations
+      map(_.parseJson.convertTo[ParamsState])
   }
-
 
   /**
     * Create a distribution from a sequence, possibly utilising a transformation f

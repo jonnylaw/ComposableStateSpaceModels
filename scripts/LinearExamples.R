@@ -42,20 +42,21 @@ params = c("v", "m0", "c0", "theta", "alpha", "sigma")
 
 actual_values = data_frame(parameter = params, actual_value = c(1.0, 0.5, 0.12, 3.0, 0.2, 0.5))
 
-chain1 = read_csv("data/LinearModelParams-1.csv", col_names = c(params, "accepted")) %>%
-  mutate(chain = 1, iteration = seq_len(n()))
+read_chain = function(file, params) {
+  chain = lapply(readLines(file), function(x) fromJSON(x)$params) %>% 
+    unlist() %>%
+    matrix(ncol = 9, byrow = T) %>%
+    as_data_frame()
+  
+  colnames(chain) = params
+  
+  chain
+}
 
-chain2 = read_csv("data/LinearModelParams-2.csv", col_names = c(params, "accepted")) %>%
-  mutate(chain = 2, iteration = seq_len(n()))
+chains = mcmc.list(mcmc(read_chain("data/SeasonalModelParams-1.json", params)), 
+                   mcmc(read_chain("data/SeasonalModelParams-2.json", params))) %>% ggs()
 
-chains = bind_rows(chain1[-(1:1000),], chain2[-(1:1000),])
-
-source("scripts/PlotMCMC.R")
-
-plot_params = c("v", "alpha", "theta", "sigma")
-plot_running_mean(chains, parameters = plot_params, actual_params = actual_values)
-traceplot(chains, parameters = plot_params, actual_params = actual_values)
-plot_density(chains, plot_params, actual_params = actual_values)
+ggmcmc(chain)
 
 ############################
 # One Step linear Forecast #
