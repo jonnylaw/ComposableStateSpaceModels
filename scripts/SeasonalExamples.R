@@ -1,5 +1,4 @@
-library(tidyverse); library(gridExtra); library(ggmcmc); library(coda)
-source("scripts/PlotMCMC.R")
+library(tidyverse); library(gridExtra); library(ggmcmc); library(coda); library(ggthemes); library(jsonlite)
 
 theme_set(theme_solarized_2(light = FALSE))
 
@@ -110,7 +109,10 @@ read_chain = function(file, params) {
   chain
 }
 
-chains = mcmc.list(mcmc(read_chain("data/SeasonalModelParams-1.json", params)), 
-  mcmc(read_chain("data/SeasonalModelParams-2.json", params))) %>% ggs()
-
-ggmcmc(chain)
+chain = read_chain("data/SeasonalModelParams-3-1.json", params)
+             
+chain %>% 
+  mutate(c0_1 = exp(c0_1), c0_2 = exp(c0_2), sigma_1 = exp(sigma_1), sigma_2 = exp(sigma_2)) %>%
+  mcmc() %>%
+  ggs() %>%
+  ggmcmc()

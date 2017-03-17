@@ -9,6 +9,8 @@ import breeze.numerics.{exp, sqrt}
 import java.nio.file._
 import scala.concurrent.Future
 import scala.language.higherKinds
+import com.github.nscala_time.time.Imports._
+import spray.json._
 
 /**
   * A single observation of a time series
@@ -39,6 +41,8 @@ case class ObservationWithState(
   * @param observation = pi(eta), the observation
   */
 case class TimedObservation(t: Time, observation: Observation) extends Data
+
+case class TimestampObservation(timestamp: DateTime, t: Time, observation: Observation) extends Data
 
 trait DataService[F] {
   def observations: Source[Data, F]
@@ -246,8 +250,6 @@ case class DataFromFile(file: String) extends DataService[Future[IOResult]] {
   * Read a JSON file
   */
 case class DataFromJson(file: String) extends DataService[Future[IOResult]] with DataProtocols {
-  import spray.json._
-
   def observations: Source[Data, Future[IOResult]] = {
     FileIO.fromPath(Paths.get(file)).
       via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).

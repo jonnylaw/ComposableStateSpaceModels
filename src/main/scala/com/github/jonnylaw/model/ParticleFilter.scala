@@ -148,9 +148,8 @@ trait ParticleFilter[G[_]] {
     * Filter a collection of data and return an estimate of the loglikelihood
     */
   def llFilter(data: Vector[Data])(n: Int): G[LogLikelihood] = {
-    val initState = g.pure(initialiseState(n, data.minBy(_.t).t))
-    data.foldLeft(initState)((s, y) => s flatMap(stepFilter(_, y))).
-      map(_.ll)
+    val initState = initialiseState(n, data.minBy(_.t).t)
+    data.foldM(initState)(stepFilter).map(_.ll)
   }
 
   /**
@@ -312,6 +311,26 @@ case class FilterState(unparamModel: Parameters => Model, resample: Resample[(Pa
 
     Flow[Data].scan(initState)(stepFilterParameters)
   }
+
+  def filterFromPosteriorSeq(data: Seq[Data], t: Time)(init: Rand[(Parameters, State)])(particles: Int) = {
+    val initState = ParamFilterState(t, None, init.sample(particles).toVector, 0.0)
+
+    data.scanLeft(initState)(stepFilterParameters)
+  }
+}
+
+case class FilterInit(mod: Model, resample: Resample[State, Id], initState: State) extends ParticleFilter[Id] {
+  def g = implicitly[Monad[Id]]
+
+  override def initialiseState(particles: Int, t0: Time): PfState = {
+    val state = Vector.fill(particles)(initState)
+    PfState(t0, None, state, 0.0, particles)
+  }
+
+  def filterStream(t0: Time)(particles: Int): Flow[Data, PfState, NotUsed] = {
+    val init = PfState(t0, None, Vector.fill(particles)(initState), 0.0, particles)
+    Flow[Data].scan(init)(stepFilter)
+  }
 }
 
 object ParticleFilter {
@@ -337,6 +356,10 @@ object ParticleFilter {
     FilterAsync(mod, resample).filterStream(t0)(n)
   }
 
+  def filterInit(resample: Resample[State, Id], t0: Time, n: Int, initState: State) = { (mod: Model) =>
+    FilterInit(mod, resample, initState).filterStream(t0)(n)
+  }
+
   /**
     * Construct a particle filter which starts at time t with a draw from the joint posterior p(x, theta | y)
     * at time t
@@ -351,6 +374,23 @@ object ParticleFilter {
     t: Time)(unparamModel: Parameters => Model)(implicit ec: ExecutionContext) = {
 
     FilterState(unparamModel, resample).filterFromPosterior(t)(init)(particles)
+  }
+
+  /**
+    * Construct a particle filter which starts at time t with a draw from the joint posterior p(x, theta | y)
+    * at time t
+    * @param resample the resampling scheme
+    * @param t the time to start the filter
+    * @param initState a collection of particles representing the state of the 
+    */
+  def filterFromPosteriorSeq(
+    data: Seq[Data],
+    resample: Resample[(Parameters, State), Id], 
+    init: Rand[(Parameters, State)], 
+    particles: Int,
+    t: Time)(unparamModel: Parameters => Model)(implicit ec: ExecutionContext) = {
+
+    FilterState(unparamModel, resample).filterFromPosteriorSeq(data, t)(init)(particles)
   }
 
   /**
@@ -443,9 +483,10 @@ object ParticleFilter {
     val meanEta = breeze.stats.mean(forecast.map(_.eta))
     val etaIntervals = getOrderStatistic(forecast.map(_.eta).toVector, 0.995)
     val obs = forecast.map(x => mod.observation(x.gamma).draw)
+    val meanObs = breeze.stats.mean(obs)
     val obsIntervals = getOrderStatistic(obs, 0.995)
 
-    ForecastOut(t, meanEta, obsIntervals, 
+    ForecastOut(t, meanObs, obsIntervals, 
       meanEta, etaIntervals, statemean, stateIntervals)
   }
 

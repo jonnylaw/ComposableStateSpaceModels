@@ -93,7 +93,7 @@ case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends 
     for {
       sde <- sdeParam.perturb(delta)
       innov <- Gaussian(0.0, delta)
-      v = scale map (_ * exp(innov))
+      v = scale.map(_ + innov)
     } yield Parameters.leafParameter(v, sde)
   }
 
@@ -165,7 +165,7 @@ object Parameters {
   /**
     * Calculate the mean of the parameter values
     */
-  def meanParameters(params: List[Parameters]): Try[Parameters] = {
+  def mean(params: Seq[Parameters]): Try[Parameters] = {
     val sum = params.foldLeft(Success(Parameters.emptyParameter): Try[Parameters])((a, b) =>
       a.flatMap(Parameters.sumParameters(_, b)))
 

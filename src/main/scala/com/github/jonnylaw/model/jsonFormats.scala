@@ -98,4 +98,10 @@ trait DataProtocols extends DefaultJsonProtocol {
     def read(value: JsValue) = Try(value.convertTo[TimedObservation]).
       getOrElse(value.convertTo[ObservationWithState])
   }
+
+  implicit val intFormat = jsonFormat2(CredibleInterval.apply)
+
+  implicit val pfOutFormat = jsonFormat6(PfOut.apply)
+
+  implicit val pfStateFormat = jsonFormat5(PfState.apply)
 }

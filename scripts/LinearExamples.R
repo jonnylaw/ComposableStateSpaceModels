@@ -53,8 +53,8 @@ read_chain = function(file, params) {
   chain
 }
 
-chains = mcmc.list(mcmc(read_chain("data/SeasonalModelParams-1.json", params)), 
-                   mcmc(read_chain("data/SeasonalModelParams-2.json", params))) %>% ggs()
+chains = mcmc.list(mcmc(read_chain("data/LinearModelPosterior-1.json", params)), 
+                   mcmc(read_chain("data/LinearModelPosterior-2.json", params))) %>% ggs()
 
 ggmcmc(chain)
 

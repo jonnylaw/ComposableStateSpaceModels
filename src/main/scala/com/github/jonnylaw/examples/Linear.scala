@@ -27,59 +27,38 @@ trait LinearTestModel {
     Some(1.0),
     SdeParameter.ornsteinParameter(
       m0 = DenseVector(0.5),
-      c0 = DenseVector(0.12),
+      c0 = DenseVector(log(0.12)),
       theta = DenseVector(3.0),
-      alpha = DenseVector(0.2),
-      sigma = DenseVector(0.5))
+      alpha = DenseVector(log(0.2)),
+      sigma = DenseVector(log(0.5)))
   )
 
   val mod = Model.linearModel(Sde.ornsteinUhlenbeck)
 
-  def prior = (p: Parameters) => 0.0
-
-// (p: @unchecked) match {
-//     case LeafParameter(Some(v), OrnsteinParameter(m, c, theta, alpha, sigma)) =>
-//       Gamma(0.2, 5.0).logPdf(v) + 
-//       Gaussian(0.5, 2.0).logPdf(m(0)) +
-//       Gamma(0.02, 5.0).logPdf(c(0)) + 
-//       Gaussian(0.01, 2.0).logPdf(theta(0)) +
-//       Gamma(0.05, 2.5).logPdf(alpha(0)) +
-//       Gamma(0.2, 2.5).logPdf(sigma(0))
-//   }
+  def prior = (p: Parameters) => (p: @unchecked) match {
+    case LeafParameter(Some(v), OrnsteinParameter(m, c, theta, alpha, sigma)) =>
+      Gamma(0.2, 5.0).logPdf(exp(v)) + 
+      Gaussian(0.5, 2.0).logPdf(m(0)) +
+      Gamma(0.02, 5.0).logPdf(exp(c(0))) + 
+      Gaussian(3.0, 2.0).logPdf(theta(0)) +
+      Gamma(0.05, 2.5).logPdf(exp(alpha(0))) +
+      Gamma(0.2, 2.5).logPdf(exp(sigma(0)))
+  }
 
   def simPrior = for {
     v <- Gamma(0.2, 5.0)
     m <- Gaussian(0.5, 2.0)
     c <- Gamma(0.02, 5.0)
-    t <- Gaussian(0.01, 2.0)
-    a <- Gamma(0.05, 2.5)
+    t <- Gaussian(3.0, 2.0)
+    a <- Gamma(0.05, 2.0)
     s <- Gamma(0.2, 2.5)
-  } yield Parameters.leafParameter(Some(v),
+  } yield Parameters.leafParameter(Some(log(v)),
     SdeParameter.ornsteinParameter(
       DenseVector(m),
-      DenseVector(c),
+      DenseVector(log(c)),
       DenseVector(t),
-      DenseVector(a),
-      DenseVector(s)))
-
-
-  def perturb = (p: Parameters) => (p: @unchecked) match {
-    case LeafParameter(Some(v), OrnsteinParameter(m, c, t, a, s)) =>
-      for {
-        innov_v <- Gaussian(0.0, 0.1)
-        new_v = v * exp(innov_v)
-        new_m <- Gaussian(m(0), 0.1)
-        innov_c <- Gaussian(0.0, 0.025)
-        new_c = c :* exp(innov_c)
-        new_t <- Gaussian(t(0), 0.05)
-        innov_a <- Gaussian(0.0, 0.25)
-        new_a = a :* exp(innov_a)
-        innov_s <- Gaussian(0.0, 0.025)
-        new_s = s :* exp(innov_s)
-      } yield Parameters.leafParameter(
-        Some(new_v),
-        SdeParameter.ornsteinParameter(DenseVector(new_m), new_c, DenseVector(new_t), new_a, new_s))
-  }
+      DenseVector(log(a)),
+      DenseVector(log(s))))
 
   implicit val system = ActorSystem("LinearModel")
   implicit val materializer = ActorMaterializer()
@@ -138,20 +117,23 @@ object InitialLinearFullPosterior extends App with LinearTestModel with DataProt
   val sigma = DenseMatrix.eye[Double](6)
   val scale = 0.25
 
-  def chains(chain: Int): Future[IOResult] = for {
-    data <- DataFromFile("data/LinearModelSims.csv").observations.take(400).runWith(Sink.seq)
-    filter = (p: Parameters) => ParticleFilter.filterLlState(data.toVector, Resampling.treeSystematicResampling _, 200)(mod(p))
-    pmmh = ParticleMetropolisState(filter, simPrior.draw, Parameters.perturbMvn(cholesky(scale * scale * sigma)), prior)
-    iters <- pmmh.
-      iters.
-      via(Streaming.monitorStateStream).
-      take(10000).
-      map(_.toJson.compactPrint).
-      runWith(Streaming.writeStreamToFile(s"data/LinearModelPosterior-$chain.json"))
-  } yield iters
-
-  Future.sequence((1 to 2) map chains).
-        onComplete(_ => system.terminate())
+  DataFromFile("data/LinearModelSims.csv").
+    observations.
+    take(400).
+    grouped(400).
+    mapConcat(s => (1 to 2).map((s, _))).
+    mapAsync(2) { case (data, chain) => {
+      val filter = (p: Parameters) => ParticleFilter.filterLlState(data.toVector, 
+        Resampling.treeSystematicResampling _, 200)(mod(p))
+      val pmmh = ParticleMetropolisState(filter, simPrior.draw, Parameters.perturbMvn(cholesky(scale * scale * sigma)), prior)
+      pmmh.
+        iters.
+        via(Streaming.monitorStateStream).
+        take(10000).
+        map(_.toJson.compactPrint).
+        runWith(Streaming.writeStreamToFile(s"data/LinearModelPosterior-$chain.json"))
+    }}.
+    runWith(Sink.onComplete(_ => system.terminate()))
 }
 
 /**
@@ -160,33 +142,38 @@ object InitialLinearFullPosterior extends App with LinearTestModel with DataProt
   */
 object MvnLinearFullPosterior extends App with LinearTestModel with DataProtocols {
   val files = List("data/LinearModelPosterior-1.json","data/LinearModelPosterior-2.json")
-  val sigma: Future[List[DenseMatrix[Double]]] = Future.sequence(
+
+  def posterior(files: List[String]): Future[List[(DenseMatrix[Double], Parameters)]] = Future.sequence(
     files.
-      map(Streaming.readParamPosterior(_, 0, 1).
-        map(_.params).
-        runWith(Sink.seq).
-        map(Parameters.covariance)
-      )
+      map(f => {
+        for {
+          params <- Streaming.readParamPosterior(f, 0, 1).map(_.params).runWith(Sink.seq)
+        } yield (Parameters.covariance(params), params.last)
+      })
   )
-  val scale = 1.0
 
-  def chains(covariance: DenseMatrix[Double], chain: Int): Future[IOResult] = for {
-    data <- DataFromFile("data/LinearModelSims.csv").observations.take(400).runWith(Sink.seq)
-    filter = (p: Parameters) => ParticleFilter.filterLlState(data.toVector, Resampling.treeSystematicResampling _, 200)(mod(p))
-    pmmh = ParticleMetropolisState(filter, simPrior.draw, Parameters.perturbMvn(cholesky(covariance)), prior)
-    iters <- pmmh.
-      iters.
-      via(Streaming.monitorStateStream).
-      take(10000).
-      map(_.toJson.compactPrint).
-      runWith(Streaming.writeStreamToFile(s"data/LinearModelPosterior-$chain.json"))
-  } yield iters
+  val scale = 0.25
 
-  // run two chains, using the previous MCMC run for the proposal distribution
-  val res: Future[List[IOResult]] = sigma.
-    flatMap(covs => Future.sequence(covs.zipWithIndex.map { case (cova, chain) => chains(cova * scale * scale, chain) }) )
-
-  res.onComplete(_ => system.terminate())
+  DataFromFile("data/LinearModelSims.csv").
+    observations.
+    take(400).
+    grouped(400).
+    zip(Source.fromFuture(posterior(files))).
+    mapConcat { case (d, post) => post.zipWithIndex.map { case (p, chain) => (d, p, chain) } }.
+    mapAsync(2) { case (data, post, chain) => {
+      val filter = (p: Parameters) => ParticleFilter.filterLlState(data.toVector, Resampling.treeSystematicResampling _, 200)(mod(p))
+      val pmmh = ParticleMetropolisState(filter, post._2, Parameters.perturbMvn(cholesky(scale * scale * post._1)), prior)
+      pmmh.
+        iters.
+        via(Streaming.monitorStateStream).
+        take(10000).
+        map(_.toJson.compactPrint).
+        runWith(Streaming.writeStreamToFile(s"data/LinearModelPosterior-final$chain.json"))
+    }}.
+    runWith(Sink.onComplete(s => {
+      println(s)
+      system.terminate()
+    }))
 }
 
 /**
@@ -210,32 +197,68 @@ object OneStepForecastLinear extends App with LinearTestModel {
     onComplete(_ => system.terminate())
 }
 
+// object LinearOnlineFilter extends App with LinearTestModel with DataProtocols {
+//   val data = DataFromFile("data/LinearModelSims.csv").
+//     observations
+
+//   val simPosterior = for {
+//     posterior <- Streaming.readPosterior("data/LinearModelPosterior.json", 1000, 2).runWith(Sink.seq)
+//     simPosterior = Streaming.createDist(posterior)(x => (x.params, x.sde.state))
+//   } yield simPosterior
+
+//   // the time of the last observation
+//   val t0 = 400.0
+
+//   def resample: Resample[(Parameters, State), Id] = Resampling.treeSystematicResampling _
+
+//   simPosterior.flatMap((post: Rand[(Parameters, State)]) => {
+//     def filter = ParticleFilter.filterFromPosterior(resample, post, 5000, t0)(mod.run)
+
+//     data.
+//       drop(400).
+//       take(100).
+//       via(filter).
+//       map(s => PfState(s.t, s.observation, s.ps.map(_._2), s.ll, 0)).
+//       map(ParticleFilter.getIntervals(mod(linearParam))).
+//       map(_.show).
+//       runWith(Streaming.writeStreamToFile("data/LinearOnlineFilter.csv"))
+//   }).onComplete(_ => system.terminate())
+// }
+
+/**
+  * Run 100 particle filters by sampling 100 times from p(x, theta | y), each filter has M particles
+  */
 object LinearOnlineFilter extends App with LinearTestModel with DataProtocols {
-  val data = DataFromFile("data/LinearModelSims.csv").
-    observations
+  val testData = DataFromFile("data/LinearModelSims.csv").
+    observations.
+    drop(400).
+    take(100)
+
+  val t0 = 400.0
+
+  def filterOnline(particles: Int)(post: (Parameters, State)): Source[PfState, Future[IOResult]] = {
+    testData.
+      take(2).
+      via(ParticleFilter.filterInit(Resampling.treeSystematicResampling, t0, particles, post._2)(mod(post._1)))
+  }
 
   val simPosterior = for {
     posterior <- Streaming.readPosterior("data/LinearModelPosterior.json", 1000, 2).runWith(Sink.seq)
     simPosterior = Streaming.createDist(posterior)(x => (x.params, x.sde.state))
   } yield simPosterior
 
-  // the time of the last observation
-  val t0 = 400.0
-
-  def resample: Resample[(Parameters, State), Id] = Resampling.treeSystematicResampling _
-
-  simPosterior.flatMap((post: Rand[(Parameters, State)]) => {
-    def filter = ParticleFilter.filterFromPosterior(resample, post, 5000, t0)(mod.run)
-
-    data.
-      drop(400).
-      take(100).
-      via(filter).
-      map(s => PfState(s.t, s.observation, s.ps.map(_._2), s.ll, 0)).
-      map(ParticleFilter.getIntervals(mod(linearParam))).
-      map(_.show).
-      runWith(Streaming.writeStreamToFile("data/LinearOnlineFilter.csv"))
-  }).onComplete(_ => system.terminate())
+  // perform 2 particle filters, each with 100 particles
+  Source.fromFuture(simPosterior).
+    map(_.sample(2).toVector).
+    mapConcat(identity).
+    map(filterOnline(100)).
+    flatMapMerge(4, identity).
+    map(_.toJson.prettyPrint).
+    runForeach(println).
+    onComplete(s => {
+      println(s)
+      system.terminate()
+    })
 }
 
 object LinearForecast extends App with LinearTestModel {

@@ -81,16 +81,14 @@ object SeasonalPilotRun extends App with SeasonalTestModel {
 object DetermineSeasonalParameters extends App with SeasonalTestModel with DataProtocols {
 
   // specify a flat prior distribution on the parameters
-  def prior(p: Parameters) = 0.0
-
-// { (p: @unchecked) match {
-//     case LeafParameter(Some(v), BrownianParameter(m, c, mu, sigma)) =>
-//       Gamma(0.5, 1.0).logPdf(v) +
-//       m.mapValues(Gaussian(0.5, 3.0).logPdf(_)).reduce(_+_) + 
-//       c.mapValues(Gamma(0.05, 2.0).logPdf(_)).reduce(_+_) + 
-//       mu.mapValues(Gaussian(0.1, 3.0).logPdf(_)).reduce(_+_) + 
-//       sigma.mapValues(Gamma(0.25, 2.0).logPdf(_)).reduce(_+_)
-//   }}
+  def prior(p: Parameters) = { (p: @unchecked) match {
+    case LeafParameter(Some(v), BrownianParameter(m, c, mu, sigma)) =>
+      Gamma(0.5, 1.0).logPdf(exp(v)) +
+      m.mapValues(Gaussian(0.5, 3.0).logPdf(_)).reduce(_+_) + 
+      c.mapValues(x => Gamma(0.05, 2.0).logPdf(exp(x))).reduce(_+_) + 
+      mu.mapValues(Gaussian(0.1, 3.0).logPdf(_)).reduce(_+_) + 
+      sigma.mapValues(x => Gamma(0.25, 2.0).logPdf(exp(x))).reduce(_+_)
+  }}
 
   // specify the resampling scheme
   def resample: Resample[State, Future] = Resampling.asyncTreeSystematicResampling(4) _
@@ -98,33 +96,31 @@ object DetermineSeasonalParameters extends App with SeasonalTestModel with DataP
   // calculate the covariance and scale of the proposal distribution from a previous run of then
   // PMMH algorithm
   // the proposal distribution is Multivariate Normal, MVN(0, scale^2 sigma)
-  val files = List("data/SeasonalModelParams-1.json", "data/SeasonalModelParams-2.json")
-  val sigma: Future[List[DenseMatrix[Double]]] = Future.sequence(
-    files.
-      map(Streaming.readParamPosterior(_, 0, 1).
-        map(_.params).
-        runWith(Sink.seq).
-        map(Parameters.covariance)
-      )
-  )
-  val scale = 1.0
+  val covariance: Future[(DenseMatrix[Double], Parameters)] = for {
+    st <- Streaming.readParamPosterior("data/SeasonalModelParams-2-1.json", 1000, 2).
+      map(_.params).
+      runWith(Sink.seq)
+    covariance = Parameters.covariance(st)
+    initP = st.last
+  } yield (covariance, initP)
+
+  val scale = 0.5
 
   // Specify the data to use in a batch run of the PMMH algorithm 
-  def iters(covariance: DenseMatrix[Double], chain: Int): Future[IOResult] = for {
+  def iters(covariance: DenseMatrix[Double], initP: Parameters, chain: Int): Future[IOResult] = for {
     data <- DataFromFile("data/SeasonalModelSims.csv").observations.take(400).runWith(Sink.seq)
     filter = (p: Parameters) => ParticleFilter.likelihoodAsync(data.toVector, resample, 500)(mod(p))
-    pmmh = ParticleMetropolisAsync(filter, seasonalParam, Parameters.perturbMvn(cholesky(covariance)), prior)
+    pmmh = ParticleMetropolisAsync(filter, initP, Parameters.perturbMvn(cholesky(covariance)), prior)
     io <- pmmh.
       params.
       take(10000).
       via(Streaming.monitorStream).
       map(_.toJson.compactPrint).
-      runWith(Streaming.writeStreamToFile(s"data/SeasonalModelParams-2-$chain.json"))
+      runWith(Streaming.writeStreamToFile(s"data/SeasonalModelParams-3-$chain.json"))
   } yield io
 
-  // run two chains, using the previous MCMC run for the proposal distribution
-  val res: Future[List[IOResult]] = sigma.
-    flatMap(covs => Future.sequence(covs.zipWithIndex.map { case (cova, chain) => iters(cova * scale * scale, chain) }) )
-
-  res.onComplete(_ => system.terminate())
+  for {
+    (cova, params) <- covariance
+    its <- iters(scale * scale * cova, params, 1)
+  } yield its
 }
