@@ -33,7 +33,7 @@ object DeterminePoissonPosterior extends App with PoissonTestModel with DataProt
       runWith(Sink.seq)
     pf = (p: Parameters) => ParticleFilter.filterLlState(
       data.toVector,
-      Resampling.treeSystematicResampling,
+      Resampling.systematicResampling,
       150)(mod(p))
     pmmh = ParticleMetropolisState(pf, simPrior.draw, Parameters.perturb(0.05), prior)
     iters <- pmmh.
@@ -77,7 +77,7 @@ object LongTermForecastPoisson extends App with PoissonTestModel with DataProtoc
     io <- times.
       via(SimulateData.forecast(mod.run, t0)(simPosterior)).
       map(_.sample(100).toVector).
-      map(SimulateData.summariseForecast(mod(poissonParam), 0.99)).
+      map(SimulateData.summariseForecast(mod.run, 0.99)).
       map(_.show).
       runWith(Streaming.writeStreamToFile("data/PoissonLongForecast.csv"))
   } yield io
@@ -110,7 +110,7 @@ object OneStepForecastPoisson extends App with PoissonTestModel with DataProtoco
   }
 
   val t0 = 40.0
-  val resample: Resample[(Parameters, State), Id] = Resampling.treeSystematicResampling
+  val resample: Resample[(Parameters, State), Id] = Resampling.systematicResampling
 
   val res = for {
     posterior <- readPosterior
@@ -152,7 +152,7 @@ object FilterPoisson extends App with PoissonTestModel with DataProtocols {
   }
 
   val t0 = 40.0
-  val resample: Resample[(Parameters, State), Id] = Resampling.treeSystematicResampling
+  val resample: Resample[(Parameters, State), Id] = Resampling.systematicResampling
 
   val res = for {
     posterior <- readPosterior

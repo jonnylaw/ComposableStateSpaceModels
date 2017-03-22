@@ -3,6 +3,7 @@ package com.github.jonnylaw
 import breeze.stats.distributions.{Rand, Process}
 import breeze.stats.distributions.Rand._
 import breeze.linalg.DenseVector
+import cats.data.Kleisli
 import cats._
 import cats.implicits._
 import cats.data.{Reader, StateT}
@@ -24,6 +25,7 @@ package object model {
   type StepFunction = (SdeParameter) => (State, TimeIncrement) => Rand[State]
   type State = Tree[DenseVector[Double]]
   type Resample[A, F[_]] = (Vector[A], Vector[LogLikelihood]) => F[Vector[A]]
+  type BootstrapFilter[G[_]] = Kleisli[G, Parameters, (LogLikelihood, Vector[StateSpace])]
 
   implicit def randMonad = new Monad[Rand] {
     def pure[A](x: A): Rand[A] = always(x)
@@ -108,15 +110,17 @@ package object model {
     def show(a: Data): String = a match {
       case TimedObservation(t, y) => s"$t, $y"
       case ObservationWithState(t, y, e, g, x) => s"$t, $y, $e, $g, ${S.show(x)}"
+      case TimestampObservation(time, t, obs) => s"$time, $obs"
     }
   }
 
   implicit def sdeParamShow = new Show[SdeParameter] {
     def show(p: SdeParameter): String = p match {
       case BrownianParameter(m0, c0, mu, sigma) =>
-        s"""${m0.data.mkString(", ")}, ${c0.data.mkString(", ")}, ${mu.data.mkString(", ")}, ${sigma.data.mkString(", ")}"""
+        s"""$m0, $c0, $mu, $sigma"""
       case OrnsteinParameter(m0, c0, theta, alpha, sigma) =>
         s"""${m0.data.mkString(", ")}, ${c0.data.mkString(", ")}, ${theta.data.mkString(", ")}, ${alpha.data.mkString(", ")}, ${sigma.data.mkString(", ")}"""
+      case OuParameter(m, c, t, a, s) => s"$m, $c, $t, $a, $s"
     }
   }
 

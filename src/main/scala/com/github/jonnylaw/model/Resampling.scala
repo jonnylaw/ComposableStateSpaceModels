@@ -62,7 +62,7 @@ object Resampling {
   /**
     * An efficient parallel implementation of of systematic resampling
     */
-  def asyncTreeSystematicResampling[A](threads: Int)(
+  def asyncSystematicResampling[A](threads: Int)(
     particles: Vector[A], 
     weights: Vector[LogLikelihood])(implicit ec: ExecutionContext): Future[Vector[A]] = {
 
@@ -83,7 +83,7 @@ object Resampling {
   /**
     * An efficient implementation of of systematic resampling
     */
-  def treeSystematicResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]) = {
+  def systematicResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]) = {
 
     val ecdf = treeEcdf(particles, weights)
 
@@ -99,7 +99,7 @@ object Resampling {
     * Stratified resampling implemented using a TreeMap
     * Sample n ORDERED uniform random numbers (one for each particle) using a linear transformation of a U(0,1) RV
     */
-  def treeStratifiedResampling[A](s: Vector[A], w: Vector[Double]) = {
+  def stratifiedResampling[A](s: Vector[A], w: Vector[Double]) = {
     val n = s.size
     val ecdf = treeEcdf(s, w)
 

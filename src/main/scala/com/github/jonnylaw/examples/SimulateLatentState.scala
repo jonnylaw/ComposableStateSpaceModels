@@ -19,20 +19,12 @@ object SimulateBrownianMotion extends App {
   implicit val system = ActorSystem("LatentState")
   implicit val materializer = ActorMaterializer()
 
-  val p = SdeParameter.brownianParameter(
-    DenseVector.fill(2)(1.0),
-    DenseVector.fill(2)(log(1.0)),
-    DenseVector.fill(2)(-0.3),
-    DenseVector.fill(2)(log(0.3)))
+  val p = SdeParameter.brownianParameter(1.0, log(1.0), -0.3, log(0.3))
 
-  val p1 = SdeParameter.brownianParameter(
-    DenseVector.fill(2)(1.0),
-    DenseVector.fill(2)(log(1.0)),
-    DenseVector.fill(2)(0.3),
-    DenseVector.fill(2)(log(0.3)))
+  val p1 = SdeParameter.brownianParameter(1.0, log(1.0), 0.3, log(0.3))
 
-  val sde1 = Sde.brownianMotion(p)
-  val sde2 = Sde.brownianMotion(p1)
+  val sde1 = Sde.brownianMotion(2)(p)
+  val sde2 = Sde.brownianMotion(2)(p1)
 
   val composedSde = sde1 |+| sde2
 
@@ -41,8 +33,7 @@ object SimulateBrownianMotion extends App {
     take(200).
     zipWithIndex.
     map { case (x, t) => t + ", " + x.show }.
-    map(s => ByteString(s + "\n")).
-    runWith(FileIO.toPath(Paths.get("data/brownianMotion.csv"))).
+    runWith(Streaming.writeStreamToFile("data/brownianMotion.csv")).
     onComplete(_ => system.terminate())
 }
 
@@ -50,21 +41,15 @@ object SimOrnstein extends App {
   implicit val system = ActorSystem("LatentState")
   implicit val materializer = ActorMaterializer()
 
-  val p = SdeParameter.ornsteinParameter(
-    DenseVector.fill(2)(0.0),
-    DenseVector.fill(2)(log(3.0)),
-    theta = DenseVector(2.0, 1.0), 
-    alpha = DenseVector.fill(2)(log(0.5)),
-    sigma = DenseVector.fill(2)(log(0.3)))
+  val p = SdeParameter.ouParameter(0.0, log(3.0), 1.0, log(0.5), log(0.3))
 
-  val sde = Sde.ornsteinUhlenbeck
+  val sde = Sde.ouProcess(2)
 
   sde(p).
     simStream(0.0, 0.1).
     take(200).
     zipWithIndex.
     map { case (x, t) => t + ", " + x.show }.
-    map(s => ByteString(s + "\n")).
-    runWith(FileIO.toPath(Paths.get("data/ornsteinUhlenbeck.csv"))).
+    runWith(Streaming.writeStreamToFile("data/ornsteinUhlenbeck.csv")).
     onComplete(_ => system.terminate()) 
 }

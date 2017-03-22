@@ -49,7 +49,7 @@ trait DataService[F] {
 }
 
 case class SimulateData(model: Model) extends DataService[NotUsed] {
-  def observations: Source[Data, NotUsed] = simRegular(1.0)
+  def observations: Source[Data, NotUsed] = simRegular(0.1)
 
   def simStep(deltat: TimeIncrement) = SimulateData.simStep(model)(deltat)
 
@@ -196,7 +196,8 @@ object SimulateData {
     * @param t the time to start the forecast
     * @param s the joint posterior of the parameters and state at time t, p(x, theta | y)
     */
-  def forecast(unparamModel: Parameters => Model, t: Time)(s: Rand[(Parameters, State)]) = {
+  def forecast(unparamModel: Parameters => Model, t: Time)
+    (s: Rand[(Parameters, State)]): Flow[Time, Rand[(Parameters, ObservationWithState)], NotUsed] = {
 
     val init: Rand[(Parameters, ObservationWithState)] = s map { case (p, x) => {
       val gamma = unparamModel(p).f(x, t)
@@ -212,17 +213,17 @@ object SimulateData {
           (p, x) <- d0
           x1 <- simStep(unparamModel(p))(ts - x.t)(x)
         } yield (p, x1)}).
-      map {_.map(_._2) }. // only keep the forecast, discard the parameters
       drop(1) // drop the initial state
   }
 
-  def summariseForecast(mod: Model, interval: Double) = { (forecast: Vector[ObservationWithState]) =>
+  def summariseForecast(mod: Parameters => Model, interval: Double) = { (s: Vector[(Parameters, ObservationWithState)]) =>
+    val forecast = s.map(_._2)
 
     val stateIntervals = ParticleFilter.getallCredibleIntervals(forecast.map(_.sdeState).toVector, 0.995)
     val statemean = ParticleFilter.meanState(forecast.map(_.sdeState).toVector)
     val meanEta = breeze.stats.mean(forecast.map(_.eta))
     val etaIntervals = ParticleFilter.getOrderStatistic(forecast.map(_.eta).toVector, 0.995)
-    val obs = forecast.map(x => mod.observation(x.gamma).draw)
+    val obs = s.map { case (p, x) => mod(p).observation(x.gamma).draw }
     val obsIntervals = ParticleFilter.getOrderStatistic(obs, 0.995)
 
     ForecastOut(forecast.head.t, breeze.stats.mean(obs), obsIntervals,

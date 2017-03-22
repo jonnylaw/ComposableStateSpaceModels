@@ -9,44 +9,14 @@ import breeze.numerics.{exp, log}
 import breeze.linalg.DenseVector
 
 import cats._
-import cats.data.Reader
+import cats.data.{Reader, Kleisli}
 import cats.implicits._
 import cats.instances._
 
 import scala.collection.parallel.immutable.ParVector
-import scala.collection.immutable.TreeMap
 import scala.concurrent._
 import scala.language.higherKinds
-import scala.language.implicitConversions
-import scala.reflect.ClassTag
-import simulacrum._
 import Collection.ops._
-
-/**
-  * A typeclass representing a Collection with a few additional 
-  * features required for implementing the particle filter
-  */
-@typeclass trait Collection[F[_]] {
-  def pure[A](a: A): F[A]
-  def isEmpty[A](fa: F[A]): Boolean
-  def map[A, B](fa: F[A])(f: A => B): F[B]
-  def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B]
-  def scanLeft[A, B](fa: F[A], z: B)(f: (B, A) => B): F[B]
-  def foldLeft[A, B](fa: F[A], z: B)(f: (B, A) => B): B
-  def get[A](fa: F[A])(i: Int): A
-  def indices[A](fa: F[A]): F[Int]
-  def indexWhere[A](fa: F[A])(cond: A => Boolean): Int
-  def append[A](fa: F[A])(a: A): F[A]
-  def max[A: Ordering](fa: F[A]): A
-  def size[A](fa: F[A]): Int
-  def fill[A](n: Int)(a: => A): F[A]
-  def toArray[A: ClassTag](fa: F[A]): Array[A]
-  def toVector[A](fa: F[A]): Vector[A]
-  def unzip[A, B](fa: F[(A, B)]): (F[A], F[B])
-  def zip[A, B](fa: F[A], fb: F[B]): F[(A, B)]
-  def drop[A](fa: F[A])(n: Int): F[A]
-  def toTreeMap[A: Ordering, B](fa: F[(A, B)]): TreeMap[A, B]
-}
 
 /**
   * Credible intervals from a set of samples in a distribution
@@ -261,7 +231,7 @@ case class FilterAsync(
 /**
   * A particle filter which can represent particle clouds as a Collection, Collection is a typeclass
   * which can currently has concrete methods for Vector and ParVector 
-  * @param unparamModel
+  * @param mod
   */
 case class Filter(mod: Model, resample: Resample[State, Id]) extends ParticleFilter[Id] {
   def g = implicitly[Monad[Id]]
@@ -356,6 +326,9 @@ object ParticleFilter {
     FilterAsync(mod, resample).filterStream(t0)(n)
   }
 
+  /**
+    * Filter from a value of the state
+    */
   def filterInit(resample: Resample[State, Id], t0: Time, n: Int, initState: State) = { (mod: Model) =>
     FilterInit(mod, resample, initState).filterStream(t0)(n)
   }
@@ -401,6 +374,11 @@ object ParticleFilter {
     * @param model an unparameterised model
     */
   def filterLlState(data: Vector[Data], resample: Resample[State, Id], n: Int) = { 
+    (mod: Model) => Filter(mod, resample).filter(data)(n)
+  }
+
+  def llStateReader(data: Vector[Data], resample: Resample[State, Id], 
+    n: Int): Kleisli[Id, Model, (LogLikelihood, Vector[StateSpace])] = Kleisli {
     (mod: Model) => Filter(mod, resample).filter(data)(n)
   }
 

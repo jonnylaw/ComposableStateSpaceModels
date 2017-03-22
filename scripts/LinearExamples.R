@@ -1,4 +1,4 @@
-library(tidyverse); library(ggthemes); library(extrafont)
+library(tidyverse); library(ggthemes); library(extrafont); library(coda); library(ggmcmc); library(jsonlite)
 
 theme_set(theme_solarized_2(light = FALSE))
 
@@ -45,18 +45,27 @@ actual_values = data_frame(parameter = params, actual_value = c(1.0, 0.5, 0.12, 
 read_chain = function(file, params) {
   chain = lapply(readLines(file), function(x) fromJSON(x)$params) %>% 
     unlist() %>%
-    matrix(ncol = 9, byrow = T) %>%
+    matrix(ncol = 6, byrow = T) %>%
     as_data_frame()
   
   colnames(chain) = params
   
-  chain
+  chain %>%
+    mutate(v = exp(v), alpha = exp(alpha), sigma = exp(sigma))
 }
 
-chains = mcmc.list(mcmc(read_chain("data/LinearModelPosterior-1.json", params)), 
-                   mcmc(read_chain("data/LinearModelPosterior-2.json", params))) %>% ggs()
+chain1 = read_chain("data/LinearModelPosterior-1.json", params) %>% 
+  mutate_each(funs(exp = exp(.)), c(v, c0, alpha, sigma)) %>%
+  select(contains("exp"), m0, theta)
 
-ggmcmc(chain)
+chain2 = read_chain("data/LinearModelPosterior-2.json", params) %>% 
+  mutate_each(funs(exp = exp(.)), c(v, c0, alpha, sigma)) %>%
+  select(contains("exp"), m0, theta)
+
+chains = mcmc.list(mcmc(chain1), mcmc(chain2)) %>%
+  ggs()
+
+ggmcmc(chains, file = "linear_params.pdf")
 
 ############################
 # One Step linear Forecast #

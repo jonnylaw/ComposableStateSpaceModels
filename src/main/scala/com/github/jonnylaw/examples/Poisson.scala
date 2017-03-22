@@ -18,25 +18,18 @@ import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 
 trait PoissonTestModel {
-  val poissonParam: Parameters = Parameters.leafParameter(
-    None,
-    SdeParameter.ornsteinParameter(
-      m0 = DenseVector(0.5),
-      c0 = DenseVector(0.12),
-      theta = DenseVector(2.3),
-      alpha = DenseVector(0.2),
-      sigma = DenseVector(0.5))
-  )
+  val poissonParam: Parameters = Parameters.leafParameter(None, 
+    SdeParameter.ouParameter(m0 = 0.5, c0 = 0.12, theta = 2.3, alpha = 0.2, sigma = 0.5))
 
-  val mod = Model.poissonModel(Sde.ornsteinUhlenbeck)
+  val mod = Model.poissonModel(Sde.ouProcess(1))
 
   val prior = (p: Parameters) => (p: @unchecked) match {
-    case LeafParameter(None, OrnsteinParameter(m, s, theta, alpha, sigma)) =>
-      Gaussian(0.5, 3.0).logPdf(m(0)) +
-      Gamma(1.0, 1.0).logPdf(s(0)) + 
-      Gaussian(2.3, 1.0).logPdf(theta(0)) +
-      Gamma(0.1, 2.0).logPdf(alpha(0)) +
-      Gamma(0.25, 2.0).logPdf(sigma(0))
+    case LeafParameter(None, OuParameter(m, s, theta, alpha, sigma)) =>
+      Gaussian(0.5, 3.0).logPdf(m) +
+      Gamma(1.0, 1.0).logPdf(s) + 
+      Gaussian(2.3, 1.0).logPdf(theta) +
+      Gamma(0.1, 2.0).logPdf(alpha) +
+      Gamma(0.25, 2.0).logPdf(sigma)
   }
 
   val simPrior = {
@@ -47,12 +40,7 @@ trait PoissonTestModel {
       alpha <- Gamma(0.2, 1.0)
       sigma <- Gamma(0.5, 1.0)
     } yield Parameters.leafParameter(None, 
-      SdeParameter.ornsteinParameter(
-        DenseVector(m),
-        DenseVector(c),
-        DenseVector(theta),
-        DenseVector(alpha),
-        DenseVector(sigma)))
+      SdeParameter.ouParameter(m, c, theta, alpha, sigma))
   }
 
   implicit val system = ActorSystem("PoissonModel")
@@ -78,7 +66,7 @@ object PilotRunPoisson extends App with PoissonTestModel {
     runWith(Sink.seq)
 
   val particles = Vector(100, 200, 500, 1000, 2000)
-  val resample: Resample[State, Id] = Resampling.treeSystematicResampling _
+  val resample: Resample[State, Id] = Resampling.systematicResampling _
 
   val res = for {
     data <- dataStream

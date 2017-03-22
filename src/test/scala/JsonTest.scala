@@ -26,12 +26,12 @@ class JsonSuite extends Properties("Json") with DataProtocols {
   }
 
   val genBrownian: Gen[SdeParameter] = for {
-    v <- denseVector(1)
+    v <- arbitrary[Double]
   } yield SdeParameter.brownianParameter(v, v, v, v)
 
   val genOrnstein: Gen[SdeParameter] = for {
-    v <- denseVector(1)
-  } yield SdeParameter.ornsteinParameter(v, v, v, v, v)
+    v <- arbitrary[Double]
+  } yield SdeParameter.ouParameter(v, v, v, v, v)
 
   val genSde: Gen[SdeParameter] = Gen.oneOf(genBrownian, genOrnstein)
 

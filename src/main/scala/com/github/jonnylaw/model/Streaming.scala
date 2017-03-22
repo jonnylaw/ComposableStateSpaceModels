@@ -12,6 +12,7 @@ import cats.data.Reader
 import java.io._
 import java.nio.file._
 import scala.concurrent._
+import scala.concurrent.duration._
 import scala.collection.parallel.immutable.ParVector
 import scala.language.higherKinds
 import spray.json._
@@ -19,7 +20,7 @@ import spray.json._
 object Streaming {
 
   /**
-    * Perform a pilot run 
+    * Perform a pilot run for the PMMH algorithm, to determine the number of particles to use in the filter
     */
   def pilotRun(
     data: Vector[Data], 
@@ -49,6 +50,20 @@ object Streaming {
     Source.apply(particles).
       mapAsyncUnordered(4){ iters }
   }
+
+
+  def pmmhToJson(file: String, initParams: Parameters, filter: Parameters => Future[(LogLikelihood, Vector[StateSpace])],
+    proposal: Parameters => Rand[Parameters], prior: Parameters => LogLikelihood, iters: Int)
+    (implicit ec: ExecutionContext, mat: Materializer, f: JsonFormat[MetropState]): Future[IOResult] = {
+
+    ParticleMetropolisStateAsync(filter, initParams, proposal, prior).
+      iters.
+      via(Streaming.monitorStateStream).
+      take(iters).
+      map(_.toJson.compactPrint).
+      runWith(Streaming.writeStreamToFile(file))
+  }
+   
 
   /**
     * Given output from the PMMH algorithm, monitor the acceptance rate online

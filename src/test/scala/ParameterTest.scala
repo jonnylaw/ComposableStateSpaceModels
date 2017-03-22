@@ -13,12 +13,12 @@ object ParameterFunctionSuite extends Properties("Parameters") {
     map(a => DenseVector(a))
 
   val genBrownian: Int => Gen[SdeParameter] = (n: Int) => for {
-    v <- denseVector(n)
+    v <- arbitrary[Double]
   } yield SdeParameter.brownianParameter(v, v, v, v)
 
   val genOrnstein: Int => Gen[SdeParameter] = (n: Int) => for {
-    v <- denseVector(n)
-  } yield SdeParameter.ornsteinParameter(v, v, v, v, v)
+    v <- arbitrary[Double]
+  } yield SdeParameter.ouParameter(v, v, v, v, v)
 
   val genSde: Int => Gen[SdeParameter] = (n: Int) => Gen.oneOf(genBrownian(n), genOrnstein(n))
 
