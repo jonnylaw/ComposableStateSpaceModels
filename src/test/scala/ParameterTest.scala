@@ -1,3 +1,5 @@
+package parametertest
+
 import breeze.linalg.{DenseVector, DenseMatrix}
 import cats.implicits._
 import com.github.jonnylaw.model._
@@ -5,10 +7,7 @@ import org.scalacheck.Prop.forAll
 import org.scalacheck._
 import Arbitrary.arbitrary
 
-/**
-  * Property based tests for resampling methods
-  */
-object ParameterFunctionSuite extends Properties("Parameters") {
+trait ParameterGen {
   val denseVector = (n: Int) => Gen.containerOfN[Array, Double](n, arbitrary[Double]).
     map(a => DenseVector(a))
 
@@ -31,6 +30,20 @@ object ParameterFunctionSuite extends Properties("Parameters") {
     left <- genLeaf(n)
     right <- genLeaf(n)
   } yield left |+| right
+}
+
+/**
+  * Property based tests for resampling methods
+  */
+object ParameterFunctionSuite extends Properties("Parameters") with ParameterGen {
+  val input = (n: Int) => for {
+    p <- genBranch(n) 
+    d <- denseVector(p.length)
+  } yield (p, d)
+
+  property("add should add values to parameters in a tree") = Prop.forAll(input(1)) { case (p, d) =>
+    p.add(d) == p.add(d)
+  }
 
   val input1 = (n: Int) => for {
     sde <- genSde(n)
@@ -39,14 +52,5 @@ object ParameterFunctionSuite extends Properties("Parameters") {
 
   property("Add to sde Parameter") = Prop.forAll(input1(1)) { case (sde, d) =>
     sde.add(d) == sde.add(d)
-  }
-
-  val input = (n: Int) => for {
-    p <- genBranch(n) 
-    d <- denseVector(p.length)
-  } yield (p, d)
-
-  property("add should add values to parameters in a tree") = Prop.forAll(input(1)) { case (p, d) =>
-    p.add(d) == p.add(d)
   }
 }

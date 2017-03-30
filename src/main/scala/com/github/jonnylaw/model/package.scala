@@ -36,6 +36,7 @@ package object model {
     }
   }
 
+
   implicit def numericDenseVector = new Numeric[DenseVector[Double]] {
     def fromInt(x: Int): DenseVector[Double] = DenseVector(x.toDouble)
     def minus(x: DenseVector[Double],y: DenseVector[Double]): DenseVector[Double] = x - y
@@ -112,6 +113,10 @@ package object model {
       case ObservationWithState(t, y, e, g, x) => s"$t, $y, $e, $g, ${S.show(x)}"
       case TimestampObservation(time, t, obs) => s"$time, $obs"
     }
+  }
+
+  implicit def decompShow = new Show[DecomposedModel] {
+    def show(a: DecomposedModel): String = s"${a.time}, ${a.observation}, ${a.eta}, ${a.gamma}, ${a.state.mkString(", ")}"
   }
 
   implicit def sdeParamShow = new Show[SdeParameter] {

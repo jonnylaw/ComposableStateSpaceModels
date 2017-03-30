@@ -10,14 +10,14 @@ class JsonSuite extends Properties("Json") with DataProtocols {
   val denseVector = (n: Int) => Gen.containerOfN[Array, Double](n, arbitrary[Double]).
     map(a => DenseVector(a))
 
-  val genLeafState: Gen[State] = for {
+  val genLeafState = for {
     v <- denseVector(1)
   } yield Tree.leaf(v)
 
-  val genBranchState: Gen[State] = for {
+  val genBranchState = for {
     left <- genLeafState
     right <- genLeafState
-  } yield Tree.branch(left, right)
+  } yield left |+| right
 
   val genState: Gen[State] = Gen.oneOf(genBranchState, genLeafState)
 
@@ -36,18 +36,18 @@ class JsonSuite extends Properties("Json") with DataProtocols {
   val genSde: Gen[SdeParameter] = Gen.oneOf(genBrownian, genOrnstein)
 
   val genLeaf = for {
-    v <- arbitrary[Double]
+    v <- Gen.oneOf(arbitrary[Double] map (Some(_)), Gen.const(None))
     sde <- genSde
-  } yield Parameters.leafParameter(Some(v), sde)
+  } yield Parameters.leafParameter(v, sde)
 
   val genBranch = for {
     left <- genLeaf
     right <- genLeaf
-  } yield Parameters.branchParameter(left, right)
+  } yield left |+| right
 
   val genParams: Gen[Parameters] = Gen.oneOf(genLeaf, genBranch)
 
   property("toJson should serialise Parameters to Json") = Prop.forAll(genParams) { p =>
-    p == p.toJson.compactPrint.parseJson.convertTo[Parameters]
+    Parameters.isIsomorphic(p, p.toJson.compactPrint.parseJson.convertTo[Parameters])
   }
 }

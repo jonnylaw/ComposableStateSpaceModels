@@ -153,7 +153,7 @@ private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) ext
 
 /**
   * Negative Binomial Model for Overdispersed Data, the mean (mu > 0) is the exponential of the 
-  * latent state. The variance is equal to ... and proportional to the mean 
+  * latent state. The variance is equal to mu + mu^2 / size and proportional to the mean 
   */
 private final case class NegativeBinomialModel(sde: Sde, p: LeafParameter) extends Model {
   def observation = x => p.scale match {
@@ -176,9 +176,10 @@ private final case class NegativeBinomialModel(sde: Sde, p: LeafParameter) exten
   def dataLikelihood = (x, y) => p.scale match {
     case Some(logv) => {
       val size = exp(logv)
-      val p = size / (size + link(x))
+      val mu = link(x)
 
-      lgamma(size + y.toInt) - lgamma(y.toInt + 1) - lgamma(size) + size * math.log(p) + y.toInt * math.log(1-p)
+      lgamma(size + y.toInt) - lgamma(y.toInt + 1) - lgamma(size) +
+      size * math.log(size / (mu + size)) + y.toInt * math.log(mu / (mu + size))
     }
     case None => throw new Exception("No scale parameter provided to Negativebinomial Model")
   }

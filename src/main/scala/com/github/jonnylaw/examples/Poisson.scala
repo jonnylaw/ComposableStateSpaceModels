@@ -70,7 +70,7 @@ object PilotRunPoisson extends App with PoissonTestModel {
 
   val res = for {
     data <- dataStream
-    out = Streaming.pilotRun(data.toVector, mod, poissonParam, resample, particles)
+    out = Streaming.pilotRun(data.toVector, mod, poissonParam, resample, particles, 100)
     io <- out.map { case (n, v) => s"$n, $v" }.
       runWith(Streaming.writeStreamToFile("data/PoissonPilotRun.csv"))
   } yield io

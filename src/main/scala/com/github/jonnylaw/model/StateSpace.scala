@@ -151,7 +151,7 @@ object Sde {
   implicit def sdeSemigroup = new Semigroup[Sde] {
     def combine(sde1: Sde, sde2: Sde): Sde = new Sde {
       def initialState: Rand[State] = for {
-        l <-sde1.initialState
+        l <- sde1.initialState
         r <- sde2.initialState
       } yield Tree.branch(l, r)
 

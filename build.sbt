@@ -21,7 +21,7 @@ lazy val basic = Project(
   settings = Defaults.coreDefaultSettings ++ micrositeSettings ++ Seq(
     name := "ComposableModels",
     organization := "com.github.jonnylaw",
-    version := "0.5.0",
+    version := "0.6.0",
     scalaVersion := "2.11.8",
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-Xlint"),
     publishMavenStyle := true,
@@ -41,8 +41,7 @@ lazy val basic = Project(
       "com.typesafe.akka" %% "akka-stream" % "2.4.17",
       "com.github.mpilquist" %% "simulacrum" % "0.10.0",
       "io.spray" %%  "spray-json" % "1.3.3",
-      "com.github.scopt" %% "scopt" % "3.5.0",
-      "com.github.nscala-time" %% "nscala-time" % "2.16.0",
+      "com.typesafe.akka" %% "akka-http" % "10.0.3",
       "org.scalatest" %% "scalatest" % "2.2.4" % "test",
       "org.scalacheck" %% "scalacheck" % "1.13.4" % "test",
       "com.storm-enroute" %% "scalameter" % "0.7" % "bench"

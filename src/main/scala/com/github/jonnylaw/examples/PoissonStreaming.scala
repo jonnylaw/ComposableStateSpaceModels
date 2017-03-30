@@ -5,6 +5,18 @@ import akka.stream._
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.util.ByteString
+import akka.NotUsed
+import akka.actor.ActorSystem
+import akka.http.scaladsl.Http
+
+import akka.http.scaladsl.model._
+import HttpEntity.ChunkStreamPart
+import Uri.Query
+import HttpMethods._
+import akka.stream.ActorMaterializer
+
+import akka.http.scaladsl.server.Directives._
+import akka.util.ByteString
 import GraphDSL.Implicits._
 import breeze.stats.distributions.Rand
 import cats._
@@ -21,7 +33,7 @@ import scala.util.{Try, Success, Failure}
 
 /**
   * Sample from the joint posterior of the state and parameters p(x, theta | y)
-  * Serialize this to JSON using Akka HTTP
+  * Serialize this to JSON using Spray JSON
   * Write as invalid JSON, by converting each element of the sequence to JSON and writing them on a new line of the output file
   * This is the same as Twitters streaming API
   */
@@ -39,8 +51,7 @@ object DeterminePoissonPosterior extends App with PoissonTestModel with DataProt
     iters <- pmmh.
       iters.
       take(10000).
-      map(_.toJson).
-      map(_.toString).
+      map(_.toJson.compactPrint).
       runWith(Streaming.writeStreamToFile("data/PoissonPosterior.json"))
     } yield iters
 
@@ -49,41 +60,83 @@ object DeterminePoissonPosterior extends App with PoissonTestModel with DataProt
 }
 
 /**
-  * Perform a long term forecast, by sampling from the full joint posterior p(x, theta | y)
-  * a pair consisting of the state at the time of the last observation and the associated parameter*value
+  * Serve the data as a stream of JSON
   */
-object LongTermForecastPoisson extends App with PoissonTestModel with DataProtocols {
-  // read in the parameter posterior from a JSON file
-  val readPosterior: Future[Seq[MetropState]] = FileIO.fromPath(Paths.get("data/PoissonPosterior.json")).
-    via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
-    map(_.utf8String).
-    map(_.parseJson.convertTo[MetropState]).
-    runWith(Sink.seq)
+object PoissonServer extends App with PoissonTestModel with DataProtocols {
+  // simulate the model using a breeze process which can be viewed as an iterator
+  val sims = SimulateData(mod(poissonParam)).observations
 
-  // create a distribution over the posterior distribution of the state and parameters
-  def createDist[A, B](s: Seq[A])(f: A => B): Rand[B] = new Rand[B] {
-    def draw = {
-      f(Resampling.sampleOne(s.toVector))
-    }
+  // transform the iterator to an akka stream
+  val simStream = sims.
+    map(d => TimedObservation(d.t, d.observation)).
+    zip(Source.tick(1.second, 1.seconds, ())). // slow the stream down
+    map { case (d, _) => d}.
+    take(1000). 
+    map(_.toJson.prettyPrint). // convert each reading to JSON
+    map(s => ByteString(s + ",\n")). 
+    map(s => ChunkStreamPart(s))
+
+  // serve the application on port 8080
+  val serverSource = Http().bind("localhost", 8080)
+
+  val requestHandler: HttpRequest => HttpResponse = {
+    case HttpRequest(GET, Uri.Path("/"), _, _, _) =>
+      HttpResponse(entity = 
+        HttpEntity.Chunked(ContentTypes.`text/html(UTF-8)`, simStream)
+      )
   }
 
-  val t0 = 40.0
+  val bindingFuture = serverSource.to(Sink.foreach { connection =>
+    connection handleWithSyncHandler requestHandler
+  }).
+    run()
 
-  val times = Source(401.0 to 500.0 by 1.0)
+  println(s"Server online at http://localhost:8080/\nPress RETURN to stop...")
 
-  val res = for {
-    posterior <- readPosterior
-    simPosterior = createDist(posterior)(s => (s.params, s.sde.state))
-    io <- times.
-      via(SimulateData.forecast(mod.run, t0)(simPosterior)).
-      map(_.sample(100).toVector).
-      map(SimulateData.summariseForecast(mod.run, 0.99)).
-      map(_.show).
-      runWith(Streaming.writeStreamToFile("data/PoissonLongForecast.csv"))
-  } yield io
+  StdIn.readLine() // let it run until user presses return
 
-  res.onComplete(_ => system.terminate())
+  bindingFuture
+    .flatMap(_.unbind()) // trigger unbinding from the port
+    .onComplete(_ => system.terminate()) // and shutdown when done
+
 }
+
+// /**
+//   * Perform a long term forecast, by sampling from the full joint posterior p(x, theta | y)
+//   * a pair consisting of the state at the time of the last observation and the associated parameter*value
+//   */
+// object LongTermForecastPoisson extends App with PoissonTestModel with DataProtocols {
+//   // read in the parameter posterior from a JSON file
+//   val readPosterior: Future[Seq[MetropState]] = FileIO.fromPath(Paths.get("data/PoissonPosterior.json")).
+//     via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
+//     map(_.utf8String).
+//     map(_.parseJson.convertTo[MetropState]).
+//     runWith(Sink.seq)
+
+//   // create a distribution over the posterior distribution of the state and parameters
+//   def createDist[A, B](s: Seq[A])(f: A => B): Rand[B] = new Rand[B] {
+//     def draw = {
+//       f(Resampling.sampleOne(s.toVector))
+//     }
+//   }
+
+//   val t0 = 40.0
+
+//   val times = Source(401.0 to 500.0 by 1.0)
+
+//   val res = for {
+//     posterior <- readPosterior
+//     simPosterior = createDist(posterior)(s => (s.params, s.sde.state))
+//     io <- times.
+//       via(SimulateData.forecast(mod.run, t0)(simPosterior)).
+//       map(_.sample(100).toVector).
+//       map(SimulateData.summariseForecast(mod.run, 0.99)).
+//       map(_.show).
+//       runWith(Streaming.writeStreamToFile("data/PoissonLongForecast.csv"))
+//   } yield io
+
+//   res.onComplete(_ => system.terminate())
+// }
 
 /**
   * Perform a one step forecast on the poisson data, using unseen test data,
@@ -119,7 +172,7 @@ object OneStepForecastPoisson extends App with PoissonTestModel with DataProtoco
     io <- testData.
       via(filter).
       map(s => PfState(s.t, s.observation, s.ps.map(_._2), s.ll, 0)).
-      map(s => ParticleFilter.getMeanForecast(s, mod(poissonParam), s.t + 0.1)).
+      map(s => ParticleFilter.getMeanForecast(s, mod(poissonParam), s.t + 0.1, 0.5)).
       map(_.show).
       runWith(Streaming.writeStreamToFile("data/PoissonOneStepForecast.csv"))
   } yield io

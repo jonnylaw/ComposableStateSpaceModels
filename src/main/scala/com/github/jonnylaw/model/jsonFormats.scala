@@ -3,7 +3,8 @@ package com.github.jonnylaw.model
 import breeze.linalg.DenseVector
 import cats.implicits._
 import spray.json._
-import scala.util.Try
+import scala.util.{Try, Success, Failure}
+import com.github.nscala_time.time.Imports._
 
 /**
   * Marshalling from JSON and to JSON for Simulated Data and MCMC data 
@@ -38,12 +39,11 @@ trait DataProtocols extends DefaultJsonProtocol {
   }
 
   implicit val leafParamFormat = jsonFormat2(LeafParameter.apply)
-  implicit val branchParamFormat: JsonFormat[BranchParameter] = 
-    lazyFormat(jsonFormat2(BranchParameter.apply))
+  implicit val branchParamFormat: JsonFormat[BranchParameter] = lazyFormat(jsonFormat2(BranchParameter.apply))
 
   implicit def paramsFormat = new RootJsonFormat[Parameters] {
     def write(obj: Parameters) = {
-      def loop(nestedBro: Parameters): Vector[JsValue] = nestedBro match {
+      def loop(params: Parameters): Vector[JsValue] = params match {
         case l: LeafParameter => Vector(l.toJson)
         case BranchParameter(l, r) => loop(l) ++ loop(r)
         case EmptyParameter => Vector()
@@ -67,7 +67,7 @@ trait DataProtocols extends DefaultJsonProtocol {
 
   implicit val stateFormat = new RootJsonFormat[State] {
     def write(obj: State) = {
-      def loop(nestedBro: State): Vector[JsValue] = nestedBro match {
+      def loop(state: State): Vector[JsValue] = state match {
         case l: Leaf[DenseVector[Double]] => Vector(l.toJson)
         case Branch(l, r) => loop(l) ++ loop(r)
       }
@@ -84,20 +84,34 @@ trait DataProtocols extends DefaultJsonProtocol {
     }
   }
 
+  implicit def dateTimeJsonFormat = new RootJsonFormat[DateTime] {
+    val dateTimeFormat = new DateTime()
+    val formatter = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ssZZ")
+
+    def write(obj: DateTime): JsValue = {
+      JsString(formatter.print(obj))
+    }
+
+    def read(json: JsValue): DateTime = json match {
+      case JsString(s) => formatter.parseDateTime(s)
+      case _ => deserializationError("DateTime expected")
+    }
+  }
+
   implicit val stateSpaceFormat = jsonFormat2(StateSpace)
-
   implicit val metropFormat = jsonFormat4(MetropState.apply)
-
   implicit val pmmhFormat = jsonFormat3(ParamsState.apply)
-
   implicit val tdFormat = jsonFormat2(TimedObservation.apply)
-
   implicit val osFormat = jsonFormat5(ObservationWithState.apply)
+  implicit val tsFormat = jsonFormat3(TimestampObservation.apply)
+  implicit val decompFormat = jsonFormat5(DecomposedModel.apply)
 
   implicit def dataFormat = new RootJsonFormat[Data] {
    def write(obj: Data): JsValue = obj match {
      case t: TimedObservation => t.toJson
      case o: ObservationWithState => o.toJson
+     case ts: TimestampObservation => ts.toJson
+     case _ => deserializationError("Data object expected")
    }
     def read(value: JsValue) = Try(value.convertTo[TimedObservation]).
       getOrElse(value.convertTo[ObservationWithState])

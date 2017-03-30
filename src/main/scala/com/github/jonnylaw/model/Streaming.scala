@@ -27,7 +27,8 @@ object Streaming {
     model: Reader[Parameters, Model], 
     param: Parameters, 
     resample: Resample[State, Id],
-    particles: Vector[Int])(implicit mat: Materializer, ec: ExecutionContext) = { 
+    particles: Vector[Int],
+    repetitions: Int)(implicit mat: Materializer, ec: ExecutionContext) = {
 
     val proposal = (p: Parameters) => Rand.always(p)
     val prior = (p: Parameters) => 0.0
@@ -37,11 +38,7 @@ object Streaming {
     def iters(n: Int): Future[(Int, Double)] = {
       val lls = Source.repeat(1).
         map(i => mll(n)).
-        zip(Source(Stream.from(1))).
-        map { case (ll, i) => {
-          ll
-        }}.
-        take(100).
+        take(repetitions).
         runWith(Sink.seq)
 
       lls map (ll => (n, breeze.stats.variance(ll)))
@@ -50,7 +47,6 @@ object Streaming {
     Source.apply(particles).
       mapAsyncUnordered(4){ iters }
   }
-
 
   def pmmhToJson(file: String, initParams: Parameters, filter: Parameters => Future[(LogLikelihood, Vector[StateSpace])],
     proposal: Parameters => Rand[Parameters], prior: Parameters => LogLikelihood, iters: Int)
@@ -64,6 +60,17 @@ object Streaming {
       runWith(Streaming.writeStreamToFile(file))
   }
    
+  def pmmhToJsonSerial(file: String, initParams: Parameters, filter: Parameters => (LogLikelihood, Vector[StateSpace]),
+    proposal: Parameters => Rand[Parameters], prior: Parameters => LogLikelihood, iters: Int)
+    (implicit mat: Materializer, f: JsonFormat[MetropState]): Future[IOResult] = {
+
+    ParticleMetropolisState(filter, initParams, proposal, prior).
+      iters.
+      via(Streaming.monitorStateStream).
+      take(iters).
+      map(_.toJson.compactPrint).
+      runWith(Streaming.writeStreamToFile(file))
+  }
 
   /**
     * Given output from the PMMH algorithm, monitor the acceptance rate online

@@ -38,7 +38,7 @@ ggsave("Figures/LinearPilotRun.png")
 # Linear Model Parameters #
 ###########################
 
-params = c("v", "m0", "c0", "theta", "alpha", "sigma")
+params = c("v", "alpha", "sigma", "theta", "m0", "c0")
 
 actual_values = data_frame(parameter = params, actual_value = c(1.0, 0.5, 0.12, 3.0, 0.2, 0.5))
 
@@ -54,18 +54,11 @@ read_chain = function(file, params) {
     mutate(v = exp(v), alpha = exp(alpha), sigma = exp(sigma))
 }
 
-chain1 = read_chain("data/LinearModelPosterior-1.json", params) %>% 
-  mutate_each(funs(exp = exp(.)), c(v, c0, alpha, sigma)) %>%
-  select(contains("exp"), m0, theta)
+chain = read_chain("data/LinearPosterior.json", params)
 
-chain2 = read_chain("data/LinearModelPosterior-2.json", params) %>% 
-  mutate_each(funs(exp = exp(.)), c(v, c0, alpha, sigma)) %>%
-  select(contains("exp"), m0, theta)
+# ggmcmc(ggs(mcmc(chain)), file = "linear_params.pdf")
 
-chains = mcmc.list(mcmc(chain1), mcmc(chain2)) %>%
-  ggs()
-
-ggmcmc(chains, file = "linear_params.pdf")
+ggs_traceplot(ggs(mcmc(chain)))
 
 ############################
 # One Step linear Forecast #

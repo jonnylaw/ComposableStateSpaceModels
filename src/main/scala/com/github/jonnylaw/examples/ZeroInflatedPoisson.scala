@@ -40,7 +40,7 @@ object SimZipModel extends App with ZipModel with DataProtocols {
 
 object PilotRunZip extends App with ZipModel with DataProtocols {
   DataFromJson("data/ZiPoissonModel.json").observations.take(400).runWith(Sink.seq).flatMap ( data =>
-    Streaming.pilotRun(data.toVector, model, p, Resampling.stratifiedResampling, Vector(100, 200, 500, 1000, 2000)).
+    Streaming.pilotRun(data.toVector, model, p, Resampling.stratifiedResampling, Vector(100, 200, 500, 1000, 2000), 100).
       map { case (n, v) => s"$n, $v" }.
       runWith(Streaming.writeStreamToFile("data/PilotRunZip.csv"))
   ).

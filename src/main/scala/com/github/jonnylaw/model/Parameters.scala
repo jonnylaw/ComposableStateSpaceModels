@@ -64,13 +64,28 @@ sealed trait Parameters { self =>
     * @param eigen the eigenvalue decomposition of the covariance matrix of the proposal distribution
     * @return a distribution over the parameters which can be drawn from
     */
-  def perturbMvnEigen(eigen: EigSym[DenseVector[Double], DenseMatrix[Double]])
+  def perturbMvnEigen(eigen: EigSym[DenseVector[Double], DenseMatrix[Double]], scale: Double)
     (implicit rand: RandBasis = Rand): Rand[Parameters] = new Rand[Parameters] {
     def draw = {
-      val q = eigen.eigenvectors * diag(eigen.eigenvalues.mapValues(x => sqrt(x)))
+      val q = scale * eigen.eigenvectors * diag(eigen.eigenvalues.mapValues(x => sqrt(x)))
       val innov = q * DenseVector.rand(eigen.eigenvalues.length, rand.gaussian(0, 1))
       self.add(innov)
     }
+  }
+
+  def size: Int = self match {
+    case _: LeafParameter => 1
+    case EmptyParameter => 0
+    case BranchParameter(l, r) => l.size + r.size
+  }
+
+  /**
+    * Get the leaf parameter at the ith node from the left
+    */
+  def getNode(i: Int): LeafParameter = self match {
+    case p: LeafParameter => p
+    case BranchParameter(l, r) if (l.size <= i) => r.getNode(i - l.size)
+    case BranchParameter(l, r) if (l.size > i) => l.getNode(i)
   }
 }
 case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends Parameters {
@@ -184,8 +199,15 @@ object Parameters {
     p.perturbMvn(chol)
   }
 
-  def perturbMvnEigen(eigen: EigSym[DenseVector[Double], DenseMatrix[Double]]) = { (p: Parameters) =>
-    p.perturbMvnEigen(eigen)
+  def perturbMvnEigen(eigen: EigSym[DenseVector[Double], DenseMatrix[Double]], scale: Double) = { (p: Parameters) =>
+    p.perturbMvnEigen(eigen, scale)
+  }
+
+  /**
+    * Check if two parameter trees are isomorphic in shape when traversed from the left
+    */
+  def isIsomorphic(p: Parameters, p1: Parameters): Boolean = {
+    p.flatten == p1.flatten
   }
 
   /**
@@ -196,5 +218,4 @@ object Parameters {
     val m = new DenseMatrix(samples.size, dim, samples.map(_.flatten.toArray).toArray.transpose.flatten)
     covmat.matrixCovariance(m)
   }
-
 }

@@ -44,6 +44,8 @@ case class TimedObservation(t: Time, observation: Observation) extends Data
 
 case class TimestampObservation(timestamp: DateTime, t: Time, observation: Observation) extends Data
 
+case class DecomposedModel(time: Time, observation: Observation, eta: Eta, gamma: Gamma, state: List[Eta])
+
 trait DataService[F] {
   def observations: Source[Data, F]
 }
@@ -205,8 +207,6 @@ object SimulateData {
       (p, ObservationWithState(t, 0.0, eta, gamma, x))
     }}
 
-    def step = SimulateData
-
     Flow[Time].
       scan(init)((d0, ts: Time) => {
         for {
@@ -219,17 +219,27 @@ object SimulateData {
   def summariseForecast(mod: Parameters => Model, interval: Double) = { (s: Vector[(Parameters, ObservationWithState)]) =>
     val forecast = s.map(_._2)
 
-    val stateIntervals = ParticleFilter.getallCredibleIntervals(forecast.map(_.sdeState).toVector, 0.995)
+    val stateIntervals = ParticleFilter.getallCredibleIntervals(forecast.map(_.sdeState).toVector, interval)
     val statemean = ParticleFilter.meanState(forecast.map(_.sdeState).toVector)
     val meanEta = breeze.stats.mean(forecast.map(_.eta))
-    val etaIntervals = ParticleFilter.getOrderStatistic(forecast.map(_.eta).toVector, 0.995)
+    val etaIntervals = ParticleFilter.getOrderStatistic(forecast.map(_.eta).toVector, interval)
     val obs = s.map { case (p, x) => mod(p).observation(x.gamma).draw }
-    val obsIntervals = ParticleFilter.getOrderStatistic(obs, 0.995)
+    val obsIntervals = ParticleFilter.getOrderStatistic(obs, interval)
 
     ForecastOut(forecast.head.t, breeze.stats.mean(obs), obsIntervals,
       meanEta, etaIntervals, statemean, stateIntervals)
   }
 
+  /**
+    * Get the transformed state of the nth model
+    * @state the state to transform from a composed model
+    * @model a model component from the composed model which produced the state
+    * @position the position of the model in the tree, indexed from zero
+    */
+  def getState(state: State, model: Model, position: Int)(t: Time): Eta = {
+    val s = Tree.leaf(state.getNode(position))
+    model.f(s, t)
+  }
 }
 
 /**

@@ -45,9 +45,9 @@ negbin_pilot = read_csv("data/NegBinPilotRun.csv", col_names = c("particles", "m
 negbin_pilot %>%
   ggplot(aes(x = particles, y = mll_variance)) +
   geom_line() +
+  scale_x_log10() +
   geom_point() + 
   ggtitle("Variance of Pseudo log-likelihood")
-
 
 ##########################################
 # Negative Binomial Parameter Estimation #

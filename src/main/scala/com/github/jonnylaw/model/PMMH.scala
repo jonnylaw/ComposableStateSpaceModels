@@ -259,7 +259,8 @@ case class ParticleMetropolisStateAsync(
 
   def iters: Source[MetropState, NotUsed] = {
     val init = MetropState(-1e99, initialParams, StateSpace(0.0, Tree.leaf(DenseVector())), 0)
-    Source.unfoldAsync(init)(state => mhStepState(state) map ((s: MetropState) => Some((s, state)))).drop(1)
+    Source.unfoldAsync(init)(state => mhStepState(state) map ((s: MetropState) => Some((s, state)))).
+      drop(1)
   }
 
   def params: Source[ParamsState, NotUsed] = {

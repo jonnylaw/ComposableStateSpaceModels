@@ -53,7 +53,7 @@ object NegBinPilotRun extends App with TestNegBinMod {
 
   val res = for {
     data <- DataFromFile("data/NegativeBinomial.csv").observations.runWith(Sink.seq)
-    vars = Streaming.pilotRun(data.toVector, model, p, resample, particles)
+    vars = Streaming.pilotRun(data.toVector, model, p, resample, particles, 100)
     io <- vars.map { case (n, v) => s"$n, $v" }.
       runWith(Streaming.writeStreamToFile("data/NegBinPilotRun.csv"))
   } yield io

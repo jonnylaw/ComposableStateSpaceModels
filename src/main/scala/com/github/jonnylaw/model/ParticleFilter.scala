@@ -127,7 +127,8 @@ trait ParticleFilter[G[_]] {
     * of the path by sampling from the distribution of the paths
     * @param data the initial time of the data
     * @param particles the number of particles to use in the particle approximation to the filtering distribution
-    * @return (LogLikelihood, Vector[State]) The log likelihood and a sample from the posterior of the filtering distribution
+    * @return G[(LogLikelihood, Vector[State])] The log likelihood and a sample from the posterior of the filtering distribution
+    * inside of a computational context, G, which can be a Future for async computation or Id for sequential computation
     */
   def filter(data: Vector[Data])(particles: Int): G[(LogLikelihood, Vector[StateSpace])] = {
     val init = g.pure(initialiseState(particles, data.minBy(_.t).t))
@@ -452,17 +453,17 @@ object ParticleFilter {
     * @param t the time of the prediction
     * @return ForecastOut, a summary containing the mean of the state, gamma and observation
     */
-  def getMeanForecast(s: PfState, mod: Model, t: Time): ForecastOut = {
+  def getMeanForecast(s: PfState, mod: Model, t: Time, interval: Double): ForecastOut = {
 
     val forecast = getForecast(s, mod, t)
 
-    val stateIntervals = getallCredibleIntervals(forecast.map(_.sdeState).toVector, 0.995)
+    val stateIntervals = getallCredibleIntervals(forecast.map(_.sdeState).toVector, interval)
     val statemean = meanState(forecast.map(_.sdeState).toVector)
     val meanEta = breeze.stats.mean(forecast.map(_.eta))
-    val etaIntervals = getOrderStatistic(forecast.map(_.eta).toVector, 0.995)
+    val etaIntervals = getOrderStatistic(forecast.map(_.eta).toVector, interval)
     val obs = forecast.map(x => mod.observation(x.gamma).draw)
     val meanObs = breeze.stats.mean(obs)
-    val obsIntervals = getOrderStatistic(obs, 0.995)
+    val obsIntervals = getOrderStatistic(obs, interval)
 
     ForecastOut(t, meanObs, obsIntervals, 
       meanEta, etaIntervals, statemean, stateIntervals)
