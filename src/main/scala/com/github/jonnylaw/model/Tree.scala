@@ -88,6 +88,10 @@ object Tree {
     l.tail.foldLeft(Tree.leaf(l.head))(_ |+ Tree.leaf(_))
   }
 
+  def isIsomorphic[A: Ordering](t: Tree[A], t1: Tree[A]): Boolean = {
+    t.flatten == t1.flatten
+  }
+
   /**
     * Fill an already constructed tree
     */

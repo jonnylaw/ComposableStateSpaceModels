@@ -58,28 +58,26 @@ class ModelSuite extends FlatSpec with Matchers {
     def drift(state: State): Tree[DenseVector[Double]] = Tree.leaf(DenseVector(1.0))
     def diffusion(state: State) = Tree.leaf(DenseMatrix((0.0)))
     def dimension: Int = 1
-    override def stepFunction(dt: TimeIncrement)(s: State) = Rand.always(s)
+    override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = Rand.always(s)
   }
 
   "Brownian Motion step function" should "Change the value of the state" in {
-    val p = SdeParameter.brownianParameter(
-      DenseVector(1.0), DenseVector(1.0),
-      DenseVector(1.0), DenseVector(1.0))
+    val p = SdeParameter.brownianParameter(1.0, 1.0, 1.0, 1.0)
 
     val x0 = Tree.leaf(DenseVector(1.0))
 
-    assert(Sde.brownianMotion(p).stepFunction(2)(x0).draw.getNode(0) != x0.getNode(0))
+    assert(Sde.brownianMotion(1)(p).stepFunction(2)(x0).draw.getNode(0) != x0.getNode(0))
   }
 
   "Compose two models" should "work" in {
     val singleP = Parameters.leafParameter(
       Some(1.0), SdeParameter.brownianParameter(
-      DenseVector(1.0), DenseVector(1.0), DenseVector(1.0), DenseVector(1.0)))
+      1.0, 1.0, 1.0, 1.0))
 
     val p = singleP |+| singleP
 
-    val twoLinear = linearModelNoNoise(Sde.brownianMotion) |+|
-    linearModelNoNoise(Sde.brownianMotion)
+    val twoLinear = linearModelNoNoise(Sde.brownianMotion(1)) |+|
+    linearModelNoNoise(Sde.brownianMotion(1))
 
     val x0 = twoLinear(p).sde.initialState.draw
     assert(x0.flatten.size == twoLinear(p).sde.dimension)
@@ -95,12 +93,12 @@ class ModelSuite extends FlatSpec with Matchers {
   "Combine three models" should "result in a state space of three combined states" in {
     val p = List.fill(3)(
       Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(
-      DenseVector(1.0), DenseVector(1.0), DenseVector(1.0), DenseVector(0.1)))).
+      1.0, 1.0, 1.0, 0.1))).
       reduce((a, b) => a |+| b)
 
     val threeLinear = linearModelNoNoise(stepNull) |+|
-      linearModelNoNoise(Sde.brownianMotion) |+|
-      linearModelNoNoise(Sde.brownianMotion)
+      linearModelNoNoise(Sde.brownianMotion(1)) |+|
+      linearModelNoNoise(Sde.brownianMotion(1))
 
     val x0 = threeLinear(p).sde.initialState
     assert(x0.draw.flatten.size == 3)
@@ -109,12 +107,12 @@ class ModelSuite extends FlatSpec with Matchers {
   "Combine three Models" should "advance each state space seperately" in {
     val p = List.fill(3)(
       Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(
-      DenseVector(1.0), DenseVector(1.0), DenseVector(1.0), DenseVector(0.1)))).
+      1.0, 1.0, 1.0, 0.1))).
       reduce((a, b) => a |+| b)
 
-    val threeLinear = linearModelNoNoise(Sde.brownianMotion) |+|
-      linearModelNoNoise(Sde.brownianMotion) |+|
-      linearModelNoNoise(Sde.brownianMotion)
+    val threeLinear = linearModelNoNoise(Sde.brownianMotion(1)) |+|
+      linearModelNoNoise(Sde.brownianMotion(1)) |+|
+      linearModelNoNoise(Sde.brownianMotion(1))
 
     val x0 = threeLinear(p).sde.initialState.draw
     val x1 = threeLinear(p).sde.stepFunction(1)(x0).draw
@@ -131,12 +129,12 @@ class ModelSuite extends FlatSpec with Matchers {
   "Combine three models" should "return an observation which is the sum of the state space, plus measurement error" in {
     val p = List.fill(3)(
       Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(
-      DenseVector(1.0), DenseVector(1.0), DenseVector(1.0), DenseVector(0.1)))).
+      1.0, 1.0, 1.0, 0.1))).
       reduce((a, b) => a |+| b)
 
     val threeLinear = linearModelNoNoise(stepNull) |+|
-      linearModelNoNoise(Sde.brownianMotion) |+|
-      linearModelNoNoise(Sde.brownianMotion)
+      linearModelNoNoise(Sde.brownianMotion(1)) |+|
+      linearModelNoNoise(Sde.brownianMotion(1))
 
     val x0 = threeLinear(p).sde.initialState.draw
     val x1 = threeLinear(p).sde.stepFunction(1)(x0).draw

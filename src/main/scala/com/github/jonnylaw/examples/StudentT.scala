@@ -8,6 +8,7 @@ import akka.util.ByteString
 import com.github.jonnylaw.model._
 import java.nio.file.Paths
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
+import cats._
 import cats.implicits._
 
 import scala.collection.parallel.immutable.ParVector
@@ -17,25 +18,15 @@ import scala.concurrent.Future
 trait TModel {
   val tparams = Parameters.leafParameter(
     Some(0.3),
-    SdeParameter.ornsteinParameter(
-      DenseVector(0.0), 
-      DenseVector((3.0)), 
-      DenseVector(3.0), 
-      DenseVector(1.0), 
-      DenseVector(0.5)))
+    SdeParameter.ouParameter(0.0, 3.0, 3.0, 1.0, 0.5))
   val seasParams: Parameters = Parameters.leafParameter(
     None,
-    SdeParameter.ornsteinParameter(
-      DenseVector.fill(6)(0.0), 
-      DenseVector.fill(6)(3.0),
-      theta = DenseVector.fill(6)(2.0), 
-      alpha = DenseVector.fill(6)(0.5),
-      sigma = DenseVector.fill(6)(0.3)))
+    SdeParameter.ouParameter(0.0, 3.0, theta = 2.0,  alpha = 0.5, sigma = 0.3))
 
   val p = tparams |+| seasParams
 
-  val st = Model.studentsTModel(Sde.ornsteinUhlenbeck, 5)
-  val seasonal = Model.seasonalModel(24, 3, Sde.ornsteinUhlenbeck)
+  val st = Model.studentsTModel(Sde.ouProcess(1), 5)
+  val seasonal = Model.seasonalModel(24, 3, Sde.ouProcess(6))
 
   val unparamMod = st |+| seasonal
   val mod = unparamMod(p)
@@ -69,8 +60,8 @@ object GetSeasTParams extends App with TModel {
     mapAsync(2) { (chain: Int) =>
       for {
         data <- DataFromFile("data/SeasTSims.csv").observations.runWith(Sink.seq)
-        mll = ParticleFilter.likelihood[ParVector](data.toVector, Resampling.parMultinomialResampling, 200).compose(unparamMod)
-        pmmh = ParticleMetropolis(mll.run, p, Parameters.perturb(0.05), prior)
+        mll = (p: Parameters) => ParticleFilter.likelihood(data.toVector, Resampling.systematicResampling _, 500)(unparamMod(p))
+        pmmh = ParticleMetropolisSerial(mll, p, Parameters.perturb(0.05), prior)
         io <- pmmh.params.take(10000).map(_.show).runWith(Streaming.writeStreamToFile(s"data/seastMCMC-$chain.csv"))
       } yield io
     }.

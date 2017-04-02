@@ -3,13 +3,15 @@ package com.github.jonnylaw
 import breeze.stats.distributions.{Rand, Process}
 import breeze.stats.distributions.Rand._
 import breeze.linalg.DenseVector
+import cats.data.Kleisli
 import cats._
 import cats.implicits._
-import cats.data.Reader
+import cats.data.{Reader, StateT}
 import scala.collection.parallel.immutable.ParVector
 import scala.reflect.ClassTag
 import scala.language.higherKinds
 import scala.collection.immutable.TreeMap
+import scala.concurrent.Future
 
 package object model {
   type Observation = Double
@@ -22,7 +24,8 @@ package object model {
   type UnparamSde = Reader[SdeParameter, Sde]
   type StepFunction = (SdeParameter) => (State, TimeIncrement) => Rand[State]
   type State = Tree[DenseVector[Double]]
-  type Resample[F[_], G[_], A] = (F[A], F[LogLikelihood]) => G[F[A]]
+  type Resample[A, F[_]] = (Vector[A], Vector[LogLikelihood]) => F[Vector[A]]
+  type BootstrapFilter[G[_]] = Kleisli[G, Parameters, (LogLikelihood, Vector[StateSpace])]
 
   implicit def randMonad = new Monad[Rand] {
     def pure[A](x: A): Rand[A] = always(x)
@@ -32,6 +35,7 @@ package object model {
       case Left(b) => tailRecM(b)(f)
     }
   }
+
 
   implicit def numericDenseVector = new Numeric[DenseVector[Double]] {
     def fromInt(x: Int): DenseVector[Double] = DenseVector(x.toDouble)
@@ -56,11 +60,12 @@ package object model {
     def scanLeft[A, B](fa: ParVector[A],z: B)(f: (B, A) => B): ParVector[B] = fa.scanLeft(z)(f)
     def foldLeft[A, B](fa: ParVector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
     def empty[A]: ParVector[A] = ParVector()
+    def append[A](fa: ParVector[A])(a: A): ParVector[A] = a +: fa
     def size[A](fa: ParVector[A]) = fa.size
     def combineK[A](x: ParVector[A], y: ParVector[A]): ParVector[A] = x ++ y
     def indices[A](fa: ParVector[A]) = fa.zipWithIndex.map(_._2)
     def toArray[A: ClassTag](fa: ParVector[A]): Array[A] = fa.toArray
-    def fill[A](n: Int)(a: A): ParVector[A] = ParVector.fill(n)(a)
+    def fill[A](n: Int)(a: => A): ParVector[A] = ParVector.fill(n)(a)
     def unzip[A, B](fa: ParVector[(A, B)]): (ParVector[A], ParVector[B]) = fa.unzip
     def max[A: Ordering](fa: ParVector[A]): A = fa.max
     def toVector[A](fa: ParVector[A]): Vector[A] = fa.toVector
@@ -80,10 +85,11 @@ package object model {
     def scanLeft[A, B](fa: Vector[A],z: B)(f: (B, A) => B): Vector[B] = fa.scanLeft(z)(f)
     def foldLeft[A, B](fa: Vector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
     def empty[A]: Vector[A] = Vector()
+    def append[A](fa: Vector[A])(a: A): Vector[A] = a +: fa
     def size[A](fa: Vector[A]) = fa.size
     def combineK[A](x: Vector[A], y: Vector[A]): Vector[A] = x ++ y
     def indices[A](fa: Vector[A]) = fa.zipWithIndex.map(_._2)
-    def fill[A](n: Int)(a: A) = Vector.fill(n)(a)
+    def fill[A](n: Int)(a: => A) = Vector.fill(n)(a)
     def toArray[A: ClassTag](fa: Vector[A]): Array[A] = fa.toArray
     def unzip[A, B](fa: Vector[(A, B)]): (Vector[A], Vector[B]) = fa.unzip
     def max[A: Ordering](fa: Vector[A]): A = fa.max
@@ -105,15 +111,21 @@ package object model {
     def show(a: Data): String = a match {
       case TimedObservation(t, y) => s"$t, $y"
       case ObservationWithState(t, y, e, g, x) => s"$t, $y, $e, $g, ${S.show(x)}"
+      case TimestampObservation(time, t, obs) => s"$time, $obs"
     }
+  }
+
+  implicit def decompShow = new Show[DecomposedModel] {
+    def show(a: DecomposedModel): String = s"${a.time}, ${a.observation}, ${a.eta}, ${a.gamma}, ${a.state.mkString(", ")}"
   }
 
   implicit def sdeParamShow = new Show[SdeParameter] {
     def show(p: SdeParameter): String = p match {
       case BrownianParameter(m0, c0, mu, sigma) =>
-        s"""${m0.data.mkString(", ")}, ${c0.data.mkString(", ")}, ${mu.data.mkString(", ")}, ${sigma.data.mkString(", ")}"""
+        s"""$m0, $c0, $mu, $sigma"""
       case OrnsteinParameter(m0, c0, theta, alpha, sigma) =>
         s"""${m0.data.mkString(", ")}, ${c0.data.mkString(", ")}, ${theta.data.mkString(", ")}, ${alpha.data.mkString(", ")}, ${sigma.data.mkString(", ")}"""
+      case OuParameter(m, c, t, a, s) => s"$m, $c, $t, $a, $s"
     }
   }
 
@@ -125,9 +137,13 @@ package object model {
     }
   }
 
-  implicit def itersShow(implicit S: Show[Parameters], T: Show[State]) = new Show[MetropState] {
+  implicit def stateSpaceShow(implicit S: Show[State]) = new Show[StateSpace] {
+    def show(a: StateSpace): String = s"${a.time}, ${S.show(a.state)}"
+  }
+
+  implicit def itersShow(implicit S: Show[Parameters], T: Show[StateSpace]) = new Show[MetropState] {
     def show(a: MetropState): String = 
-      s"${S.show(a.params)}, ${a.state.map(T.show).mkString(", ")}, ${a.accepted}"
+      s"${S.show(a.params)}, ${a.accepted}"
   }
 
   implicit def paramStateShow(implicit S: Show[Parameters]) = new Show[ParamsState] {
@@ -135,10 +151,10 @@ package object model {
       s"${S.show(a.params)}, ${a.accepted}"
   }
 
-  implicit def filterShow[F[_]: Collection](implicit S: Show[State], f: Collection[F]) = new Show[PfState[F]] {
-    def show(a: PfState[F]): String = a.observation match {
-      case Some(y) => s"${a.t}, $y, ${f.toVector(f.map(a.particles)(S.show)).mkString(", ")}, ${a.ess}"
-      case None => s"${a.t}, NA, ${f.toVector(f.map(a.particles)(S.show)).mkString(", ")}, ${a.ess}"
+  implicit def filterShow(implicit S: Show[State]) = new Show[PfState] {
+    def show(a: PfState): String = a.observation match {
+      case Some(y) => s"${a.t}, $y, ${a.particles.map(S.show).mkString(", ")}, ${a.ess}"
+      case None => s"${a.t}, NA, ${a.particles.map(S.show).mkString(", ")}, ${a.ess}"
     }
   }
 

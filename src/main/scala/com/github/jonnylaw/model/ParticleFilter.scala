@@ -9,43 +9,14 @@ import breeze.numerics.{exp, log}
 import breeze.linalg.DenseVector
 
 import cats._
-import cats.data.Reader
+import cats.data.{Reader, Kleisli}
 import cats.implicits._
 import cats.instances._
 
 import scala.collection.parallel.immutable.ParVector
-import scala.collection.immutable.TreeMap
 import scala.concurrent._
 import scala.language.higherKinds
-import scala.language.implicitConversions
-import scala.reflect.ClassTag
-import simulacrum._
 import Collection.ops._
-
-/**
-  * A typeclass representing a Collection with a few additional 
-  * features required for implementing the particle filter
-  */
-@typeclass trait Collection[F[_]] {
-  def pure[A](a: A): F[A]
-  def isEmpty[A](fa: F[A]): Boolean
-  def map[A, B](fa: F[A])(f: A => B): F[B]
-  def flatMap[A, B](fa: F[A])(f: A => F[B]): F[B]
-  def scanLeft[A, B](fa: F[A], z: B)(f: (B, A) => B): F[B]
-  def foldLeft[A, B](fa: F[A], z: B)(f: (B, A) => B): B
-  def get[A](fa: F[A])(i: Int): A
-  def indices[A](fa: F[A]): F[Int]
-  def indexWhere[A](fa: F[A])(cond: A => Boolean): Int
-  def max[A: Ordering](fa: F[A]): A
-  def size[A](fa: F[A]): Int
-  def fill[A](n: Int)(a: A): F[A]
-  def toArray[A: ClassTag](fa: F[A]): Array[A]
-  def toVector[A](fa: F[A]): Vector[A]
-  def unzip[A, B](fa: F[(A, B)]): (F[A], F[B])
-  def zip[A, B](fa: F[A], fb: F[B]): F[(A, B)]
-  def drop[A](fa: F[A])(n: Int): F[A]
-  def toTreeMap[A: Ordering, B](fa: F[(A, B)]): TreeMap[A, B]
-}
 
 /**
   * Credible intervals from a set of samples in a distribution
@@ -65,10 +36,10 @@ case class CredibleInterval(lower: Double, upper: Double) {
   * @param ll the estimated log-likelihood of the path given the observations so far
   * @param ess the effective sample size 
   */
-case class PfState[F[_]](
+case class PfState(
   t: Time,
   observation: Option[Observation],
-  particles: F[State],
+  particles: Vector[State],
   ll: LogLikelihood, 
   ess: Int)
 
@@ -113,25 +84,23 @@ case class ForecastOut(
   * @param observation the measurement taken at time t
   * @param ps a tuple containing the parameter and state drawn from the joint posterior
   */
-case class ParamFilterState[F[_]](t: Time, observation: Option[Observation], ps: F[(Parameters, State)], ll: LogLikelihood)
+case class ParamFilterState(t: Time, observation: Option[Observation], ps: Vector[(Parameters, State)], ll: LogLikelihood)
 
-trait ParticleFilter[F[_], G[_]] {
-  implicit val f: Collection[F]
-  implicit val g: Monad[G]
+trait ParticleFilter[G[_]] {
+  implicit def g: Monad[G]
 
-//  implicit val ec: ExecutionContext
   import ParticleFilter._
 
   val mod: Model
 
-  def initialiseState(particles: Int, t0: Time): PfState[F] = {
-    val state = f.fill(particles)(mod.sde.initialState.draw)
-    PfState[F](t0, None, state, 0.0, particles)
+  def initialiseState(particles: Int, t0: Time): PfState = {
+    val state = Vector.fill(particles)(mod.sde.initialState.draw)
+    PfState(t0, None, state, 0.0, particles)
   }
 
-  def resample: Resample[F, G, State]
+  def resample: Resample[State, G]
 
-  def stepFilter(s: PfState[F], y: Data): G[PfState[F]] = {
+  def stepFilter(s: PfState, y: Data): G[PfState] = {
     val dt = y.t - s.t
     val x1 = s.particles map (x => mod.sde.stepFunction(dt)(x).draw)
     val w = x1 map (x => mod.dataLikelihood(mod.f(x, y.t), y.observation))
@@ -149,9 +118,8 @@ trait ParticleFilter[F[_], G[_]] {
     * Filter a collection of data and return an estimate of the loglikelihood
     */
   def llFilter(data: Vector[Data])(n: Int): G[LogLikelihood] = {
-    val initState = g.pure(initialiseState(n, data.minBy(_.t).t))
-    data.foldLeft(initState)((s, y) => s flatMap(stepFilter(_, y))).
-      map(_.ll)
+    val initState = initialiseState(n, data.minBy(_.t).t)
+    data.foldM(initState)(stepFilter).map(_.ll)
   }
 
   /**
@@ -159,36 +127,32 @@ trait ParticleFilter[F[_], G[_]] {
     * of the path by sampling from the distribution of the paths
     * @param data the initial time of the data
     * @param particles the number of particles to use in the particle approximation to the filtering distribution
-    * @return (LogLikelihood, Vector[State]) The log likelihood and a sample from the posterior of the filtering distribution
+    * @return G[(LogLikelihood, Vector[State])] The log likelihood and a sample from the posterior of the filtering distribution
+    * inside of a computational context, G, which can be a Future for async computation or Id for sequential computation
     */
-  def filter(data: Vector[Data])(particles: Int): G[(LogLikelihood, Vector[State])] = ???
-
-// {
-//     val init = g.pure(initialiseState(particles, data.minBy(_.t).t))
-
-//     for {
-//       states: Vector[PfState[F]] <- data.scanLeft(init)((s, y) => s flatMap(stepFilter(_, y)))
-//       ll = states.last.ll
-//     } yield (ll, Resampling.sampleOne(states.map(_.particles)).toVector)
-//   }
+  def filter(data: Vector[Data])(particles: Int): G[(LogLikelihood, Vector[StateSpace])] = {
+    val init = g.pure(initialiseState(particles, data.minBy(_.t).t))
+    val states = data.scanLeft(init)((s, y) => s flatMap(stepFilter(_, y))).sequence
+    val ll = states map (_.last.ll)
+    
+    for {
+      s <- states
+      likelihood <- ll
+    } yield (likelihood, s.map(x => StateSpace(x.t, Resampling.sampleOne(x.particles))))
+  }
 
   /**
     * Run a filter over a stream of data
     */
-  def filterStream(t0: Time)(particles: Int): Flow[Data, G[PfState[F]], NotUsed] = {
-    val initState = g.pure(initialiseState(particles, t0))
-
-    Flow[Data].scan(initState)((s, y) => s flatMap(stepFilter(_, y)))
-  }
+  def filterStream(t0: Time)(particles: Int): Flow[Data, PfState, NotUsed]
 }
 
 case class FilterLgcp(
   mod: Model,
-  resample: Resample[ParVector, Id, State], 
-  precision: Int) extends ParticleFilter[ParVector, Id] {
+  resample: Resample[State, Id], 
+  precision: Int) extends ParticleFilter[Id] {
 
-  override val f = implicitly[Collection[ParVector]]
-  override val g = implicitly[Monad[Id]]
+  def g = implicitly[Monad[Id]]
 
   def calcWeight(x: State, dt: TimeIncrement, t: Time): (State, Double, Double) = {
     // calculate the amount of realisations of the state we need
@@ -211,7 +175,7 @@ case class FilterLgcp(
     (lastState, gamma, cumulativeHazard)
   }
 
-  override def stepFilter(s: PfState[ParVector], y: Data): PfState[ParVector] = {
+  override def stepFilter(s: PfState, y: Data): Id[PfState] = {
     val dt = y.t - s.t
     val state = if (dt == 0) { s.particles map (x => (x, mod.f(x, y.t), mod.f(x, y.t))) } else { s.particles.map(x => calcWeight(x, dt, y.t)) }
     val w = state.map(a => (a._2, a._3)).map { case (g,l) => g - l }
@@ -219,29 +183,31 @@ case class FilterLgcp(
     val w1 = w map (a => exp(a - max))
     val ll = s.ll + max + log(ParticleFilter.mean(w1))
 
-    val resampledX = resample(state.map(_._1), w1)
     val ess = ParticleFilter.effectiveSampleSize(w1)
 
-    PfState[ParVector](y.t, Some(y.observation), resampledX, ll, ess)
+    PfState(y.t, Some(y.observation), resample(state.map(_._1), w1), ll, ess)
+  }
+
+  def filterStream(t0: Time)(particles: Int): Flow[Data, PfState, NotUsed] = {
+    val initState = initialiseState(particles, t0)
+
+    Flow[Data].scan(initState)(stepFilter)
   }
 }
 
 case class FilterAsync(
-  parallelism: Int, 
   mod: Model, 
-  resample: Resample[Vector, Future, State])(
-  implicit ec: ExecutionContext) extends ParticleFilter[Vector, Future] {
+  resample: Resample[State, Future])(implicit val ec: ExecutionContext) extends ParticleFilter[Future] {
 
-  override val f = implicitly[Collection[Vector]]
-  override val g = implicitly[Monad[Future]]
+  def g = implicitly[Monad[Future]]
 
-  override def stepFilter(s: PfState[Vector], y: Data): Future[PfState[Vector]] = {
+  override def stepFilter(s: PfState, y: Data): Future[PfState] = {
     val dt = y.t - s.t
 
     // advance the state and calculate the likelihood in parallel
     // by transforming the vectors into ParVectors
     val newState = s.particles.par map (x => mod.sde.stepFunction(dt)(x).draw)
-    val weight = newState.par map (x => mod.dataLikelihood(mod.f(x, y.t), y.observation))
+    val weight = newState map (x => mod.dataLikelihood(mod.f(x, y.t), y.observation))
 
     // update the value of the log-likelihood, and effective sample size
     val max = weight.max
@@ -251,8 +217,14 @@ case class FilterAsync(
 
     // resample using Future async
     for {
-      resampledX <- resample(newState.toVector, w1.toVector)
+      resampledX <- resample(newState.seq, w1.seq)
     } yield PfState(y.t, Some(y.observation), resampledX, ll, ess)
+  }
+
+  def filterStream(t0: Time)(particles: Int): Flow[Data, PfState, NotUsed] = {
+    val initState = initialiseState(particles, t0)
+
+    Flow[Data].scanAsync(initState)(stepFilter)
   }
 
 }
@@ -260,42 +232,43 @@ case class FilterAsync(
 /**
   * A particle filter which can represent particle clouds as a Collection, Collection is a typeclass
   * which can currently has concrete methods for Vector and ParVector 
-  * @param unparamModel
+  * @param mod
   */
-case class Filter[F[_]: Collection, G[_]: Monad](
-  mod: Model, 
-  resample: Resample[F, G, State]) extends ParticleFilter[F, G] {
+case class Filter(mod: Model, resample: Resample[State, Id]) extends ParticleFilter[Id] {
+  def g = implicitly[Monad[Id]]
 
-  override val f = implicitly[Collection[F]]
-  override val g = implicitly[Monad[G]]
+  def filterStream(t0: Time)(particles: Int): Flow[Data, PfState, NotUsed] = {
+    val initState = initialiseState(particles, t0)
+
+    Flow[Data].scan(initState)(stepFilter)
+  }
 }
 
 /**
   * A particle filter which takes a sample from the joint-posterior of the parameters
   * and state p(x, theta | y) 
-  * @param 
+  * @param unparamModel
   */
-case class FilterState[F[_]: Collection](
-  unparamModel: Parameters => Model, 
-  resample: Resample[F, Id, (Parameters, State)]) {
-
-  val f = implicitly[Collection[F]]
+case class FilterState(unparamModel: Parameters => Model, resample: Resample[(Parameters, State), Id]) {
 
   /**
     * Apply the particle filter with a draw from the joint posterior of the state and parameters, p(x, theta | y)
     */
-  def stepFilterParameters = { (s: ParamFilterState[F], y: Data) =>
+  def stepFilterParameters(s: ParamFilterState, y: Data): ParamFilterState = {
 
     val dt = y.t - s.t
-    val x1 = f.map(s.ps){ case (p, x) => (p, unparamModel(p).sde.stepFunction(dt)(x).draw) }
-    val w = f.map(x1){ case (p, x) => unparamModel(p).dataLikelihood(unparamModel(p).f(x, y.t), y.observation) }
-    val max = f.max(w)
-    val w1 = f.map(w)(a => exp(a - max))
+    val x1 = s.ps.par map { case (p, x) => (p, unparamModel(p).sde.stepFunction(dt)(x).draw) }
+    val w = x1 map { case (p, x) => unparamModel(p).dataLikelihood(unparamModel(p).f(x, y.t), y.observation) }
+    val max = w.max
+    val w1 = w map (a => exp(a - max))
     val ll = s.ll + max + log(ParticleFilter.mean(w1))
-    val resampledX = resample(x1, w1)
+
     val ess = ParticleFilter.effectiveSampleSize(w1)
-  
-    ParamFilterState[F](y.t, Some(y.observation), resampledX, ll)
+
+    val resampledX = resample(x1.seq, w1.seq)
+
+    ParamFilterState(y.t, Some(y.observation), resampledX, ll)
+    
   }
 
   /**
@@ -304,13 +277,31 @@ case class FilterState[F[_]: Collection](
     * The initial state is then advanced to the time of the next observation
     * @param init a draw from the full-joint posterior distribution at time t, output from the PMMH
     */
-  def filterFromPosterior(t: Time)(init: F[(Parameters, State)]) = {
-
-    val initState = ParamFilterState[F](t, None, init, 0.0)
+  def filterFromPosterior(t: Time)(init: Rand[(Parameters, State)])(particles: Int) = {
+    val initState = ParamFilterState(t, None, init.sample(particles).toVector, 0.0)
 
     Flow[Data].scan(initState)(stepFilterParameters)
   }
 
+  def filterFromPosteriorSeq(data: Seq[Data], t: Time)(init: Rand[(Parameters, State)])(particles: Int) = {
+    val initState = ParamFilterState(t, None, init.sample(particles).toVector, 0.0)
+
+    data.scanLeft(initState)(stepFilterParameters)
+  }
+}
+
+case class FilterInit(mod: Model, resample: Resample[State, Id], initState: State) extends ParticleFilter[Id] {
+  def g = implicitly[Monad[Id]]
+
+  override def initialiseState(particles: Int, t0: Time): PfState = {
+    val state = Vector.fill(particles)(initState)
+    PfState(t0, None, state, 0.0, particles)
+  }
+
+  def filterStream(t0: Time)(particles: Int): Flow[Data, PfState, NotUsed] = {
+    val init = PfState(t0, None, Vector.fill(particles)(initState), 0.0, particles)
+    Flow[Data].scan(init)(stepFilter)
+  }
 }
 
 object ParticleFilter {
@@ -328,13 +319,19 @@ object ParticleFilter {
     * data.
     *   through(pf(mod))
     */
-  def filter[F[_]: Collection](
-    resample: Resample[F, Id, State],
-    t0: Time,
-    n: Int
-  ) = Reader { (mod: Model) =>
+  def filter(resample: Resample[State, Id], t0: Time, n: Int) = { (mod: Model) =>
+    Filter(mod, resample).filterStream(t0)(n)
+  }
 
-    Filter[F, Id](mod, resample).filterStream(t0)(n)
+  def filterAsync(resample: Resample[State, Future], t0: Time, n: Int)(implicit ec: ExecutionContext) = { (mod: Model) => 
+    FilterAsync(mod, resample).filterStream(t0)(n)
+  }
+
+  /**
+    * Filter from a value of the state
+    */
+  def filterInit(resample: Resample[State, Id], t0: Time, n: Int, initState: State) = { (mod: Model) =>
+    FilterInit(mod, resample, initState).filterStream(t0)(n)
   }
 
   /**
@@ -344,12 +341,30 @@ object ParticleFilter {
     * @param t the time to start the filter
     * @param initState a collection of particles representing the state of the 
     */
-  def filterFromPosterior[F[_]: Collection](
-    resample: Resample[F, Id, (Parameters, State)], 
-    init: F[(Parameters, State)],
-    t: Time)(unparamModel: Parameters => Model) = {
+  def filterFromPosterior(
+    resample: Resample[(Parameters, State), Id], 
+    init: Rand[(Parameters, State)], 
+    particles: Int,
+    t: Time)(unparamModel: Parameters => Model)(implicit ec: ExecutionContext) = {
 
-    FilterState[F](unparamModel, resample).filterFromPosterior(t)(init)
+    FilterState(unparamModel, resample).filterFromPosterior(t)(init)(particles)
+  }
+
+  /**
+    * Construct a particle filter which starts at time t with a draw from the joint posterior p(x, theta | y)
+    * at time t
+    * @param resample the resampling scheme
+    * @param t the time to start the filter
+    * @param initState a collection of particles representing the state of the 
+    */
+  def filterFromPosteriorSeq(
+    data: Seq[Data],
+    resample: Resample[(Parameters, State), Id], 
+    init: Rand[(Parameters, State)], 
+    particles: Int,
+    t: Time)(unparamModel: Parameters => Model)(implicit ec: ExecutionContext) = {
+
+    FilterState(unparamModel, resample).filterFromPosteriorSeq(data, t)(init)(particles)
   }
 
   /**
@@ -359,13 +374,26 @@ object ParticleFilter {
     * @param n the number of particles to use in the particle filter
     * @param model an unparameterised model
     */
-  def filterLlState[F[_]: Collection](
-    data: Vector[Data],
-    resample: Resample[F, Id, State],
-n: Int
-  ) = Reader { (mod: Model) =>
+  def filterLlState(data: Vector[Data], resample: Resample[State, Id], n: Int) = { 
+    (mod: Model) => Filter(mod, resample).filter(data)(n)
+  }
 
-    Filter[F, Id](mod, resample).filter(data)(n)
+  def llStateReader(data: Vector[Data], resample: Resample[State, Id], 
+    n: Int): Kleisli[Id, Model, (LogLikelihood, Vector[StateSpace])] = Kleisli {
+    (mod: Model) => Filter(mod, resample).filter(data)(n)
+  }
+
+  /**
+    * Return the likelihood and a sample from the state path as a tuple, with parallel implementation of 
+    * the particle filter
+    * @param data a vector containing observations
+    * @param resample a method of resampling in the particle filter
+    * @param n the number of particles to use in the particle filter
+    * @param model an unparameterised model
+    */
+  def filterLlStateAsync(data: Vector[Data], resample: Resample[State, Future], n: Int)
+    (mod: Model)(implicit ec: ExecutionContext) = {
+    FilterAsync(mod, resample).filter(data)(n)
   }
 
   /**
@@ -377,11 +405,24 @@ n: Int
     * @param parameters the starting parameters of the filter
     * @return a value of logLikelihood
     */
-  def likelihood[F[_]: Collection](data: Vector[Data], 
-    resample: Resample[F, Id, State], n: Int) = Reader { (model: Model) =>
+  def likelihood(data: Vector[Data], resample: Resample[State, Id], n: Int) = { (model: Model) =>
+    Filter(model, resample).llFilter(data.sortBy((d: Data) => d.t))(n)
+  }
 
-    Filter[F, Id](model, resample).
-      llFilter(data.sortBy((d: Data) => d.t))(n)
+  /**
+    * Calculate the likelihood in parallel
+    * @param data an ordered Vector of observations
+    * @param resample an asynchronous resampling vector
+    * @param particles the total number of particles in the filter
+    * @param ec an execution context for the asynchronous computations using Future
+    * @return a function from Model => Loglikelihood
+    */
+  def likelihoodAsync(
+    data: Vector[Data], 
+    resample: Resample[State, Future], 
+    particles: Int)(model: Model)(implicit ec: ExecutionContext) = {
+
+    FilterAsync(model, resample).llFilter(data.sortBy((d: Data) => d.t))(particles)
   }
 
   /**
@@ -389,32 +430,19 @@ n: Int
     * distribution of the filtering state at time t0, simulate the particles forward
     * calculating the predicted observation distribution and intervals
     */
-  def getForecast[F[_]](
-    s: PfState[F], 
+  def getForecast(
+    s: PfState, 
     mod: Model, 
-    t: Time)(implicit f: Collection[F]): F[ObservationWithState] = {
+    t: Time): Vector[ObservationWithState] = {
     val dt = t - s.t
 
-    f.map(s.particles){ state =>
+    s.particles map { state =>
       val x1 = mod.sde.stepFunction(dt)(state).draw
       val gamma = mod.f(x1, t)
       val eta = mod.link(gamma)
       val obs = mod.observation(gamma)
       ObservationWithState(t, obs.draw, eta, gamma, x1)
     }
-  }
-
-  def summariseForecast(mod: Model, interval: Double): Vector[ObservationWithState] => ForecastOut = { forecast =>
-
-    val stateIntervals = getallCredibleIntervals(forecast.map(_.sdeState).toVector, 0.995)
-    val statemean = meanState(forecast.map(_.sdeState).toVector)
-    val meanEta = breeze.stats.mean(forecast.map(_.eta))
-    val etaIntervals = getOrderStatistic(forecast.map(_.eta).toVector, 0.995)
-    val obs = forecast.map(x => mod.observation(x.gamma).draw)
-    val obsIntervals = getOrderStatistic(obs, 0.995)
-
-    ForecastOut(forecast.head.t, breeze.stats.mean(obs), obsIntervals, 
-      meanEta, etaIntervals, statemean, stateIntervals)
   }
 
   /**
@@ -425,47 +453,44 @@ n: Int
     * @param t the time of the prediction
     * @return ForecastOut, a summary containing the mean of the state, gamma and observation
     */
-  def getMeanForecast[F[_]](
-    s: PfState[F], 
-    mod: Model, 
-    t: Time)(implicit f: Collection[F]): ForecastOut = {
+  def getMeanForecast(s: PfState, mod: Model, t: Time, interval: Double): ForecastOut = {
 
-    val forecast = f.toVector(getForecast[F](s, mod, t))
+    val forecast = getForecast(s, mod, t)
 
-    val stateIntervals = getallCredibleIntervals(forecast.map(_.sdeState).toVector, 0.995)
+    val stateIntervals = getallCredibleIntervals(forecast.map(_.sdeState).toVector, interval)
     val statemean = meanState(forecast.map(_.sdeState).toVector)
     val meanEta = breeze.stats.mean(forecast.map(_.eta))
-    val etaIntervals = getOrderStatistic(forecast.map(_.eta).toVector, 0.995)
+    val etaIntervals = getOrderStatistic(forecast.map(_.eta).toVector, interval)
     val obs = forecast.map(x => mod.observation(x.gamma).draw)
-    val obsIntervals = getOrderStatistic(obs, 0.995)
+    val meanObs = breeze.stats.mean(obs)
+    val obsIntervals = getOrderStatistic(obs, interval)
 
-    ForecastOut(t, breeze.stats.mean(obs), obsIntervals, 
+    ForecastOut(t, meanObs, obsIntervals, 
       meanEta, etaIntervals, statemean, stateIntervals)
   }
 
   /**
     * Transforms PfState into PfOut, including gamma, gamma intervals and state intervals
     */
-  def getIntervals[F[_]](mod: Model)(implicit f: Collection[F]): PfState[F] => PfOut = s => {
-    val state = f.toVector(s.particles)
+  def getIntervals(mod: Model): PfState => PfOut = s => {
+    val state = s.particles
     val stateMean = meanState(state)
     val stateIntervals = getallCredibleIntervals(state, 0.975)
-    val gammas = state map (x => mod.link(mod.f(x, s.t)))
-    val meanGamma = mod.link(mod.f(stateMean, s.t))
-    val gammaIntervals = getOrderStatistic(gammas, 0.975)
+    val etas = state map (x => mod.link(mod.f(x, s.t)))
+    val meanEta = mod.link(mod.f(stateMean, s.t))
+    val etaIntervals = getOrderStatistic(etas, 0.975)
 
-    PfOut(s.t, s.observation, meanGamma, gammaIntervals, stateMean, stateIntervals)
+    PfOut(s.t, s.observation, meanEta, etaIntervals, stateMean, stateIntervals)
   }
-
 
   /**
     * Calculate the effective sample size of a particle cloud, from the un-normalised weights
     * by first normalising the weights, then calculating the reciprocal of the sum of the squared weights
     * @param weights the unnormalised weights
     */
-  def effectiveSampleSize[F[_]](weights: F[Double])(implicit f: Collection[F]): Int = {
+  def effectiveSampleSize[F[_]: Collection](weights: F[Double]): Int = {
     val normalisedWeights = Resampling.normalise(weights)
-    math.floor(1 / sum(f.map(normalisedWeights)(w => w * w))).toInt
+    math.floor(1 / sum(normalisedWeights map (w => w * w))).toInt
   }
 
   /**

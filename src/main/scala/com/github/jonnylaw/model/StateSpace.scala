@@ -1,6 +1,6 @@
 package com.github.jonnylaw.model
 
-import breeze.stats.distributions.{Rand, Gaussian, MarkovChain, Process}
+import breeze.stats.distributions._
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
 import breeze.numerics.{sqrt, exp}
 import cats.{Semigroup, Applicative}
@@ -19,16 +19,16 @@ trait Sde { self =>
     * Exact transition density of an SDE, if this exists, otherwise the default implementation
     * is the Euler Maruyama method
     */
-  def stepFunction(dt: TimeIncrement)(s: State): Rand[State] = {
+  def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand): Rand[State] = {
     stepEulerMaruyama(dt)(s)
   }
 
   /**
     * A Wiener Process, given a time increment it generates a vector of Gaussian(0, dt) 
     */
-  def dW(dt: TimeIncrement): Rand[Tree[DenseVector[Double]]] = {
-    Applicative[Rand].replicateA(dimension, Gaussian(0.0, sqrt(dt))).
-      map(x => Tree.leaf(DenseVector(x.toArray)))
+  def dW(dt: TimeIncrement)(implicit rand: RandBasis = Rand): Rand[State] = {
+    val sample = DenseMatrix.eye[Double](dimension) * sqrt(dt) * DenseVector.rand(dimension, rand.gaussian(0, 1))
+    Rand.always(Tree.leaf(sample))
   }
 
   // Approximate solution
@@ -65,52 +65,57 @@ trait Sde { self =>
   }
 }
 
-private final case class BrownianMotion(p: BrownianParameter) extends Sde {
-
-  def dimension: Int = p.mu.size
+private final case class BrownianMotion(p: BrownianParameter, dimension: Int) extends Sde {
+  val params = BrownianParameter(p.m0, exp(p.c0), p.mu, exp(p.sigma))
 
   def initialState: Rand[State] = {
-    val init = p.m0.data.zip(p.c0.data).map { case (m, c) => Gaussian(m, c).draw }
-    Rand.always(init) map (x => Tree.leaf(DenseVector(x)))
+    val res: Rand[List[Double]] = Applicative[Rand].replicateA(dimension, Gaussian(params.m0, params.c0))
+    res.map(x => Tree.leaf(DenseVector(x.toArray)))
   }
 
-  def drift(state: State) = Tree.leaf(p.mu)
+  def drift(state: State) = Tree.leaf(DenseVector.fill(dimension)(params.mu))
 
-  def diffusion(state: State) = Tree.leaf(diag(p.sigma))
+  def diffusion(state: State) = Tree.leaf(DenseMatrix.eye[Double](1) * params.sigma)
 
-  override def stepFunction(dt: TimeIncrement)(s: State) = {
-    val res = s map (x => (x.data, p.mu.data, p.sigma.data).zipped.
-      map { case (a: Double, m: Double, s: Double) =>
-        Gaussian(a + m * dt, Math.sqrt(s * dt)).draw
-      })
-    Rand.always(res map (DenseVector(_)))
+  override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = {
+    val res = s map { x => 
+      val mean = x + params.mu * dt
+      val varianceMatrix = DenseMatrix.eye[Double](dimension) * sqrt(params.sigma * dt)
+
+      varianceMatrix * DenseVector.rand(dimension, rand.gaussian(0, 1)) + mean
+    }
+
+    Rand.always(res)
   }
 }
 
-private final case class OrnsteinUhlenbeck(p: OrnsteinParameter) extends Sde {
-  override def stepFunction(dt: TimeIncrement)(s: State) = {
-    val res = s map { x => 
-      val mean = (x.data, p.alpha.data, p.theta.data).zipped.
-        map { case (state, a, t) => t + (state - t) * exp(- a * dt) }
-      val variance = (p.sigma.data, p.alpha.data).zipped.
-        map { case (s, a) => (s*s/2*a)*(1-exp(-2*a*dt)) }
-      mean.zip(variance) map { case (a, v) => Gaussian(a, sqrt(v)).draw() }
-    }
-    Rand.always(res map (DenseVector(_)))
+/**
+  * The Ornstein-Uhlenbeck process, with specified dimension, with alpha, theta and sigma the same in each dimension
+  */
+private final case class OuProcess(p: OuParameter, dimension: Int) extends Sde {
+  val params = OuParameter(p.m0, exp(p.c0), p.theta, exp(p.alpha), exp(p.sigma))
+
+  override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = { 
+    val mean: State = s map (x =>  (x :- params.theta) * exp(- params.alpha * dt) :+ params.theta)
+    val variance = (params.sigma * params.sigma/ 2 * params.alpha ) * (1 - exp(-2 * params.alpha * dt))
+
+    // the cholesky decomposition of a diagonal matrix is just the square root of the diagonal
+    val varianceMatrix = DenseMatrix.eye[Double](dimension) * sqrt(variance)
+
+    val res = mean map (m => m + varianceMatrix * DenseVector.rand(dimension, rand.gaussian(0, 1)))
+    Rand.always(res)
   }
 
-  def dimension: Int = p.theta.size
-
   def initialState: Rand[State] = {
-    val init = p.m0.data.zip(p.c0.data).map { case (m, c) => Gaussian(m, c).draw }
-    Rand.always(init) map (x => Tree.leaf(DenseVector(x)))
+    val res: Rand[List[Double]] = Applicative[Rand].replicateA(dimension, Gaussian(params.m0, params.c0))
+    res.map(x => Tree.leaf(DenseVector(x.toArray)))
   }
 
   def drift(state: State) = {
-    val c = state map (x => p.theta - x)
-    c map ((x: DenseVector[Double]) => diag(p.alpha) * x)
+    state map (x => params.alpha * (params.theta - x))
   }
-  def diffusion(state: State) = Tree.leaf(diag(p.sigma))
+
+  def diffusion(state: State) = Tree.leaf(DenseMatrix.eye[Double](dimension) * params.sigma)
 }
 
 /**
@@ -122,25 +127,31 @@ case class StateSpace(time: Time, state: State) {
   override def toString = time + "," + state.toString
 }
 
-
-// re-write in terms of drift and diffusion functions, with initial state and euler-maruyama step
 object Sde {
-  def brownianMotion: SdeParameter => Sde = p => p match {
+  def brownianMotion(dimension: Int): SdeParameter => Sde = p => p match {
     case param: BrownianParameter =>
-      BrownianMotion(param)
+      BrownianMotion(param, dimension)
     case _ => throw new Exception(s"Incorrect parameters supplied to Brownianmotion, expected BrownianParameter, received $p")
   }
 
-  def ornsteinUhlenbeck: SdeParameter => Sde = p => p match {
-    case param: OrnsteinParameter =>
-      OrnsteinUhlenbeck(param)
-    case _ => throw new Exception(s"Incorrect parameters supplied to Brownianmotion, expected BrownianParameter, received $p")
+  /**
+    * The Ornstein Uhlenbeck Process with mean theta, mean reverting parameter alpha > 0 and diffusion sigma > 0
+    * The dimension is controlled by an explicit dimension parameter, the parameters, theta, alpha and sigma are recycled
+    * for each dimension required
+    * The parameters should be specified on a log scale.
+    * @param dimension the dimension of the diffusion process
+    * @return a function from SdeParameter => Sde 
+    */
+  def ouProcess(dimension: Int): SdeParameter => Sde = p => p match {
+    case param: OuParameter =>
+      OuProcess(param, dimension)
+    case _ => throw new Exception(s"Incorrect parameters supplied to OuProcess, expected OuParameter, received $p")
   }
 
   implicit def sdeSemigroup = new Semigroup[Sde] {
     def combine(sde1: Sde, sde2: Sde): Sde = new Sde {
       def initialState: Rand[State] = for {
-        l <-sde1.initialState
+        l <- sde1.initialState
         r <- sde2.initialState
       } yield Tree.branch(l, r)
 
@@ -154,7 +165,7 @@ object Sde {
         case state: Leaf[DenseVector[Double]] => throw new Exception
       }
 
-      override def stepFunction(dt: TimeIncrement)(s: State) = s match {
+      override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = s match {
         case Branch(l, r) => for {
           ls <- sde1.stepFunction(dt)(l)
           rs <- sde2.stepFunction(dt)(r)
@@ -164,7 +175,7 @@ object Sde {
 
       def dimension: Int = sde1.dimension + sde2.dimension
 
-      override def dW(dt: TimeIncrement): Rand[Tree[DenseVector[Double]]] = {
+      override def dW(dt: TimeIncrement)(implicit rand: RandBasis = Rand): Rand[Tree[DenseVector[Double]]] = {
         for {
           l <- sde1.dW(dt)
           r <- Applicative[Rand].replicateA(sde2.dimension, Gaussian(0.0, sqrt(dt))).map(x => (DenseVector(x.toArray)))
@@ -172,47 +183,4 @@ object Sde {
       }
     }
   }
-
-  // /**
-  //   * Steps all the states using the identity
-  //   * @param p a Parameter
-  //   * @return a function from state, dt => State
-  //   */
-  // def stepNull: StepFunction = { p =>
-  //   (s, dt) => always(s map (x => x))
-  // }
-
-  // /**
-  //   * A step function for generalised brownian motion, dx_t = mu dt + sigma dW_t
-  //   * @param p an sde parameter
-  //   * @return A function from state, time increment to state
-  //   */
-  // def stepBrownian: StepFunction = { p => (s, dt) => p match {
-  //   case BrownianParameter(mu, sigma) =>
-  //     always(
-  //       s map (x => Gaussian(x + mu * dt, sigma * math.sqrt(dt)).draw)
-  //     )
-  //   case _ =>
-  //     throw new Exception("Incorrect parameters supplied to stepBrownian, expected BrownianParameter")
-  //   }
-  // }
-
-  // /**
-  //   * Steps the state by the value of the parameter "a" 
-  //   * multiplied by the time increment "dt"
-  //   * @param p a parameter Map
-  //   * @return a function from (State, dt) => State, with the
-  //   * states being the same structure before and after
-  //   */
-  // def stepConstant: StepFunction = { p => (s, dt) => p match {
-  //     case StepConstantParameter(a) => always(s map (_ + (a * dt)))
-  //     case _ => throw new Exception("Incorrect Parameters supplied to stepConstant, expected StepConstantParameter")
-  //   }
-  // }
-
-  // /**
-  //   * A step function for the Ornstein Uhlenbeck process 
-  //   * dX_t = alpha(theta - x_t) dt + sigma dW_t
-  //   * @param p the parameters of the ornstein uhlenbeck process, theta, alpha and sigma
-  //   */
 }

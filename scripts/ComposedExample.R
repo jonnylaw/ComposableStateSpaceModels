@@ -1,8 +1,8 @@
-library(tidyverse); library(gridExtra)
+library(tidyverse); library(gridExtra); library(ggthemes); library(extrafont)
 
-theme_set(theme_minimal())
+theme_set(theme_solarized_2(light = F))
 
-seasonalSims = read_csv("../data/seasonalPoissonSims.csv", 
+seasonalSims = read_csv("data/seasonalPoissonSims.csv", 
                         col_names = c("time", "observation", "eta", "gamma", 
                                       sapply(1:7, function(i) paste("state", i, sep = "_"))))
 
@@ -10,21 +10,15 @@ seasonalSims = read_csv("../data/seasonalPoissonSims.csv",
 # Plot seasonal Sims #
 #####################
 
-p1 = seasonalSims %>%
-  select(time, eta, observation) %>%
-  gather(key, value, -time) %>%
-  ggplot(aes(x = time, y = value, linetype = key)) +
-  geom_line() +
-  theme(legend.position = "bottom")
-
-p2 = seasonalSims %>%
-  select(time, contains("state")) %>%
+seasonalSims %>%
+  select(time, observation, eta) %>%
   gather(key, value, -time) %>%
   ggplot(aes(x = time, y = value, colour = key)) +
-  geom_line()
-# facet_wrap(~key, ncol = 1)
+  geom_line() +
+  facet_wrap(~key, ncol = 1, strip.position = "right") +
+  theme(text = element_text(family = "Georgia"), legend.position = "none")
 
-grid.arrange(p1, p2)
+ggsave("Figures/ComposedModel.png")
 
 ####################
 # seasonal Filtered #
@@ -74,12 +68,13 @@ grid.arrange(p1, p2, p3, layout_matrix = rbind(c(1, 1), c(2, 3)))
 # Pilot run for composed Model #
 ################################
 
-pilot_run = read_csv("../data/ComposedPilotRun.csv")
+pilot_run = read_csv("data/ComposedPilotRun.csv", col_names = c("particles", "variance"))
 
 pilot_run %>%
-  ggplot(aes(x = particles, y = mll_variance)) +
+  ggplot(aes(x = particles, y = variance, colour = "holla")) +
   geom_point() +
-  geom_line()
+  geom_line() +
+  theme(legend.position = "none")
 
 #######################################
 # Sample from the prior distributions #

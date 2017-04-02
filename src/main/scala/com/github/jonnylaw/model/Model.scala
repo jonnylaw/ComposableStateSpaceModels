@@ -1,6 +1,6 @@
 package com.github.jonnylaw.model
 
-import breeze.numerics.{cos, sin, sqrt, exp, log}
+import breeze.numerics.{cos, sin, sqrt, exp, log, lgamma}
 import breeze.stats.distributions._
 import breeze.linalg.{DenseMatrix, DenseVector}
 
@@ -75,6 +75,16 @@ object Model {
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
+  def negativeBinomial(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => NegativeBinomialModel(sde(param.sdeParam), param)
+    case _ => throw new Exception("Can't build model from branch parameter")
+  }}
+
+  def zeroInflatedPoisson(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => ZeroInflatedPoisson(sde(param.sdeParam), param)
+    case _ => throw new Exception("Can't build model from branch parameter")
+  }}
+
   /**
     * Models form a semigroup, they can be combined to form a composed model
     */
@@ -123,32 +133,74 @@ object Model {
 
 private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) extends Model {
   def observation = x => p.scale match {
-    case Some(v) => StudentsT(df) map (a => a * v + x)
+    case Some(logv) => {
+      val v = exp(logv)
+      StudentsT(df) map (a => a * v + x)
+    }
     case None => throw new Exception("No scale parameter provided to Student T Model")
   }
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
-
   def dataLikelihood = (eta, y) => p.scale match {
-    case Some(v) => 1/v * StudentsT(df).logPdf((y - eta) / v)
+    case Some(logv) => {
+      val v = exp(logv) // convert v to the correct scale
+      1/v * StudentsT(df).logPdf((y - eta) / v)
+    }
     case None => throw new Exception("No scale parameter provided to Student T Model")
   }
 }
 
-  /**
-    * A seasonal model
-    * @param period the period of the seasonality
-    * @param harmonics the number of harmonics to use in the seasonal model
-    * @param sde a solution to a diffusion process representing the latent state
-    */
+/**
+  * Negative Binomial Model for Overdispersed Data, the mean (mu > 0) is the exponential of the 
+  * latent state. The variance is equal to mu + mu^2 / size and proportional to the mean 
+  */
+private final case class NegativeBinomialModel(sde: Sde, p: LeafParameter) extends Model {
+  def observation = x => p.scale match {
+    case Some(logv) => {
+      val size = exp(logv)
+      val prob = size / (size + link(x))
+
+      for {
+        lambda <- Gamma(size, (1-prob) / prob)
+        x <- Poisson(lambda)
+      } yield x.toDouble
+    }
+    case None => throw new Exception("No scale parameter provided to Negativebinomial Model")
+  }
+
+  override def link(x: Gamma) = exp(x)
+
+  def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
+
+  def dataLikelihood = (x, y) => p.scale match {
+    case Some(logv) => {
+      val size = exp(logv)
+      val mu = link(x)
+
+      lgamma(size + y.toInt) - lgamma(y.toInt + 1) - lgamma(size) +
+      size * math.log(size / (mu + size)) + y.toInt * math.log(mu / (mu + size))
+    }
+    case None => throw new Exception("No scale parameter provided to Negativebinomial Model")
+  }
+}
+
+/**
+  * A seasonal model
+  * @param period the period of the seasonality
+  * @param harmonics the number of harmonics to use in the seasonal model
+  * @param sde a solution to a diffusion process representing the latent state
+  */
 private final case class SeasonalModel(
   period: Int, 
   harmonics: Int, 
   sde: Sde, p: LeafParameter) extends Model {
 
   def observation = x => p.scale match {
-    case Some(v) => Gaussian(x, v)
+    case Some(logv) => {
+      val v = exp(logv)
+      Gaussian(x, v)
+    }
     case None => throw new Exception("No SD parameter provided to SeasonalModel")
   }
 
@@ -162,8 +214,11 @@ private final case class SeasonalModel(
 
   def f(s: State, t: Time) = s.fold(0.0)(x => buildF(harmonics, t) dot x)(_ + _)
 
-  def dataLikelihood = (eta, y) => p.scale match {
-    case Some(v) => Gaussian(eta, v).logPdf(y)
+  def dataLikelihood = (x, y) => p.scale match {
+    case Some(logv) => {
+      val v = exp(logv)
+      Gaussian(x, v).logPdf(y)
+    }
     case None => throw new Exception("No SD parameter provided to SeasonalModel")
   }
 }
@@ -175,23 +230,29 @@ private final case class SeasonalModel(
     */
 private final case class LinearModel(sde: Sde, p: LeafParameter) extends Model {
   def observation = x => p.scale match {
-    case Some(v) => Gaussian(x, v)
+    case Some(logv) => {
+      val v = exp(logv)
+      Gaussian(x, v)
+    }
     case None => throw new Exception("Must provide SD parameter for LinearModel")
   }
   
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
-  def dataLikelihood = (eta, y) => p.scale match {
-    case Some(v) =>  Gaussian(eta, v).logPdf(y)
+  def dataLikelihood = (x, y) => p.scale match {
+    case Some(logv) => {
+      val v = exp(logv)
+      Gaussian(x, v).logPdf(y)
+    }
     case None => throw new Exception("Must provide SD parameter for LinearModel")
   }
 }
 
-  /**
-    * The Poisson unparameterised model with a one dimensional latent state
-    * @param sde a solution to a diffusion process representing the evolution of the latent space
-    * @return a Poisson UnparamModel which can be composed with other UnparamModels
-    */
+/**
+  * The Poisson unparameterised model with a one dimensional latent state
+  * @param sde a solution to a diffusion process representing the evolution of the latent space
+  * @return a Poisson UnparamModel which can be composed with other UnparamModels
+  */
 private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model {
   def observation = x => Poisson(link(x)) map (_.toDouble): Rand[Double]
 
@@ -199,7 +260,42 @@ private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model 
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
 
-  def dataLikelihood = (state, y) => y.toInt * state - exp(state) - breeze.numerics.lgamma(y.toInt + 1)
+  def dataLikelihood = (state, y) => Poisson(link(state)).logProbabilityOf(y.toInt)
+}
+
+/**
+  * The zero inflated Poisson model is useful for count data displaying excess zeros
+  * The rate, eta(t) is the expected Poisson count at time t, and the scale parameter 
+  * is the probability of extra zeros (so must lie between 0 and 1)
+  */
+private final case class ZeroInflatedPoisson(sde: Sde, params: LeafParameter) extends Model {
+  def observation = x => params.scale match {
+    case Some(v) => {
+      val p = exp(v) / (1 + exp(v))
+      for {
+        u <- Uniform(0, 1)
+        nonZero <- Poisson(link(x))
+        next = if (u < p) 0 else nonZero
+      } yield next
+    }
+    case None => throw new Exception("Must provide probability parameter for zero inflated Poisson Model")
+  }
+
+  override def link(x: Double) = exp(x)
+
+  def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
+
+  def dataLikelihood = (state, y) =>  params.scale match {
+    case Some(v) => {
+      val p = exp(v) / (1 + exp(v)) // transform the "scale" to be between zero and one
+      if (y.toInt == 0) {
+        log(p + (1 - p) * exp(-exp(state)))
+      } else {
+        -log(1 + exp(v)) + y.toInt * state - exp(state) - lgamma(y.toInt + 1)
+      }
+    }
+    case None => throw new Exception("Must provide probability parameter for zero inflated Poisson Model")
+  }
 }
 
   /**

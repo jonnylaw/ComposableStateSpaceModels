@@ -18,13 +18,9 @@ trait LgcpModel {
   /** Define the model **/
   val params = Parameters.leafParameter(
     None,
-    OrnsteinParameter(DenseVector(2.0),
-      DenseVector(1.0),
-      theta = DenseVector(0.1),
-      alpha = DenseVector(0.4),
-      sigma = DenseVector(0.5)))
+    SdeParameter.ouParameter(2.0, 1.0, theta = 0.1, alpha = 0.4, sigma = 0.5))
 
-  val model = Model.lgcpModel(Sde.ornsteinUhlenbeck)
+  val model = Model.lgcpModel(Sde.ouProcess(1))
 
   implicit val system = ActorSystem("LgcpModel")
   implicit val materializer = ActorMaterializer()
@@ -39,7 +35,7 @@ object SimulateLGCP extends App with LgcpModel {
 }
 
 object FilteringLgcp extends App with LgcpModel {
-  val pf = FilterLgcp(model(params), Resampling.parMultinomialResampling, 3)
+  val pf = FilterLgcp(model(params), Resampling.stratifiedResampling _, 3)
 
   // read from file and order the readings
   val data = DataFromFile("data/lgcpsims.csv").observations.runWith(Sink.seq)
@@ -55,12 +51,12 @@ object FilteringLgcp extends App with LgcpModel {
 object GetLgcpParams extends App with LgcpModel {
   // choose a prior
   def prior = (p: Parameters) => p match {
-    case LeafParameter(None, OrnsteinParameter(m, c, t, a, s)) =>
-      Gaussian(0.0, 10.0).logPdf(m(0)) + 
-      Gamma(1.0, 1.0).logPdf(c(0)) +
-      Gaussian(2.0, 10.0).logPdf(t(0)) +
-      Gamma(2.0, 1.0).logPdf(a(0)) +
-      Gamma(1.0, 1.0).logPdf(s(0))
+    case LeafParameter(None, OuParameter(m, c, t, a, s)) =>
+      Gaussian(0.0, 10.0).logPdf(m) + 
+      Gamma(1.0, 1.0).logPdf(c) +
+      Gaussian(2.0, 10.0).logPdf(t) +
+      Gamma(2.0, 1.0).logPdf(a) +
+      Gamma(1.0, 1.0).logPdf(s)
     case _ => throw new Exception
   }
 
@@ -70,10 +66,10 @@ object GetLgcpParams extends App with LgcpModel {
   // read in the LGCP simulated data using akka
   val res = for {
     data <- DataFromFile("data/lgcpsims.csv").observations.runWith(Sink.seq)
-    filter = Reader { (mod: Model) => FilterLgcp(mod, Resampling.parMultinomialResampling, precision).
+    filter = Reader { (mod: Model) => FilterLgcp(mod, Resampling.stratifiedResampling _, precision).
       llFilter(data.toVector)(200)}
     mll = filter compose model
-    pmmh = ParticleMetropolis(mll.run, params, Parameters.perturb(0.05), prior)
+    pmmh = ParticleMetropolisSerial(mll.run, params, Parameters.perturb(0.05), prior)
     fileio <- pmmh.params.take(10000).map(_.show).runWith(Streaming.writeStreamToFile("data/lgcpMCMC.csv"))
   } yield fileio
 

@@ -9,6 +9,8 @@ import breeze.numerics.{exp, sqrt}
 import java.nio.file._
 import scala.concurrent.Future
 import scala.language.higherKinds
+import com.github.nscala_time.time.Imports._
+import spray.json._
 
 /**
   * A single observation of a time series
@@ -40,6 +42,10 @@ case class ObservationWithState(
   */
 case class TimedObservation(t: Time, observation: Observation) extends Data
 
+case class TimestampObservation(timestamp: DateTime, t: Time, observation: Observation) extends Data
+
+case class DecomposedModel(time: Time, observation: Observation, eta: Eta, gamma: Gamma, state: List[Eta])
+
 trait DataService[F] {
   def observations: Source[Data, F]
 }
@@ -47,24 +53,10 @@ trait DataService[F] {
 case class SimulateData(model: Model) extends DataService[NotUsed] {
   def observations: Source[Data, NotUsed] = simRegular(0.1)
 
-  /**
-    * Simulate a single step from a model, return a distribution over the possible values
-    * of the next step
-    * @param deltat the time difference between the previous and next realisation of the process
-    * @return a function from the previous datapoint to a Rand (Monadic distribution) representing
-    * the distribution of the next datapoint 
-    */
-  def simStep(deltat: TimeIncrement) = (d: ObservationWithState) =>  {
-    for {
-      x1 <- model.sde.stepFunction(deltat)(d.sdeState)
-      gamma = model.f(x1, d.t + deltat)
-      eta = model.link(gamma)
-      y1 <- model.observation(gamma)
-    } yield ObservationWithState(d.t + deltat, y1, eta, gamma, x1)
-  }
+  def simStep(deltat: TimeIncrement) = SimulateData.simStep(model)(deltat)
 
   /**
-    * Simulate from a POMP model on an irregular grid, given an initial time and a stream of times 
+    * Simulate from a POMP model on an irregular grid, given an initial time and a stream of times
     * at which simulate from the model
     * @param t0 the start time of the process
     * @return an Akka Flow transforming a Stream from Time to ObservationWithState 
@@ -78,21 +70,6 @@ case class SimulateData(model: Model) extends DataService[NotUsed] {
     } yield ObservationWithState(t0, y, eta, gamma, x0)
 
     Flow[Time].scan(init.draw)((d0, t: Time) => simStep(t - d0.t)(d0).draw)
-  }
-
-  /**
-    * Compute an empirical forecast, starting from a filtering distribution estimate
-    * @param s a PfState object, the output of a particle filter
-    */
-  def forecast[F[_]](s: PfState[F])(implicit f: Collection[F]) = {
-
-    val init = f.map(s.particles)(x => {
-      val gamma = model.f(x, s.t)
-      val eta = model.link(gamma)
-      ObservationWithState(s.t, s.observation.getOrElse(0.0), eta, gamma, x)
-    })
-
-    Flow[Time].scan(init)((d0, t: Time) => f.map(d0)(x => simStep(t - x.t)(x).draw))
   }
 
   /**
@@ -197,6 +174,72 @@ object SimulateData {
         StateSpace(x.time + deltat, stepFunction(deltat)(x.state).draw)).
       takeWhile(s => s.time <= t0 + totalIncrement)
   }
+
+  /**
+    * Simulate a single step from a model, return a distribution over the possible values
+    * of the next step
+    * @param model the model to simulate a step from
+    * @param deltat the time difference between the previous and next realisation of the process
+    * @return a function from the previous datapoint to a Rand (Monadic distribution) representing
+    * the distribution of the next datapoint 
+    */
+  def simStep(model: Model)(deltat: TimeIncrement) = { (d: ObservationWithState) =>
+    for {
+      x1 <- model.sde.stepFunction(deltat)(d.sdeState)
+      gamma = model.f(x1, d.t + deltat)
+      eta = model.link(gamma)
+      y1 <- model.observation(gamma)
+    } yield ObservationWithState(d.t + deltat, y1, eta, gamma, x1)
+  }
+
+  /**
+    * Compute an empirical forecast, starting from a filtering distribution estimate
+    * @param unparamModel a function from Parameters to Model
+    * @param t the time to start the forecast
+    * @param s the joint posterior of the parameters and state at time t, p(x, theta | y)
+    */
+  def forecast(unparamModel: Parameters => Model, t: Time)
+    (s: Rand[(Parameters, State)]): Flow[Time, Rand[(Parameters, ObservationWithState)], NotUsed] = {
+
+    val init: Rand[(Parameters, ObservationWithState)] = s map { case (p, x) => {
+      val gamma = unparamModel(p).f(x, t)
+      val eta = unparamModel(p).link(gamma)
+      (p, ObservationWithState(t, 0.0, eta, gamma, x))
+    }}
+
+    Flow[Time].
+      scan(init)((d0, ts: Time) => {
+        for {
+          (p, x) <- d0
+          x1 <- simStep(unparamModel(p))(ts - x.t)(x)
+        } yield (p, x1)}).
+      drop(1) // drop the initial state
+  }
+
+  def summariseForecast(mod: Parameters => Model, interval: Double) = { (s: Vector[(Parameters, ObservationWithState)]) =>
+    val forecast = s.map(_._2)
+
+    val stateIntervals = ParticleFilter.getallCredibleIntervals(forecast.map(_.sdeState).toVector, interval)
+    val statemean = ParticleFilter.meanState(forecast.map(_.sdeState).toVector)
+    val meanEta = breeze.stats.mean(forecast.map(_.eta))
+    val etaIntervals = ParticleFilter.getOrderStatistic(forecast.map(_.eta).toVector, interval)
+    val obs = s.map { case (p, x) => mod(p).observation(x.gamma).draw }
+    val obsIntervals = ParticleFilter.getOrderStatistic(obs, interval)
+
+    ForecastOut(forecast.head.t, breeze.stats.mean(obs), obsIntervals,
+      meanEta, etaIntervals, statemean, stateIntervals)
+  }
+
+  /**
+    * Get the transformed state of the nth model
+    * @state the state to transform from a composed model
+    * @model a model component from the composed model which produced the state
+    * @position the position of the model in the tree, indexed from zero
+    */
+  def getState(state: State, model: Model, position: Int)(t: Time): Eta = {
+    val s = Tree.leaf(state.getNode(position))
+    model.f(s, t)
+  }
 }
 
 /**
@@ -211,5 +254,17 @@ case class DataFromFile(file: String) extends DataService[Future[IOResult]] {
       map(_.utf8String).
       map(a => a.split(",")).
       map(d => TimedObservation(d(0).toDouble, d(1).toDouble))
+  }
+}
+
+/**
+  * Read a JSON file
+  */
+case class DataFromJson(file: String) extends DataService[Future[IOResult]] with DataProtocols {
+  def observations: Source[Data, Future[IOResult]] = {
+    FileIO.fromPath(Paths.get(file)).
+      via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
+      map(_.utf8String).
+      map(_.parseJson.convertTo[TimedObservation])
   }
 }

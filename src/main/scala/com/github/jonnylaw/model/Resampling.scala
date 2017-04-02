@@ -1,24 +1,15 @@
 package com.github.jonnylaw.model
 
-import akka.stream.scaladsl._
-import akka.stream._
-import akka.NotUsed
-
-import breeze.stats.distributions.{Rand, Multinomial}
-import breeze.numerics.{exp, log}
+import breeze.stats.distributions.Multinomial
+import breeze.numerics.exp
 import breeze.linalg.DenseVector
 
-import cats._
-import cats.data.Reader
 import cats.implicits._
 
-import scala.collection.parallel.immutable.ParVector
 import scala.collection.immutable.TreeMap
 import scala.concurrent._
 import scala.language.higherKinds
-import scala.language.implicitConversions
-import scala.reflect.ClassTag
-import simulacrum._
+import scala.collection._
 import Collection.ops._
 
 object Resampling {
@@ -28,8 +19,8 @@ object Resampling {
     * @return a vector of normalised probabilities
     */
   def normalise[F[_]](prob: F[Double])(implicit f: Collection[F]): F[Double] = {
-    val total = ParticleFilter.sum(prob)
-    f.map(prob)(x => x/total)
+    val total = prob.foldLeft(0.0)(_ + _)
+    prob map (x => x/total)
   }
 
   /**
@@ -38,14 +29,14 @@ object Resampling {
     * treeMap
     */
   def findAllInTreeMap[A](ks: Vector[Double], ecdf: TreeMap[Double, A]): Vector[A] = {
-    def loop(acc: Vector[A], remMap: TreeMap[Double, A], remK: Vector[Double]): Vector[A] = remK match {
-      case Vector() => acc
-      case k +: ks => {
-        val m = remMap.from(k)
-        loop(acc :+ m.head._2, m, ks)
+    def loop(acc: Vector[A], remMap: TreeMap[Double, A], remK: Vector[Double]): Vector[A] = {
+      if (remK.isEmpty) {
+        acc
+      } else {
+         val m = remMap.from(remK.head)
+        loop(acc :+ m.head._2, m, remK.tail)
       }
     }
-
     loop(Vector(), ecdf, ks)
   }
 
@@ -56,35 +47,36 @@ object Resampling {
   def treeEcdf[A](items: Vector[A], prob: Vector[Double]): TreeMap[Double, A] = {
     val normalisedWeights = normalise(prob)
 
-    TreeMap.empty[Double, A] ++ (normalisedWeights.scanLeft(0.0)(_ + _).drop(1)).zip(items)
+    val tree = new TreeMap[Double, A]
+
+    tree ++ (normalisedWeights.scanLeft(0.0)(_ + _).drop(1)).zip(items)
   }
 
+  // /**
+  //   * An efficient parallel implementation of systematic resampling
+  //   */
+  // def asyncSystematicResampling[A](threads: Int)(
+  //   particles: Vector[A], 
+  //   weights: Vector[LogLikelihood])(implicit ec: ExecutionContext): Future[Vector[A]] = {
+
+  //   val n = weights.size
+  //   val ecdf = treeEcdf(particles, weights)
+
+  //   val u = scala.util.Random.nextDouble
+
+  //   val res = Vector.range(0, n).
+  //     map(i => (u + i) / n).
+  //     grouped(n / threads).
+  //     toVector.
+  //     map((ks: Vector[Double]) => Future { findAllInTreeMap(ks, ecdf) })
+
+  //   Future.sequence(res).map(_.flatten)
+  // }
+
   /**
-    * An efficient parallel implementation of of systematic resampling
+    * An efficient implementation of systematic resampling
     */
-  def asyncTreeSystematicResampling[A](threads: Int)(
-    particles: Vector[A], 
-    weights: Vector[LogLikelihood])(implicit ec: ExecutionContext): Future[Vector[A]] = {
-
-    val n = weights.size
-    val ecdf = treeEcdf(particles, weights)
-
-    val u = scala.util.Random.nextDouble
-
-    val res = Vector.range(0, n).
-      map(i => (u + i) / n).
-      grouped(n / threads).
-      toVector.
-      map((ks: Vector[Double]) => Future { findAllInTreeMap(ks, ecdf) })
-
-    Future.sequence(res).map(_.flatten)
-  }
-
-  /**
-    * An efficient implementation of of systematic resampling
-    */
-  def treeSystematicResampling[A](
-    particles: Vector[A], weights: Vector[LogLikelihood]): Vector[A] = {
+  def systematicResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]) = {
 
     val ecdf = treeEcdf(particles, weights)
 
@@ -100,11 +92,12 @@ object Resampling {
     * Stratified resampling implemented using a TreeMap
     * Sample n ORDERED uniform random numbers (one for each particle) using a linear transformation of a U(0,1) RV
     */
-  def treeStratifiedResampling[A](s: Vector[A], w: Vector[Double]): Vector[A] = {
+  def stratifiedResampling[A](s: Vector[A], w: Vector[Double]) = {
     val n = s.size
     val ecdf = treeEcdf(s, w)
 
-    val ks = Vector.range(0, n).map(i => (i + scala.util.Random.nextDouble) / n)
+    val ks = Vector.range(0, n).
+      map(i => (i + scala.util.Random.nextDouble) / n)
 
     findAllInTreeMap(ks, ecdf)
   }
@@ -113,15 +106,8 @@ object Resampling {
     * Multinomial Resampling, sample from a categorical distribution with probabilities
     * equal to the particle weights 
     */
-  def serialMultinomialResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]) = {
+  def multinomialResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]): Vector[A] = {
     val indices = Vector.fill(particles.size)(Multinomial(DenseVector(weights.toArray)).draw)
-
-    indices map (particles(_))
-  }
-
-
-  def parMultinomialResampling[A](particles: ParVector[A], weights: ParVector[LogLikelihood]) = {
-    val indices = ParVector.fill(particles.size)(Multinomial(DenseVector(weights.toArray)).draw)
 
     indices map (particles(_))
   }
@@ -171,16 +157,17 @@ object Resampling {
     val m = n - indices.length
     val residualWeights = normalisedWeights.zip(ki) map { case (w, k) => n * w - k }
 
-    val i = serialMultinomialResampling(Vector.range(1, m), residualWeights)
+
+    val i = multinomialResampling(Vector.range(1, m), residualWeights)
     x ++ (i map { particles(_) })
   }
 
   /**
     * Sample one thing, uniformly, from a collection F
     */
-  def sampleOne[F[_], A](s: F[A])(implicit f: Collection[F]): A = {
-    val index = math.abs(scala.util.Random.nextInt) % f.size(s).toInt
-    f.get(s)(index)
+  def sampleOne[A](s: Seq[A]): A = {
+    val index = math.abs(scala.util.Random.nextInt) % s.size
+    s(index)
   }
 
   /**
