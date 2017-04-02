@@ -47,8 +47,7 @@ object SimPoissonModel extends App with PoissonTestModel {
     observations.
     take(500).
     map((d: Data) => d.show).
-    map(s => ByteString(s + "\n")).
-    runWith(FileIO.toPath(Paths.get("data/PoissonModelSims.csv"))).
+    runWith(Streaming.writeStreamToFile("data/PoissonModelSims.csv")).
     onComplete(_ => system.terminate())
 }
 
