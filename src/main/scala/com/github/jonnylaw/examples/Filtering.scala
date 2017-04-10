@@ -7,6 +7,7 @@ import akka.util.ByteString
 import breeze.numerics.log
 import cats.implicits._
 import com.github.jonnylaw.model._
+import DataProtocols._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import spray.json._
@@ -17,11 +18,12 @@ import spray.json._
   * 2. Define the particle filter and the start time for the filter
   * 3. 
   */
-object Filtering extends App with TestNegBinMod with DataProtocols {
+object Filtering extends App with TestNegBinMod {
   implicit val system = ActorSystem("Filtering")
   implicit val materializer = ActorMaterializer()
 
-  val data = DataFromFile("data/NegativeBinomial.csv").observations
+  val data = DataFromFile("data/NegativeBinomial.csv").
+    observations
 
   val t0 = 0.0
   val filter = ParticleFilter.filter(Resampling.systematicResampling, t0, 1000)
@@ -30,7 +32,7 @@ object Filtering extends App with TestNegBinMod with DataProtocols {
     via(filter(model(params))).
     map(ParticleFilter.getIntervals(model(params))).
     map(_.show).
-    runWith(Streaming.writeStreamToFile("data/NegativebinomialFiltered.csv")).
+    runWith(Streaming.writeStreamToFile("data/NegativeBinomialFiltered.csv")).
     onComplete(_ => system.terminate())
 }
 
@@ -40,9 +42,9 @@ object Filtering extends App with TestNegBinMod with DataProtocols {
   * 1. Read in the test data, dropping the first 400 elements which are used to determine the posterior
   * 2. Set up the filter
   * 3. Read in the posterior distribution from a JSON file
-  * 4.
+  * 4. Run the filter
   */
-object OnlineFiltering extends App with TestNegBinMod with DataProtocols {
+object OnlineFiltering extends App with TestNegBinMod {
   implicit val system = ActorSystem("OnlineFiltering")
   implicit val materializer = ActorMaterializer()
 
@@ -55,7 +57,7 @@ object OnlineFiltering extends App with TestNegBinMod with DataProtocols {
   val resample: Resample[State] = Resampling.systematicResampling _
 
   val res = for {
-    posterior <- Streaming.readPosterior("data/NegativeBinomialPosterior-1.json", 10000, 2).
+    posterior <- Streaming.readPosterior("data/NegativeBinomialPosterior-1.json", 1000, 2).
       runWith(Sink.seq)
     simPosterior = Streaming.createDist(posterior)(x => (x.params, x.sde.state))
     io <- testData.

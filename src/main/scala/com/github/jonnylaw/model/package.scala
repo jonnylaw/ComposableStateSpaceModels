@@ -109,9 +109,9 @@ package object model {
 
   implicit def dataShow(implicit S: Show[State]) = new Show[Data] {
     def show(a: Data): String = a match {
-      case TimedObservation(t, y) => s"$t, $y"
-      case ObservationWithState(t, y, e, g, x) => s"$t, $y, $e, $g, ${S.show(x)}"
-      case TimestampObservation(time, t, obs) => s"$time, $obs"
+      case TimedObservation(t, y) => s"$t, ${y.getOrElse("NA")}"
+      case ObservationWithState(t, y, e, g, x) => s"$t, ${y.getOrElse("NA")}, $e, $g, ${S.show(x)}"
+      case TimestampObservation(time, t, obs) => s"$time, ${obs.getOrElse("NA")}"
     }
   }
 

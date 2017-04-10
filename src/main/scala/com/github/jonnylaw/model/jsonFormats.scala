@@ -5,12 +5,14 @@ import cats.implicits._
 import spray.json._
 import scala.util.{Try, Success, Failure}
 import com.github.nscala_time.time.Imports._
+import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 
 /**
   * Marshalling from JSON and to JSON for Simulated Data and MCMC data 
   * from the Composed Models Package
   */
-trait DataProtocols extends DefaultJsonProtocol {
+object DataProtocols extends SprayJsonSupport with DefaultJsonProtocol {
+
   implicit def denseVectorFormat = new RootJsonFormat[DenseVector[Double]] {
     def write(vec: DenseVector[Double]) = JsArray(vec.data.map(_.toJson).toVector)
     def read(value: JsValue) = value match {

@@ -37,22 +37,22 @@ trait ParameterGen {
   } yield left |+| right
 }
 
-// object ParameterFunctionSuite extends Properties("Parameters") with ParameterGen {
-//   val input = (n: Int) => for {
-//     p <- genBranch 
-//     d <- denseVector(p.length)
-//   } yield (p, d)
+object ParameterFunctionSuite extends Properties("Parameters") with ParameterGen {
+  val input = (n: Int) => for {
+    p <- genBranch 
+    d <- denseVector(p.length)
+  } yield (p, d)
 
-//   property("add should add values to parameters in a tree") = forAll(input) { case (p, d) =>
-//     p.add(d) == p.add(d)
-//   }
+  property("add should add values to parameters in a tree") = forAll(input(1)) { case (p, d) =>
+    p.add(d) == p.add(d)
+  }
 
-//   val input1 = (n: Int) => for {
-//     sde <- genSde
-//     d <- denseVector(sde.length)
-//   } yield (sde, d)
+  val input1 = (n: Int) => for {
+    sde <- genSde
+    d <- denseVector(sde.length)
+  } yield (sde, d)
 
-//   property("Add to sde Parameter") = forAll(input1) { case (sde, d) =>
-//     sde.add(d) == sde.add(d)
-//   }
-// }
+  property("Add to sde Parameter") = forAll(input1(1)) { case (sde, d) =>
+    sde.add(d) == sde.add(d)
+  }
+}

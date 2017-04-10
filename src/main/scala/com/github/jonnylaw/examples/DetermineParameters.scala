@@ -8,6 +8,7 @@ import breeze.numerics.log
 import cats.data.Kleisli
 import cats.implicits._
 import com.github.jonnylaw.model._
+import DataProtocols._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import spray.json._
@@ -21,7 +22,7 @@ import java.nio.file.Paths
   * estimate of the likelihood is also required. 
   * A rule of thumb for the variance of the estimated log-likelihood is 1.0
   */
-object PilotRun extends App with TestNegBinMod with DataProtocols {
+object PilotRun extends App with TestNegBinMod {
   implicit val system = ActorSystem("PilotRun")
   implicit val materializer = ActorMaterializer()
 
@@ -54,7 +55,7 @@ object PilotRun extends App with TestNegBinMod with DataProtocols {
   * 4. Use mapAsync to run two chains in parallel
   * 5. Write the chains to file in JSON format
   */
-object DeterminePosterior extends App with TestNegBinMod with DataProtocols {
+object DeterminePosterior extends App with TestNegBinMod {
   implicit val system = ActorSystem("PMMH")
   implicit val materializer = ActorMaterializer()
 
@@ -73,7 +74,7 @@ object DeterminePosterior extends App with TestNegBinMod with DataProtocols {
       println(s"Running chain $chain")
       println(s"First observation ${d.head}")
       val filter = ParticleFilter.llStateReader(d.toVector, resample, 100)
-      val pf = Kleisli { (p: Parameters) => filter(model(p)) }
+      val pf = filter compose model
       val pmmh = MetropolisHastings.pmmhState(params, Parameters.perturb(0.1), (a, b) => 0.0, prior)
 
       pmmh(pf).
@@ -91,7 +92,7 @@ object DeterminePosterior extends App with TestNegBinMod with DataProtocols {
 /**
   * Convert the JSON files to CSVs
   */
-object JsonToCSV extends App with DataProtocols {
+object JsonToCSV extends App {
   implicit val system = ActorSystem("PMMH")
   implicit val materializer = ActorMaterializer()
 

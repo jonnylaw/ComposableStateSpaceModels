@@ -3,10 +3,10 @@ package com.github.jonnylaw.examples
 import akka.stream.scaladsl._
 import akka.stream._
 import akka.actor.ActorSystem
-import akka.util.ByteString
 import breeze.numerics.log
 import cats.implicits._
 import com.github.jonnylaw.model._
+import DataProtocols._
 import scala.concurrent.ExecutionContext.Implicits.global
 import spray.json._
 
@@ -28,7 +28,7 @@ trait TestNegBinMod {
   val model = Model.negativeBinomial(sde) |+| Model.seasonalModel(24, 4, sde2)
 }
 
-object SimModelToCSV extends App with TestNegBinMod with DataProtocols {
+object SimModelToCSV extends App with TestNegBinMod {
   implicit val system = ActorSystem("SimulateToCSV")
   implicit val materializer = ActorMaterializer()
 
@@ -40,7 +40,7 @@ object SimModelToCSV extends App with TestNegBinMod with DataProtocols {
     onComplete(_ => system.terminate())
 }
 
-object SimModelToJSON extends App with TestNegBinMod with DataProtocols {
+object SimModelToJSON extends App with TestNegBinMod {
   implicit val system = ActorSystem("SimulateToJson")
   implicit val materializer = ActorMaterializer()
 

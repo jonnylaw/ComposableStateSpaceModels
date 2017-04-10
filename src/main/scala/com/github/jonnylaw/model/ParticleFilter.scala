@@ -109,16 +109,20 @@ trait ParticleFilter {
 
   def stepFilter(s: PfState, y: Data): PfState = {
     val dt = y.t - s.t
-
     val x1 = s.particles map (x => mod.sde.stepFunction(dt)(x).draw)
-    val w = x1 map (x => mod.dataLikelihood(mod.f(x, y.t), y.observation))
-    val max = w.max
-    val w1 = w map (a => exp(a - max))
-    val resampledX = resample(x1, w1)
-    val ll = s.ll + max + log(ParticleFilter.mean(w1))
-    val ess = ParticleFilter.effectiveSampleSize(w1)
 
-    PfState(y.t, Some(y.observation), resampledX, ll, ess)
+    y.observation match {
+      case None => PfState(y.t, None, x1, s.ll, s.ess)
+      case Some(obs) => 
+      val w = x1 map (x => mod.dataLikelihood(mod.f(x, y.t), obs))
+      val max = w.max
+      val w1 = w map (a => exp(a - max))
+      val resampledX = resample(x1, w1)
+      val ll = s.ll + max + log(ParticleFilter.mean(w1))
+      val ess = ParticleFilter.effectiveSampleSize(w1)
+
+      PfState(y.t, Some(obs), resampledX, ll, ess)
+    }
   }
 
   /**
@@ -193,7 +197,7 @@ case class FilterLgcp(
 
     val ess = ParticleFilter.effectiveSampleSize(w1)
 
-    PfState(y.t, Some(y.observation), resample(state.map(_._1), w1), ll, ess)
+    PfState(y.t, y.observation, resample(state.map(_._1), w1), ll, ess)
   }
 }
 
@@ -230,7 +234,7 @@ object ParticleFilter {
     * data.
     *   through(pf(mod))
     */
-  def filter(resample: Resample[State], t0: Time, n: Int) = { (mod: Model) =>
+  def filter(resample: Resample[State], t0: Time, n: Int) = Reader { (mod: Model) =>
     Filter(mod, resample).filterStream(t0)(n)
   }
 
@@ -244,7 +248,13 @@ object ParticleFilter {
   /**
     * Function which takes a sample from the joint posterior
     * then runs and combines many particle filters
-    * @param samples
+    * @param post the joint posterior distribution of the parameters and the state
+    * @param samples the number of samples to take from the joint posterior, this determines the number of particle filters
+    * @param t0 the initial starting point of the particle filter
+    * @param n the number of particles in each of the particle filters
+    * @param resample the resampling scheme
+    * @param mod an unparameterised model to use for the online filter
+    * @retrun an Akka stream Flow which can be used to run many particle filters online
     */
   def filterOnline(
     post: Rand[(Parameters, State)],
@@ -258,16 +268,16 @@ object ParticleFilter {
       
     val values: IndexedSeq[(Parameters, State)] = post.sample(samples)
     
-    val bcast = builder.add(Broadcast[Data](2))
-    val merge = builder.add(Merge[PfState](2))
+    val bcast = builder.add(Broadcast[Data](samples))
+    val merge = builder.add(Merge[PfState](samples))
     val reduce = builder.add(Flow[PfState].reduce((a, b) =>
       PfState(a.t, a.observation, a.particles ++ b.particles, b.ll, b.ess + a.ess)))
 
-    val summarise = (p: Parameters) => Flow[PfState].map(ParticleFilter.getIntervals(mod(p)))
+    val summarise = builder.add(Flow[PfState].map(ParticleFilter.getIntervals(mod(values.head._1))))
 
     val filterFlow = (s: (Parameters, State)) => filterInit(resample, t0, n, s._2)(mod(s._1))
 
-    bcast ~> filterFlow(values.head) ~> merge ~> reduce ~> summarise(values.head._1)
+    bcast ~> filterFlow(values.head) ~> merge ~> reduce ~> summarise
     bcast ~> filterFlow(values(1))   ~> merge
 
     FlowShape(bcast.in, summarise.out)
@@ -316,7 +326,8 @@ object ParticleFilter {
       val gamma = mod.f(x1, t)
       val eta = mod.link(gamma)
       val obs = mod.observation(gamma)
-      ObservationWithState(t, obs.draw, eta, gamma, x1)
+
+      ObservationWithState(t, Some(obs.draw), eta, gamma, x1)
     }
   }
 
@@ -381,7 +392,6 @@ object ParticleFilter {
     h foreach { case (n, count) => println(s"$n: ${Vector.fill(count)("#").mkString("")}") }
   }
 
-
   /**
     * Gets credible intervals for a vector of doubles
     * @param samples a vector of samples from a distribution
@@ -394,8 +404,6 @@ object ParticleFilter {
 
     CredibleInterval(ordered(samples.size - index), ordered(index))
   }
-
-  def indentity[A](samples: Vector[A], weights: Vector[Double]) = samples
 
   /**
     * Calculate the weighted mean of a particle cloud

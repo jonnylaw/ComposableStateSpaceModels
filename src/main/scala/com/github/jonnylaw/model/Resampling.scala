@@ -24,6 +24,11 @@ object Resampling {
   }
 
   /**
+    * Resample using the identity
+    */
+  def indentity[A](samples: Vector[A], weights: Vector[Double]) = samples
+
+  /**
     * Given a list of ordered doubles, k, find the element at the corresponding 
     * position in the empirical cumulative distribution function represented by a 
     * treeMap
@@ -51,27 +56,6 @@ object Resampling {
 
     tree ++ (normalisedWeights.scanLeft(0.0)(_ + _).drop(1)).zip(items)
   }
-
-  // /**
-  //   * An efficient parallel implementation of systematic resampling
-  //   */
-  // def asyncSystematicResampling[A](threads: Int)(
-  //   particles: Vector[A], 
-  //   weights: Vector[LogLikelihood])(implicit ec: ExecutionContext): Future[Vector[A]] = {
-
-  //   val n = weights.size
-  //   val ecdf = treeEcdf(particles, weights)
-
-  //   val u = scala.util.Random.nextDouble
-
-  //   val res = Vector.range(0, n).
-  //     map(i => (u + i) / n).
-  //     grouped(n / threads).
-  //     toVector.
-  //     map((ks: Vector[Double]) => Future { findAllInTreeMap(ks, ecdf) })
-
-  //   Future.sequence(res).map(_.flatten)
-  // }
 
   /**
     * An efficient implementation of systematic resampling

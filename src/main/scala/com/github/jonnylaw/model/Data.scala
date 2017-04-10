@@ -11,13 +11,14 @@ import scala.concurrent.Future
 import scala.language.higherKinds
 import com.github.nscala_time.time.Imports._
 import spray.json._
+import DataProtocols._
 
 /**
   * A single observation of a time series
   */
 sealed trait Data {
   val t: Time
-  val observation: Observation
+  val observation: Option[Observation]
 }
 
 /**
@@ -30,7 +31,7 @@ sealed trait Data {
   */
 case class ObservationWithState(
   t: Time,
-  observation: Observation,
+  observation: Option[Observation],
   eta: Eta,
   gamma: Gamma,
   sdeState: State) extends Data
@@ -40,11 +41,11 @@ case class ObservationWithState(
   * @param t, the time of the observation
   * @param observation = pi(eta), the observation
   */
-case class TimedObservation(t: Time, observation: Observation) extends Data
+case class TimedObservation(t: Time, observation: Option[Observation]) extends Data
 
-case class TimestampObservation(timestamp: DateTime, t: Time, observation: Observation) extends Data
+case class TimestampObservation(timestamp: DateTime, t: Time, observation: Option[Observation]) extends Data
 
-case class DecomposedModel(time: Time, observation: Observation, eta: Eta, gamma: Gamma, state: List[Eta])
+case class DecomposedModel(time: Time, observation: Option[Observation], eta: Eta, gamma: Gamma, state: List[Eta])
 
 trait DataService[F] {
   def observations: Source[Data, F]
@@ -67,7 +68,7 @@ case class SimulateData(model: Model) extends DataService[NotUsed] {
       gamma = model.f(x0, t0)
       eta = model.link(gamma)
       y <- model.observation(gamma)
-    } yield ObservationWithState(t0, y, eta, gamma, x0)
+    } yield ObservationWithState(t0, Some(y), eta, gamma, x0)
 
     Flow[Time].scan(init.draw)((d0, t: Time) => simStep(t - d0.t)(d0).draw)
   }
@@ -85,7 +86,7 @@ case class SimulateData(model: Model) extends DataService[NotUsed] {
       gamma = model.f(x0, 0.0)
       eta = model.link(gamma)
       y <- model.observation(gamma)
-    } yield ObservationWithState(0.0, y, eta, gamma, x0)
+    } yield ObservationWithState(0.0, Some(y), eta, gamma, x0)
 
     MarkovChain(init.draw)(simStep(dt))
   }
@@ -135,7 +136,7 @@ case class SimulateData(model: Model) extends DataService[NotUsed] {
         val eta = exp(gamma.last)
 
         if (Uniform(0,1).draw <= exp(hazardt1)/upperBound) {
-          loop(t1, ObservationWithState(t1, 1.0, eta, gamma.last, stateEnd) +: eventTimes)
+          loop(t1, ObservationWithState(t1, Some(1.0), eta, gamma.last, stateEnd) +: eventTimes)
          } else {
           loop(t1, eventTimes)
         }
@@ -144,7 +145,7 @@ case class SimulateData(model: Model) extends DataService[NotUsed] {
     loop(start, stateSpace.map{ s => {
       val gamma = model.f(s.state, s.time)
       val eta = exp(gamma)
-      ObservationWithState(s.time, 0.0, eta, gamma, s.state) }}.toVector
+      ObservationWithState(s.time, Some(0.0), eta, gamma, s.state) }}.toVector
     )
   }
 }
@@ -189,29 +190,29 @@ object SimulateData {
       gamma = model.f(x1, d.t + deltat)
       eta = model.link(gamma)
       y1 <- model.observation(gamma)
-    } yield ObservationWithState(d.t + deltat, y1, eta, gamma, x1)
+    } yield ObservationWithState(d.t + deltat, Some(y1), eta, gamma, x1)
   }
 
   /**
     * Compute an empirical forecast, starting from a filtering distribution estimate
     * @param unparamModel a function from Parameters to Model
     * @param t the time to start the forecast
+    * @param n the number of particles to use in the forecast
     * @param s the joint posterior of the parameters and state at time t, p(x, theta | y)
     */
-  def forecast(unparamModel: Parameters => Model, t: Time)
-    (s: Rand[(Parameters, State)]): Flow[Time, Rand[(Parameters, ObservationWithState)], NotUsed] = {
+  def forecast(unparamModel: Parameters => Model, t: Time, n: Int)(s: Rand[(Parameters, State)]) = {
 
-    val init: Rand[(Parameters, ObservationWithState)] = s map { case (p, x) => {
+    val init: IndexedSeq[(Parameters, ObservationWithState)] = s.sample(n) map { case (p, x) => {
       val gamma = unparamModel(p).f(x, t)
       val eta = unparamModel(p).link(gamma)
-      (p, ObservationWithState(t, 0.0, eta, gamma, x))
+      (p, ObservationWithState(t, Some(0.0), eta, gamma, x))
     }}
 
     Flow[Time].
       scan(init)((d0, ts: Time) => {
         for {
           (p, x) <- d0
-          x1 <- simStep(unparamModel(p))(ts - x.t)(x)
+          x1 = simStep(unparamModel(p))(ts - x.t)(x).draw
         } yield (p, x1)}).
       drop(1) // drop the initial state
   }
@@ -253,14 +254,14 @@ case class DataFromFile(file: String) extends DataService[Future[IOResult]] {
       via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
       map(_.utf8String).
       map(a => a.split(",")).
-      map(d => TimedObservation(d(0).toDouble, d(1).toDouble))
+      map(d => TimedObservation(d(0).toDouble, if (d(1).isEmpty) { None } else { Some(d(1).toDouble) })) 
   }
 }
 
 /**
   * Read a JSON file
   */
-case class DataFromJson(file: String) extends DataService[Future[IOResult]] with DataProtocols {
+case class DataFromJson(file: String) extends DataService[Future[IOResult]] {
   def observations: Source[Data, Future[IOResult]] = {
     FileIO.fromPath(Paths.get(file)).
       via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).

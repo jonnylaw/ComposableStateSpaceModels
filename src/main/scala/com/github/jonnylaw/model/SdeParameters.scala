@@ -79,7 +79,7 @@ case class BrownianParameter(
     SdeParameter.brownianParameter(
       m0 + delta(0),
       c0 + delta(1),
-      sigma + delta(3))
+      sigma + delta(2))
   }
 
   def flatten: Vector[Double] = Vector(m0, c0, sigma)
@@ -127,7 +127,6 @@ case class OuParameter(
       theta.zip(delta(4 to -1).data).map { case (a, b) => a + b }: _*
     )
   }
-
 
   def flatten: Vector[Double] =
     Vector(m0, c0, alpha, sigma) ++ theta.toVector
