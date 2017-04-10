@@ -4,9 +4,7 @@
 src/main/resources/*
 
 # scala stuff
-target/*
-src/target
-project/*
+target/
 .ensime
 *.jar
 
@@ -20,6 +18,7 @@ project/*
 *.json
 *.pdf
 *.png
+data/*
 
 makefile
 
