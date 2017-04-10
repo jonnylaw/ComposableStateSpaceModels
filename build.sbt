@@ -28,7 +28,6 @@ lazy val basic = Project(
       "org.typelevel" %% "cats" % "0.9.0",
       "com.typesafe.akka" %% "akka-stream" % "2.4.17",
       "com.github.mpilquist" %% "simulacrum" % "0.10.0",
-      //"io.spray" %%  "spray-json" % "1.3.3",
       "com.typesafe.akka" %% "akka-http" % "10.0.3",
       "com.typesafe.akka" %% "akka-http-spray-json" % "10.0.5",
       "com.github.nscala-time" %% "nscala-time" % "2.16.0",
