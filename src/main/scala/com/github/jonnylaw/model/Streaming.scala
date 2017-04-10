@@ -26,7 +26,7 @@ object Streaming {
     data: Vector[Data], 
     model: Reader[Parameters, Model], 
     param: Parameters, 
-    resample: Resample[State, Id],
+    resample: Resample[State],
     particles: Vector[Int],
     repetitions: Int)(implicit mat: Materializer, ec: ExecutionContext) = {
 
@@ -48,24 +48,16 @@ object Streaming {
       mapAsyncUnordered(4){ iters }
   }
 
-  def pmmhToJson(file: String, initParams: Parameters, filter: Parameters => Future[(LogLikelihood, Vector[StateSpace])],
-    proposal: Parameters => Rand[Parameters], prior: Parameters => LogLikelihood, iters: Int)
-    (implicit ec: ExecutionContext, mat: Materializer, f: JsonFormat[MetropState]): Future[IOResult] = {
-
-    ParticleMetropolisStateAsync(filter, initParams, proposal, prior).
-      iters.
-      via(Streaming.monitorStateStream).
-      take(iters).
-      map(_.toJson.compactPrint).
-      runWith(Streaming.writeStreamToFile(file))
-  }
-   
-  def pmmhToJsonSerial(file: String, initParams: Parameters, filter: Parameters => (LogLikelihood, Vector[StateSpace]),
-    proposal: Parameters => Rand[Parameters], prior: Parameters => LogLikelihood, iters: Int)
+  def pmmhToJson(file: String,
+    initParams: Parameters,
+    filter: BootstrapFilter,
+    proposal: Parameters => Rand[Parameters],
+    logTransition: (Parameters, Parameters) => LogLikelihood,
+    prior: Parameters => LogLikelihood,
+    iters: Int)
     (implicit mat: Materializer, f: JsonFormat[MetropState]): Future[IOResult] = {
 
-    ParticleMetropolisState(filter, initParams, proposal, prior).
-      iters.
+    MetropolisHastings.pmmhState(initParams, proposal, logTransition, prior)(filter).
       via(Streaming.monitorStateStream).
       take(iters).
       map(_.toJson.compactPrint).
@@ -135,6 +127,21 @@ object Streaming {
       drop(burnIn). // discard burn in iterations
       map(_.parseJson.convertTo[ParamsState])
   }
+
+  /**
+    * Convert a file from JSON to CSV format
+    * @param fileIn the input filename
+    * @param fileOut the output filename
+    */
+  def jsonToCSV(fileIn: String, fileOut: String)
+    (implicit mat: Materializer, fmt: JsonFormat[MetropState]): Future[IOResult] = {
+
+    Streaming.readPosterior(fileIn, 0, 1).
+      map(s => ParamsState(s.ll, s.params, s.accepted)).
+      map(_.show).
+      runWith(Streaming.writeStreamToFile(fileOut))
+  }
+
 
   /**
     * Create a distribution from a sequence, possibly utilising a transformation f
