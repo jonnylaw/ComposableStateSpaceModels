@@ -19,12 +19,12 @@ object SimulateBrownianMotion extends App {
   implicit val system = ActorSystem("LatentState")
   implicit val materializer = ActorMaterializer()
 
-  val p = SdeParameter.brownianParameter(1.0, log(1.0), -0.3, log(0.3))
+  val p = SdeParameter.genBrownianParameter(1.0, log(1.0), -0.3, log(0.3))
 
-  val p1 = SdeParameter.brownianParameter(1.0, log(1.0), 0.3, log(0.3))
+  val p1 = SdeParameter.genBrownianParameter(1.0, log(1.0), 0.3, log(0.3))
 
-  val sde1 = Sde.brownianMotion(2)(p)
-  val sde2 = Sde.brownianMotion(2)(p1)
+  val sde1 = Sde.genBrownianMotion(2)(p)
+  val sde2 = Sde.genBrownianMotion(2)(p1)
 
   val composedSde = sde1 |+| sde2
 
@@ -41,7 +41,7 @@ object SimOrnstein extends App {
   implicit val system = ActorSystem("LatentState")
   implicit val materializer = ActorMaterializer()
 
-  val p = SdeParameter.ouParameter(0.0, log(3.0), 1.0, log(0.5), log(0.3))
+  val p = SdeParameter.ouParameter(0.0, log(3.0), log(0.5), log(0.3))(2.0)
 
   val sde = Sde.ouProcess(2)
 

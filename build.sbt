@@ -1,16 +1,4 @@
 lazy val Benchmark = config("bench") extend Test
-enablePlugins(MicrositesPlugin)
-
-lazy val micrositeSettings = Seq(
-  micrositeName := "composable-models",
-  micrositeDescription := "Bayesian inference for Composable State Space Models",
-  micrositeBaseUrl := "/ComposableStateSpaceModels",
-  micrositeDocumentationUrl := "/ComposableStateSpaceModels/",
-  micrositeGithubOwner := "jonnylaw",
-  micrositeGithubRepo := "ComposableStateSpaceModels",
-  micrositeExternalIncludesDirectory := (resourceDirectory in Compile).value / "Figures",
-  micrositeHighlightTheme := "solarized-dark"
-)
 
 /**  This allows running ScalaMeter benchmarks in separate sbt configuration.
   *  It means, that when you want run your benchmarks you should type `bench:test` in sbt console.
@@ -18,7 +6,7 @@ lazy val micrositeSettings = Seq(
 lazy val basic = Project(
   "basic-with-separate-config",
   file("."),
-  settings = Defaults.coreDefaultSettings ++ micrositeSettings ++ Seq(
+  settings = Defaults.coreDefaultSettings ++ Seq(
     name := "ComposableModels",
     organization := "com.github.jonnylaw",
     version := "0.6.0",
@@ -42,6 +30,7 @@ lazy val basic = Project(
       "com.github.mpilquist" %% "simulacrum" % "0.10.0",
       "io.spray" %%  "spray-json" % "1.3.3",
       "com.typesafe.akka" %% "akka-http" % "10.0.3",
+      "com.github.nscala-time" %% "nscala-time" % "2.16.0",
       "org.scalatest" %% "scalatest" % "2.2.4" % "test",
       "org.scalacheck" %% "scalacheck" % "1.13.4" % "test",
       "com.storm-enroute" %% "scalameter" % "0.7" % "bench"

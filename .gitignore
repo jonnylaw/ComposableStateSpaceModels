@@ -17,5 +17,6 @@ project/*
 
 # Data Files
 *.csv
+*.json
 
 makefile

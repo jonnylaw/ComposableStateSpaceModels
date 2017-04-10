@@ -24,8 +24,8 @@ package object model {
   type UnparamSde = Reader[SdeParameter, Sde]
   type StepFunction = (SdeParameter) => (State, TimeIncrement) => Rand[State]
   type State = Tree[DenseVector[Double]]
-  type Resample[A, F[_]] = (Vector[A], Vector[LogLikelihood]) => F[Vector[A]]
-  type BootstrapFilter[G[_]] = Kleisli[G, Parameters, (LogLikelihood, Vector[StateSpace])]
+  type Resample[A] = (Vector[A], Vector[LogLikelihood]) => Vector[A]
+  type BootstrapFilter = Reader[Parameters, (LogLikelihood, Vector[StateSpace])]
 
   implicit def randMonad = new Monad[Rand] {
     def pure[A](x: A): Rand[A] = always(x)
@@ -121,11 +121,11 @@ package object model {
 
   implicit def sdeParamShow = new Show[SdeParameter] {
     def show(p: SdeParameter): String = p match {
-      case BrownianParameter(m0, c0, mu, sigma) =>
+      case GenBrownianParameter(m0, c0, mu, sigma) =>
         s"""$m0, $c0, $mu, $sigma"""
-      case OrnsteinParameter(m0, c0, theta, alpha, sigma) =>
-        s"""${m0.data.mkString(", ")}, ${c0.data.mkString(", ")}, ${theta.data.mkString(", ")}, ${alpha.data.mkString(", ")}, ${sigma.data.mkString(", ")}"""
-      case OuParameter(m, c, t, a, s) => s"$m, $c, $t, $a, $s"
+      case BrownianParameter(m0, c0, sigma) =>
+        s"""$m0, $c0, $sigma"""
+      case OuParameter(m, c, a, s, t) => s"$m, $c, $a, $s, ${t.mkString(", ")}"
     }
   }
 

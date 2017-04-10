@@ -22,20 +22,22 @@ trait DataProtocols extends DefaultJsonProtocol {
     }
   }
 
-  implicit val brownianFormat = jsonFormat4(BrownianParameter.apply)
-  implicit val ouFormat = jsonFormat5(OrnsteinParameter.apply)
+  implicit val brownianFormat = jsonFormat3(BrownianParameter.apply)
+  implicit val genbrownianFormat = jsonFormat4(GenBrownianParameter.apply)
   implicit val ornFormat = jsonFormat5(OuParameter.apply)
 
   implicit def sdeParamFormat = new RootJsonFormat[SdeParameter] {
    def write(obj: SdeParameter): JsValue = obj match {
      case b: BrownianParameter => b.toJson
-     case o: OrnsteinParameter => o.toJson
+     case gb: GenBrownianParameter => gb.toJson
      case ou: OuParameter => ou.toJson
    }
 
-   def read(value: JsValue) = Try(value.convertTo[BrownianParameter]).
-     getOrElse(Try(value.convertTo[OrnsteinParameter]).
-       getOrElse(value.convertTo[OuParameter]))
+    def read(value: JsValue): SdeParameter = value match {
+      case obj: JsObject if (obj.fields.size == 3) => value.convertTo[BrownianParameter]
+      case obj: JsObject if (obj.fields.size == 4) => value.convertTo[GenBrownianParameter]
+      case obj: JsObject => value.convertTo[OuParameter]
+    }
   }
 
   implicit val leafParamFormat = jsonFormat2(LeafParameter.apply)

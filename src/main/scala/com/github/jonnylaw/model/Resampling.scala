@@ -116,25 +116,25 @@ object Resampling {
     * Given a vector of log-likelihoods, normalise them and exp them without overflow
     * @param prob 
     */
-  def expNormalise[F[_]](prob: F[LogLikelihood])(implicit f: Collection[F]): F[Double] = {
-    val max = f.max(prob)
-    val w1 = f.map(prob)(w => exp(w - max))
-    val total = ParticleFilter.sum(w1)
+  def expNormalise(prob: Vector[LogLikelihood]): Vector[Double] = {
+    val max = prob.max
+    val w1 = prob map (w => exp(w - max))
+    val total = w1.sum
 
-    f.map(w1)(w => w / total)
+    w1 map (w => w / total)
   }
 
   /**
     * Generic cumulative sum
     */
-  def cumSum[F[_], A](l: F[A])(implicit f: Collection[F], N: Numeric[A]): F[A] = {
-    f.scanLeft(l, N.zero)((a, b) => N.plus(a, b))
+  def cumSum[A](l: Vector[A])(implicit N: Numeric[A]): Vector[A] = {
+    l.scanLeft(N.zero)((a, b) => N.plus(a, b))
   }
 
   /**
     * Calculate the empirical cumulative distribution function for a collection of weights
     */
-  def empDist[F[_]](w: F[Double])(implicit f: Collection[F]): F[Double] = {
+  def empDist(w: Vector[Double]): Vector[Double] = {
     cumSum(normalise(w))
   }
 
