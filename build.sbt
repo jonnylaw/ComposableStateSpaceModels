@@ -42,6 +42,7 @@ lazy val basic = Project(
       "com.github.mpilquist" %% "simulacrum" % "0.10.0",
       "io.spray" %%  "spray-json" % "1.3.3",
       "com.typesafe.akka" %% "akka-http" % "10.0.3",
+      "com.github.nscala-time" %% "nscala-time" % "2.16.0",
       "org.scalatest" %% "scalatest" % "2.2.4" % "test",
       "org.scalacheck" %% "scalacheck" % "1.13.4" % "test",
       "com.storm-enroute" %% "scalameter" % "0.7" % "bench"

@@ -17,5 +17,10 @@ project/*
 
 # Data Files
 *.csv
+*.json
 
 makefile
+
+# Binary Files
+*.png
+*.pdf
