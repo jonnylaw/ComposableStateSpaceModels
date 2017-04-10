@@ -17,7 +17,6 @@ target/
 *.csv
 *.json
 *.pdf
-*.png
 data/*
 
 makefile
