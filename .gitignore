@@ -5,9 +5,9 @@
 src/main/resources/*
 
 # scala stuff
-target/*
-project/*
+target/
 .ensime
+*.jar
 
 # emacs backup files
 .#*
@@ -24,3 +24,9 @@ project/*
 
 # other
 **/*.pdf
+*.json
+*.pdf
+*.png
+data/*
+
+makefile
