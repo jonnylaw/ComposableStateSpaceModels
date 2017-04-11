@@ -1,7 +1,7 @@
 library(tidyverse); library(jsonlite); library(coda); library(ggmcmc); library(ggthemes); 
 library(jsonlite); library(magrittr)
 
-theme_set(theme_few())
+theme_set(theme_solarized(light = FALSE))
 
 ######################
 # Ornstein Uhlenbeck #
@@ -24,7 +24,7 @@ ggsave("src/main/resources/site/figures/ouProcess.png")
 single_sims = read_csv("data/NegBinModelSims.csv", col_names = c("time", "y", "eta", "gamma", "state"))
 
 single_sims %>%
-  select(time, y, state) %>%
+  select(time, y, gamma) %>%
   gather(key, value, -time) %>%
   ggplot(aes(x = time, y = value, colour = key)) +
   geom_line() + 
@@ -157,6 +157,18 @@ interpolated = read_csv("data/NegativeBinomialInterpolated.csv",
                                        "eta_hat", "eta_lower", "eta_upper",
                                        sapply(1:9, function(i) paste("state", i, "hat", sep = "_")), 
                                        sapply(1:9, function(i) c(paste("state", i, "lower", sep = "_"), paste("state", i, "upper", sep = "_")))))
+
+negbin_full = read_csv("data/NegativeBinomial.csv",
+                       n_max = 5000,
+                       col_names = c("time", "y", "eta", "gamma", sapply(1:9, function(i) paste("state", i, sep = "_"))))
+
+negbin_full %>%
+  filter(or(time < 420, time > 450)) %>%
+  ggplot(aes(x = time, y = y)) +
+  geom_point() +
+  ggtitle("Seasonal Negative Binomial Model with \nmissing values between t = 420 and t = 450")
+
+ggsave("src/main/resources/site/figures")
 
 interpolated %>%
   inner_join(negbin_sims %>% select(time, y), by = "time") %>%

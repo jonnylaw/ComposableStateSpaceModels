@@ -5,7 +5,6 @@ import akka.stream._
 import akka.actor.ActorSystem
 import akka.util.ByteString
 import akka.NotUsed
-import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
 import HttpEntity.ChunkStreamPart
@@ -13,7 +12,6 @@ import Uri.Query
 import HttpMethods._
 import akka.stream.ActorMaterializer
 import akka.http.scaladsl.server.Directives._
-import akka.util.ByteString
 
 import cats.data.Reader
 import cats.implicits._

@@ -45,6 +45,13 @@ case class PfState(
   ll: LogLikelihood, 
   ess: Int)
 
+case class PfStateInterpolate(
+  t: Time,
+  observation: Option[Observation],
+  particles: Vector[Vector[State]],
+  ll: LogLikelihood,
+  ess: Int)
+
 /**
   * A class representing a return type for the particle filter, containing the state and associated credible intervals
   * @param time the time of the process
@@ -107,6 +114,10 @@ trait ParticleFilter {
 
   def resample: Resample[State]
 
+  /**
+    * A single step of the particle filter; upon the absence of an observation
+    * the state is simulated forward without resampling
+    */
   def stepFilter(s: PfState, y: Data): PfState = {
     val dt = y.t - s.t
     val x1 = s.particles map (x => mod.sde.stepFunction(dt)(x).draw)
@@ -196,8 +207,9 @@ case class FilterLgcp(
     val ll = s.ll + max + log(ParticleFilter.mean(w1))
 
     val ess = ParticleFilter.effectiveSampleSize(w1)
+    val resampledX = resample(state.map(_._1), w1)
 
-    PfState(y.t, y.observation, resample(state.map(_._1), w1), ll, ess)
+    PfState(y.t, y.observation, resampledX, ll, ess)
   }
 }
 
@@ -216,6 +228,35 @@ case class FilterInit(mod: Model, resample: Resample[State], initState: State) e
   override def initialiseState(particles: Int, t0: Time): PfState = {
     val state = Vector.fill(particles)(initState)
     PfState(t0, None, state, 0.0, particles)
+  }
+}
+
+case class FilterInterpolate(mod: Model, resample: Resample[Vector[State]]) {
+  /**
+    * A single step of the particle filter, upon the absence of an observation
+    * the state is simulated forward and the entire path is resampled when there is an accompanying observation 
+    */
+  def stepInterpolate(s: PfStateInterpolate, y: Data): PfStateInterpolate = {
+    val dt = y.t - s.t
+    val x1 = s.particles map (x => mod.sde.stepFunction(dt)(x.head).draw +: x)
+
+    y.observation match {
+      case None => PfStateInterpolate(y.t, None, x1, s.ll, s.ess)
+      case Some(obs) => 
+      val w = x1.head map (x => mod.dataLikelihood(mod.f(x, y.t), obs))
+      val max = w.max
+      val w1 = w map (a => exp(a - max))
+      val resampledX = resample(x1, w1)
+      val ll = s.ll + max + log(ParticleFilter.mean(w1))
+      val ess = ParticleFilter.effectiveSampleSize(w1)
+
+      PfStateInterpolate(y.t, Some(obs), resampledX, ll, ess)
+    }
+  }
+
+  def filterInterpolate(t0: Time)(particles: Int): Sink[Data, Future[PfStateInterpolate]] = {
+    val initState = PfStateInterpolate(t0, None, Vector(Vector.fill(particles)(mod.sde.initialState.draw)), 0.0, 0)
+    Sink.fold(initState)(stepInterpolate)
   }
 }
 
@@ -282,6 +323,13 @@ object ParticleFilter {
 
     FlowShape(bcast.in, summarise.out)
   })
+
+  /**
+    * 
+    */
+  def interpolate(resample: Resample[Vector[State]], t0: Time, particles: Int) = Reader { (mod: Model) =>
+    FilterInterpolate(mod, resample).filterInterpolate(t0)(particles)
+  }
 
   /**
     * Return the likelihood and a sample from the state path as a tuple

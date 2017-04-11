@@ -20,8 +20,8 @@ object Interpolate extends App with TestNegBinMod {
 
   // set up the particle filter
   val t0 = 4000 * 0.1
-  val resample: Resample[State] = Resampling.systematicResampling _
-  val filter = ParticleFilter.filter(resample, t0, 1000) compose model
+  val resample: Resample[Vector[State]] = Resampling.systematicResampling _
+  val filter = ParticleFilter.interpolate(resample, t0, 1000) compose model
 
   // remove some observations systematically
   testData.
@@ -30,10 +30,10 @@ object Interpolate extends App with TestNegBinMod {
       case _ => throw new Exception("Incorrect Data Format")
     }.
     map((d: Data) => d).
-    via(filter(params)).
-    map(ParticleFilter.getIntervals(model(params))).
-    map(_.show).
-    runWith(Streaming.writeStreamToFile("data/NegativeBinomialInterpolated.csv")).
+    runWith(filter(params)).
+    // map(ParticleFilter.getIntervals(model(params))).
+    // map(_.show).
+    // runWith(Streaming.writeStreamToFile("data/NegativeBinomialInterpolated.csv")).
     onComplete { s => 
       println(s)
       system.terminate()
