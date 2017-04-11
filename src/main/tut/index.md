@@ -48,14 +48,14 @@ val sims = sde(ouParameter).
 
 We can now save the stream to a file, in order to use it later, or plot it in `R`:
 
-```tut
+```tut:silent:book
 sims.
   zipWithIndex.
   map { case (x, t) => t + ", " + x.show }.
   runWith(Streaming.writeStreamToFile("data/ornsteinUhlenbeck.csv"))
 ```
 
-<img src="img/ouProcess.png" alt="Ornstein Uhlenbeck Process" width="500" />
+<img src="img/ouProcess.png" alt="Ornstein Uhlenbeck Process" width="750" />
 
 Notice, the state space is multidimensional, and as such is represented by a `DenseVector`. A single state is represented by a LeafState, this will become clear when considering composition of models. The figure shows a simulation of a two-dimensional uncoupled Ornstein-Uhlenbeck process with `theta = 2.0, 1.0, alpha = 0.05, sigma = 1.0`.
 
@@ -64,7 +64,7 @@ Notice, the state space is multidimensional, and as such is represented by a `De
 The observations of a POMP can be from any parameterised distribution. The observation distribution depends on the latent variables and sometimes on additional parameters not in the system state, such as a scaling parameter representing measurement noise. A many non-Gaussian observation distributions can be used when building a POMP model, the Negative Binomial distribution is often used when considering overdispersed count data. The Negative binomial is parameterised in terms of its mean which varies stochastically and a scale parameter which controls the overdispersion. The variance is mean + mean^2 / scale, hence the overdispersion is controlled by the inverse of the scale. There is a `LeafParameter` class which combines the initial State, optional scale parameter and the state space parameters for a single model.
 
 
-```tut
+```tut:silent:book
 val sde = Sde.brownianMotion(1)
 val negBinParams = Parameters.leafParameter(Some(log(3.0)), 
   SdeParameter.brownianParameter(m0 = 0.0, c0 = log(1.0), sigma = log(0.01)))
@@ -80,15 +80,15 @@ negBinSims.
   runWith(Streaming.writeStreamToFile("data/NegBinModelSims.csv"))
 ```
 
-<img src="img/NegBinSims.png" alt="Negative Binomial Model" width="500" />
+<img src="img/NegBinSims.png" alt="Negative Binomial Model" width="750" />
 
-The figure shows the state space, which varies along the whole real line and the transformed state space and Eta, which is strictly positive. The linking function, g, is the log-link.
+The figure shows the state space, which varies along the whole real line and simulated observations from the Negative Binomial Observation distribution. The linking function, g, is the log-link.
 
 ## Composing Multiple Models
 
 If we wish to consider more complex process, for instance a Negative Binomial model with a seasonally varying mean, then we have to add deterministic values to the state before applying the observation distribution. The function, f, is a linear deterministic function which can be used to add seasonal factors to the system state. 
 
-Unparameterised models are represented as `Reader[Parameters, Model]`. A semigroup is defined on unparameterised models, using the library [cats](https://github.com/typelevel/cats), a semigroup is a set with an associative, closed binary operator. The binary operator is used to compose models, the function is associative, but not commutative, since the composition of two models selects the leftmost Model's observation and linking functions. The code snippet below shows how to construct a seasonal Poisson model, the observation distribution is Poisson, but the rate of an event occuring follows a daily (period T = 24) cycle if we assume count observations are made once every hour. We have to `import cats.implicits._` to use the semigroup notation `|+|`.
+Unparameterised models are represented as `Reader[Parameters, Model]`. A semigroup is defined on unparameterised models, using the library [cats](https://github.com/typelevel/cats), a semigroup is a set with an associative, closed binary operator. The binary operator is used to compose models, the function is associative, but not commutative, since the composition of two models selects the leftmost Model's observation and linking functions. The code snippet below shows how to construct a seasonal Negative Binomial model, the observation distribution is Negative Binomial, but the rate of an event occuring follows a daily (period T = 24) cycle if we assume count observations are made once every hour. We have to `import cats.implicits._` to use the semigroup notation `|+|`.
 
 ```tut:book:silent
 val sde2 = Sde.ouProcess(8)
@@ -113,13 +113,13 @@ composedSims.
   runWith(Streaming.writeStreamToFile("data/ComposedNegBinSims.csv"))
 ```
 
-<img src="img/ComposedNegBinSims.png" alt="Composed Model" width="500" />
+<img src="img/ComposedNegBinSims.png" alt="Composed Model" width="750" />
 
 ## Statistical Inference: The Particle Filter
 
 If we have a fully specified model, ie the posterior distributions of the parameters given the data so far are available to us, then we can use a bootstrap particle filter (see [Sequential Monte Carlo Methods in Practice](https://www.springer.com/us/book/9780387951461) for a detailed review of the bootstrap particle filter) to determine the hidden state space of the observations. 
 
-Consider the simulated Poisson model, the bootstrap particle filter can be applied to the simulated data using a draw from the parameter posterior distribution and the inferred state space can be compared to the previously simulated state space. The data can be read in from a CSV or database, or simulated again. However, since these are stochastic models we can't compare different realisations of the same model. 
+Consider the simulated Negative Binomial model, the bootstrap particle filter can be applied to the simulated data using a draw from the parameter posterior distribution and the inferred state space can be compared to the previously simulated state space. The data can be read in from a CSV or database, or simulated again. However, since these are stochastic models we can't compare different realisations of the same model. 
 
 Define the particle filter, using 100 particles.
 
@@ -131,7 +131,7 @@ val filter = ParticleFilter.filter(Resampling.systematicResampling, t0, 1000)
 `filter` is no an Akka Streams `Flow`, which represents a transformation on a live stream. This flow takes in `Data` and retruns `PfState` containing the current estimate of the log-likelihood, the current estimated state, the effective sample size of the particles along with the time and current observation. Next, we run the particle filter over the observed data stream and calculate credible intervals of the state, using the 100 measurements simulated from the composed model. 
 
 ```tut:book:silent
-val filteredPoisson = DataFromFile("data/ComposedNegBinSims.csv").
+val filteredNegBin = DataFromFile("data/ComposedNegBinSims.csv").
   observations.
   via(filter(composedMod(composedParams))).
   map(ParticleFilter.getIntervals(composedMod(composedParams))).
@@ -141,47 +141,50 @@ val filteredPoisson = DataFromFile("data/ComposedNegBinSims.csv").
 
 The figure below shows the actual simulated state, plotted next to the estimate state and 99% [credible intervals](https://en.wikipedia.org/wiki/Credible_interval).
 
-<img src="img/NegBinFiltered.png" alt="Filtered Negative Binomial Model" width="500" />
+<img src="img/NegBinFiltered.png" alt="Filtered Negative Binomial Model" width="750" />
 
 ## Inference for the Joint State and Parameter Posterior Distribution
 
 Say we have observed a time depending process in the real world, and don't have the parameters available for the model. We wish to estimate the joint posterior distribution of the state and the parameters of the model simultaneously. One such (offline) algorithm to determine this posterior is the Particle Marginal Metropolis Hastings (PMMH) Algorithm (see [Doucet et al. 2010](http://www.stats.ox.ac.uk/~doucet/andrieu_doucet_holenstein_PMCMC.pdf)). The likelihood of the latent state and parameters given the observations can be determined using a particle filter, then a standard Metropolis-Hastings update step is used to create a Markov Chain which converges to the full joint posterior of the latent state and the parameters of the model given the observed real-world process.
 
-We illustrate this can implement the PMMH algorithm for the simulated Poisson observations, and determine if the algorithm is able to recover the parameters. First, we must specify a prior on the parameters:
+We illustrate this can implement the PMMH algorithm for the simulated Negative Binomial observations, and determine if the algorithm is able to recover the parameters. First, we must specify a prior on the parameters:
 
 ```tut:book:silent
 def prior: Parameters => LogLikelihood = p => 0.0
 ```
 
-Create a function from Parameters => LogLikelihood by composing the model (Parameters => Model) with the filter (Model => LogLikelihood). The data simulated as a stream and consumed using `Sink.seq` is an asynchronous computation which returns a `Future[Seq[Data]]`. In order to access the sequence of observations inside of the `Future`, we need to map over the value:
+Create a function from Parameters => LogLikelihood by composing the model (Parameters => Model) with the filter (Model => LogLikelihood). The first 400 data points are read in from a file containing the simulated data and `grouped` to form a `Seq[Data]`. `mapConcat` is then used to create a tuple of `(Int, Data)` representing an integer identifier for the MCMC chain and all 400 data points. `mapAsync` will spawn 2 worker threads to run the PMMH algorithm twice in parallel.
 
-```scala
-composedSims.
+```tut:book:silent
+import DataProtocols._
+import spray.json._
+
+DataFromFile("data/ComposedNegBinSims.csv").
+  observations.
   take(400).
   grouped(400).
   mapConcat(data => (1 to 2).map(chain => (chain, data))).
   mapAsync(2) { case (chain, d) =>
-    val filter = ParticleFilter.llStateReader(d.toVector, resample, 100)
-    val pf = filter compose model
-    val pmmh = MetropolisHastings.pmmhState(params, Parameters.perturb(0.1), (a, b) => 0.0, prior)
+    val filter = ParticleFilter.llStateReader(d.toVector, Resampling.systematicResampling, 100)
+    val pf = filter compose composedMod
+    val pmmh = MetropolisHastings.pmmhState(composedParams, Parameters.perturb(0.1), (a, b) => 0.0, prior)
 
     pmmh(pf).
-      via(Streaming.monitorStateStream).async.
       take(10). // there are only ten iterations in this example, should use many more in practice
-      map(_.toJson.compactPrint). // optionally write the data to a file using JSON
-      runWith(Sink.seq)) // usually this will write the iterations to a file
+      map(_.toJson.compactPrint). // convert each stream element to JSON
+      runWith(Sink.seq) // materialize the stream as a sequence
   }.
   runWith(Sink.ignore)
 ```
 
-`iters` is an Akka stream, which is consumed using `Sink.seq`, this is not always the most practical way to store the iterations from an MCMC, especially when the chain gets large. If we increase the number of iterations (from 10 in the example) we should consider writing the iterations to a file. The package provides two output formats and can be extended with knowledge of Akka Streams. Currently parameter estimates and final state estimates can be written to CSV and JSON files. 
+The function `pmmh` accepts a function `Parameters => Likelihood` and returns an Akka stream of `Source[MetropState]` which is consumed using `Sink.seq`, this is not always the most practical way to store the iterations from an MCMC, especially when the chain gets large. If we increase the number of iterations (from 10 in the example) we should consider writing the iterations to a file. The package provides two output formats and can be extended with knowledge of Akka Streams. Currently parameter estimates and final state estimates can be written to CSV and JSON files.
 
 Note that the algorithm has been initialised at the same parameter values we used to simulate the model, this kind of prior information is not typically known for real world processes, unless similar processes have been extensively studied.
 
 Shutdown the Actor system:
 
 ```tut:book:silent
-filteredPoisson.onComplete(_ => system.terminate())
+filteredNegBin.onComplete(_ => system.terminate())
 ```
 
 For more information on how to use the library, see the [examples](https://github.com/jonnylaw/ComposableStateSpaceModels/tree/master/src/main/scala/com/github/jonnylaw/examples) directory for runnable code.

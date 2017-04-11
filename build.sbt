@@ -10,9 +10,6 @@ lazy val micrositeSettings = Seq(
   micrositeGithubRepo := "ComposableStateSpaceModels",
   micrositeImgDirectory := (resourceDirectory in Compile).value / "site" / "figures",
   micrositeCssDirectory := (resourceDirectory in Compile).value / "site" / "styles",
-  micrositeJsDirectory := (resourceDirectory in Compile).value / "site" / "scripts",
-  micrositeExternalIncludesDirectory := (resourceDirectory in Compile).value / "site" / "figures",
-  micrositeHighlightTheme := "solarized-dark"
 )
 
 /**  This allows running ScalaMeter benchmarks in separate sbt configuration.

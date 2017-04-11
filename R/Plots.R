@@ -15,7 +15,7 @@ ornstein_uhlenbeck %>%
   geom_line() +
   theme(legend.position = "none")
 
-ggsave("site/figures/ouProcess.png")
+ggsave("src/main/resources/site/figures/ouProcess.png")
 
 ################
 # NegBin Model #
@@ -31,7 +31,7 @@ single_sims %>%
   facet_wrap(~key, ncol = 1, scales = "free_y") +
   theme(legend.position = "none")
 
-ggsave("NegBinSims.png")
+ggsave("src/main/resources/site/figures/NegBinSims.png")
 
 #####################
 # Plot Neg Bin Sims #
@@ -48,7 +48,7 @@ negbin_sims %>%
   facet_wrap(~key, ncol = 1, scales = "free_y") +
   theme(legend.position = "none")
 
-ggsave("site/figures/ComposedNegBinSims.png")
+ggsave("src/main/resources/site/figures/ComposedNegBinSims.png")
 
 ###################################
 # Filtering the Negative Binomial #
@@ -69,7 +69,7 @@ negbin_filtered %>%
   geom_ribbon(aes(ymin = state_1_lower, ymax = state_1_upper), alpha = 0.5, colour = "NA", fill = "#1f5081") +
   theme(legend.position = "bottom")
 
-ggsave("site/figures/NegBinFiltered.png")
+ggsave("src/main/resources/site/figures/NegBinFiltered.png")
 
 ###############################
 # Negative Binomial Pilot Run #
@@ -166,4 +166,4 @@ interpolated %>%
   geom_line() +
   geom_ribbon(aes(ymin = eta_lower, ymax = eta_upper), alpha = 0.5, colour = "NA", fill = "#1f5081")
 
-ggsave("site/figures/NegBinInterpolated.png")
+ggsave("src/main/resources/site/figures/NegBinInterpolated.png")
