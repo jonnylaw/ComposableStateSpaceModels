@@ -11,7 +11,7 @@ import cats.data.Reader
 
 import StateSpace._
 
-trait Model { self =>
+trait Model {
   /**
     * The observation model, a function from eta to a distribution over the observations
     * realisations can be produced from the observation model by calling draw
@@ -34,7 +34,7 @@ trait Model { self =>
     */
   def sde: Sde
   /**
-    * The data likelihood, given a fully transformed latent state, eta, and an observation
+    * The data likelihood, given the linearly transformed latent state, gamma, and an observation
     * the log-likelihood can be calculated for use in inference algorithms
     */
   def dataLikelihood: (Gamma, Observation) => LogLikelihood

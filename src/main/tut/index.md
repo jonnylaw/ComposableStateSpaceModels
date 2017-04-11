@@ -6,18 +6,31 @@ This is the documentation for a [Scala library for continuous time partially obs
 
 ## Introduction to Partially Observed Markov Process Models
 
-Partially observed Markov processes are a type of [State Space Model](https://en.wikipedia.org/wiki/State-space_representation). This means the models feature unobserved, or latent, variables. The unobserved system state is governed by a [diffusion process](https://en.wikipedia.org/wiki/Diffusion_process), these are continuous time Markov processes meaning that future values of the state space, are independent from all previous values given the current state, x(t).
+Partially observed Markov processes are a type of [State Space Model](https://en.wikipedia.org/wiki/State-space_representation). This means the models feature unobserved, or latent, variables. 
 
-The distribution, p, represents the Markov transition kernel of the state space. The distribution pi, represents the observation distribution, parameterised by the state space. The function f is a linear deterministic function, which can be used to add cyclic seasonal components to the state space. The function g is the linking-function from a [generalised linear model](https://en.wikipedia.org/wiki/Generalized_linear_model), which transforms the state space into the parameter space of the observation model. Define $\gamma(t) = F^T_t \textbf{x}(t)$ and $\eta(t) = g(\gamma(t))$.
+$$ \begin{align*}
+Y(t_i) | \eta(t_i) &\sim \pi(Y(t_i) | \eta(t_i), V) \\
+\eta(t_i) &= g(F^T_t \textbf{x}(t_i)) \\
+\textbf{X}(t_i) | (\textbf{X}(t_{i-1}) = \textbf{x}(t_{i-1})) &\sim p(\textbf{X}(t_{i}) | \textbf{x}(t_{i-1}), \theta)
+\end{align*} $$
+
+The unobserved system state is governed by a [diffusion process](https://en.wikipedia.org/wiki/Diffusion_process), which are continuous time Markov processes). The distribution, \\(p\\), represents the Markov transition kernel of the state space. The distribution \\(pi\\), represents the observation distribution, parameterised by the state space. The function f is a linear deterministic function, which can be used to add cyclic seasonal components to the state space. The function g is the linking-function from a [generalised linear model](https://en.wikipedia.org/wiki/Generalized_linear_model), which transforms the state space into the parameter space of the observation model. Define \\(\gamma(t) = F^T_t \textbf{x}(t)\\) and \\(\eta(t) = g(\gamma(t))\\).
+
+### Installation
+
+The latest release can be found on [Maven Central](https://search.maven.org/#search%7Cga%7C1%7Cg%3A%22com.github.jonnylaw%22), to install using [sbt](http://www.scala-sbt.org/) put the following in your `build.sbt`, where the version is replaced with the required version.
+
+```scala
+libraryDependencies += "com.github.jonnylaw" %% "composablemodels" % version
+```
 
 ### Required Imports
 
+The Composable models package depends on the numerical processing library [Breeze](https://github.com/scalanlp/breeze/) which provides many useful functions and statistical distributions. In addition, timeseries data, MCMC and particle filtering are implemented as [Akka streams](https://akka.io). This means there is a requirement to load an Actor System to run the examples in this short introduction.
 
 ```tut:book:silent
 import com.github.jonnylaw.model._ 
-import breeze.stats.distributions.Gaussian
 import breeze.numerics.log
-import breeze.linalg.{DenseVector, DenseMatrix, diag}
 import cats.implicits._ 
 
 import akka.stream.scaladsl._

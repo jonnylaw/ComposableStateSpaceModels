@@ -1,8 +1,11 @@
+---
+layout: docs
+title: Getting Started
+---
+
 # Composable POMP Models
 
 This is a Scala library for inference and filtering of state space models with a continuous time latent state. The library relies on Akka Streams.
-
-For library documentation, see the [guide](https://jonnylaw.github.io/ComposableStateSpaceModels).
 
 ## Quick Start
 
