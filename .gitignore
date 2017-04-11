@@ -1,12 +1,9 @@
 # Hidden Folders
 .Rhistory
 .ensime_cache/*
-src/main/resources/*
 
 # scala stuff
-target/*
-src/target
-project/*
+target/
 .ensime
 *.jar
 
@@ -19,10 +16,9 @@ project/*
 *.csv
 *.json
 *.pdf
-*.png
+data/*
 
 makefile
 
 # Binary Files
-*.png
 *.pdf

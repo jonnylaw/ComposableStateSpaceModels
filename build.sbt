@@ -1,4 +1,16 @@
 lazy val Benchmark = config("bench") extend Test
+enablePlugins(MicrositesPlugin)
+
+lazy val micrositeSettings = Seq(
+  micrositeName := "Composable State Space Models",
+  micrositeDescription := "Bayesian Inference for Composable State Space Models",
+  micrositeBaseUrl := "/ComposableStateSpaceModels",
+  micrositeDocumentationUrl := "/ComposableStateSpaceModels/",
+  micrositeGithubOwner := "jonnylaw",
+  micrositeGithubRepo := "ComposableStateSpaceModels",
+  micrositeImgDirectory := (resourceDirectory in Compile).value / "site" / "figures",
+  micrositeCssDirectory := (resourceDirectory in Compile).value / "site" / "styles",
+)
 
 /**  This allows running ScalaMeter benchmarks in separate sbt configuration.
   *  It means, that when you want run your benchmarks you should type `bench:test` in sbt console.
@@ -6,7 +18,7 @@ lazy val Benchmark = config("bench") extend Test
 lazy val basic = Project(
   "basic-with-separate-config",
   file("."),
-  settings = Defaults.coreDefaultSettings ++ Seq(
+  settings = Defaults.coreDefaultSettings ++ micrositeSettings ++ Seq(
     name := "ComposableModels",
     organization := "com.github.jonnylaw",
     version := "0.6.0",
@@ -43,7 +55,6 @@ lazy val basic = Project(
     testFrameworks += new TestFramework("org.scalameter.ScalaMeterFramework"),
     parallelExecution in Benchmark := false,
     logBuffered := false,
-//    sonatypeProfileName := "com.github.jonnylaw",
     addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
     pomExtra := (
       <url>https://github.com/jonnylaw/ComposableStateSpaceModels</url>

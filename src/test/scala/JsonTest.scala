@@ -7,8 +7,9 @@ import org.scalacheck.Prop.forAll
 import org.scalacheck._
 import Arbitrary.arbitrary
 import spray.json._
+import DataProtocols._
 
-class JsonSuite extends Properties("Json") with DataProtocols with ParameterGen {
+class JsonSuite extends Properties("Json") with ParameterGen {
   val genLeafState = for {
     v <- denseVector(1)
   } yield Tree.leaf(v)
