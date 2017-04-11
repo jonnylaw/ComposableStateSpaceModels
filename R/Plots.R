@@ -1,7 +1,7 @@
 library(tidyverse); library(jsonlite); library(coda); library(ggmcmc); library(ggthemes); 
 library(jsonlite); library(magrittr)
 
-theme_set(theme_solarized(light = FALSE))
+theme_set(theme_few())
 
 ######################
 # Ornstein Uhlenbeck #
@@ -24,7 +24,7 @@ ggsave("src/main/resources/site/figures/ouProcess.png")
 single_sims = read_csv("data/NegBinModelSims.csv", col_names = c("time", "y", "eta", "gamma", "state"))
 
 single_sims %>%
-  select(time, y, gamma) %>%
+  select(time, y, state) %>%
   gather(key, value, -time) %>%
   ggplot(aes(x = time, y = value, colour = key)) +
   geom_line() + 

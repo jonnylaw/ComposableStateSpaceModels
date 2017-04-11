@@ -1,20 +1,28 @@
-lazy val Benchmark = config("bench") extend Test
+/**
+  * sbt Microsite Configuration
+  */
 enablePlugins(MicrositesPlugin)
 
 lazy val micrositeSettings = Seq(
   micrositeName := "Composable State Space Models",
   micrositeDescription := "Bayesian Inference for Composable State Space Models",
   micrositeBaseUrl := "/ComposableStateSpaceModels",
-  micrositeDocumentationUrl := "/ComposableStateSpaceModels/",
+  micrositeDocumentationUrl := "/ComposableStateSpaceModels/docs",
   micrositeGithubOwner := "jonnylaw",
   micrositeGithubRepo := "ComposableStateSpaceModels",
   micrositeImgDirectory := (resourceDirectory in Compile).value / "site" / "figures",
   micrositeCssDirectory := (resourceDirectory in Compile).value / "site" / "styles",
+  micrositeHighlightTheme := "solarized-dark",
+  micrositeCDNDirectives := microsites.CdnDirectives(
+    jsList = List(
+      "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-MML-AM_CHTML"
+    ))
 )
 
 /**  This allows running ScalaMeter benchmarks in separate sbt configuration.
   *  It means, that when you want run your benchmarks you should type `bench:test` in sbt console.
   */
+lazy val Benchmark = config("bench") extend Test
 lazy val basic = Project(
   "basic-with-separate-config",
   file("."),
