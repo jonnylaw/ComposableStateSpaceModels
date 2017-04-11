@@ -1,0 +1,193 @@
+<html><head><meta charset="utf-8" /><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" /><title>Composable State Space Models</title><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="description" content="Bayesian Inference for Composable State Space Models" /><meta name="author" content="com.github.jonnylaw" /><meta name="og:image" content="/ComposableStateSpaceModels/img/poster.png" /><meta name="og:title" content="Composable State Space Models" /><meta name="og:site_name" content="Composable State Space Models" /><meta name="og:url" content="" /><meta name="og:type" content="website" /><meta name="og:description" content="Bayesian Inference for Composable State Space Models" /><meta name="twitter:image" content="/ComposableStateSpaceModels/img/poster.png" /><meta name="twitter:card" content="summary_large_image" /><meta name="twitter:site" content="" /><meta name="kazari-dependencies" content="" /><meta name="kazari-resolvers" content="" /><link rel="icon" type="image/png" href="/ComposableStateSpaceModels/img/favicon.png" /><link rel="icon" type="image/png" sizes="16x16" href="/ComposableStateSpaceModels/img/favicon16x16.png" /><link rel="icon" type="image/png" sizes="24x24" href="/ComposableStateSpaceModels/img/favicon24x24.png" /><link rel="icon" type="image/png" sizes="32x32" href="/ComposableStateSpaceModels/img/favicon32x32.png" /><link rel="icon" type="image/png" sizes="48x48" href="/ComposableStateSpaceModels/img/favicon48x48.png" /><link rel="icon" type="image/png" sizes="57x57" href="/ComposableStateSpaceModels/img/favicon57x57.png" /><link rel="icon" type="image/png" sizes="60x60" href="/ComposableStateSpaceModels/img/favicon60x60.png" /><link rel="icon" type="image/png" sizes="64x64" href="/ComposableStateSpaceModels/img/favicon64x64.png" /><link rel="icon" type="image/png" sizes="70x70" href="/ComposableStateSpaceModels/img/favicon70x70.png" /><link rel="icon" type="image/png" sizes="72x72" href="/ComposableStateSpaceModels/img/favicon72x72.png" /><link rel="icon" type="image/png" sizes="76x76" href="/ComposableStateSpaceModels/img/favicon76x76.png" /><link rel="icon" type="image/png" sizes="96x96" href="/ComposableStateSpaceModels/img/favicon96x96.png" /><link rel="icon" type="image/png" sizes="114x114" href="/ComposableStateSpaceModels/img/favicon114x114.png" /><link rel="icon" type="image/png" sizes="120x120" href="/ComposableStateSpaceModels/img/favicon120x120.png" /><link rel="icon" type="image/png" sizes="128x128" href="/ComposableStateSpaceModels/img/favicon128x128.png" /><link rel="icon" type="image/png" sizes="144x144" href="/ComposableStateSpaceModels/img/favicon144x144.png" /><link rel="icon" type="image/png" sizes="150x150" href="/ComposableStateSpaceModels/img/favicon150x150.png" /><link rel="icon" type="image/png" sizes="152x152" href="/ComposableStateSpaceModels/img/favicon152x152.png" /><link rel="icon" type="image/png" sizes="196x196" href="/ComposableStateSpaceModels/img/favicon196x196.png" /><link rel="icon" type="image/png" sizes="310x310" href="/ComposableStateSpaceModels/img/favicon310x310.png" /><link rel="icon" type="image/png" sizes="310x150" href="/ComposableStateSpaceModels/img/favicon310x150.png" /><link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" /><link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" /><link rel="stylesheet" href="/ComposableStateSpaceModels/highlight/styles/default.css" /><link rel="stylesheet" href="/ComposableStateSpaceModels/css/style.css" /><link rel="stylesheet" href="/ComposableStateSpaceModels/css/palette.css" /><link rel="stylesheet" href="/ComposableStateSpaceModels/css/codemirror.css" /><link rel="stylesheet" href="/ComposableStateSpaceModels/css/kazari-style.css" /><link rel="stylesheet" href="/ComposableStateSpaceModels/css/solarized-dark.css" /><link rel="stylesheet" href="/ComposableStateSpaceModels/css/solarized-dark.css" /></head><body><header id="site-header"><div class="navbar-wrapper"><div class="container"><div class="row"><div class="col-xs-6"><a href="/ComposableStateSpaceModels/" class="brand"><div class="icon-wrapper"><span>Composable State Space Models</span></div></a></div><div class="col-xs-6"><nav class="text-right"><ul class=""><li><a href="https://github.com/jonnylaw/ComposableStateSpaceModels"><i class="fa fa-github"></i><span class="hidden-xs">GitHub</span></a></li><li><a href="/ComposableStateSpaceModels/"><i class="fa fa-file-text"></i><span class="hidden-xs">Documentation</span></a></li></ul></nav></div></div></div></div><div class="jumbotron"><div class="container"><h1 class="text-center">Bayesian Inference for Composable State Space Models</h1><h2></h2><p class="text-center"><a href="https://github.com/jonnylaw/ComposableStateSpaceModels" class="btn btn-outline-inverse">View on GitHub</a></p></div></div><div><ul class="horizontalNav">      </ul></div></header><main id="site-main"><section class="use"><div class="container"><div id="content"><p>This is the documentation for a <a href="https://git.io/statespace">Scala library for continuous time partially observed Markov processes</a> (POMP). Partially observed Markov processes can be used to model time series data, allowing interpolation and forecasting.</p>
+
+<h2 id="introduction-to-partially-observed-markov-process-models">Introduction to Partially Observed Markov Process Models</h2>
+
+<p>Partially observed Markov processes are a type of <a href="https://en.wikipedia.org/wiki/State-space_representation">State Space Model</a>. This means the models feature unobserved, or latent, variables. The unobserved system state is governed by a <a href="https://en.wikipedia.org/wiki/Diffusion_process">diffusion process</a>, these are continuous time Markov processes meaning that future values of the state space, are independent from all previous values given the current state, x(t).</p>
+
+<p>The distribution, p, represents the Markov transition kernel of the state space. The distribution pi, represents the observation distribution, parameterised by the state space. The function f is a linear deterministic function, which can be used to add cyclic seasonal components to the state space. The function g is the linking-function from a <a href="https://en.wikipedia.org/wiki/Generalized_linear_model">generalised linear model</a>, which transforms the state space into the parameter space of the observation model. Define $\gamma(t) = F^T_t \textbf{x}(t)$ and $\eta(t) = g(\gamma(t))$.</p>
+
+<h3 id="required-imports">Required Imports</h3>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">import</span> <span class="nn">com.github.jonnylaw.model._</span> 
+<span class="k">import</span> <span class="nn">breeze.stats.distributions.Gaussian</span>
+<span class="k">import</span> <span class="nn">breeze.numerics.log</span>
+<span class="k">import</span> <span class="nn">breeze.linalg.</span><span class="o">{</span><span class="nc">DenseVector</span><span class="o">,</span> <span class="nc">DenseMatrix</span><span class="o">,</span> <span class="n">diag</span><span class="o">}</span>
+<span class="k">import</span> <span class="nn">cats.implicits._</span> 
+
+<span class="k">import</span> <span class="nn">akka.stream.scaladsl._</span>
+<span class="k">import</span> <span class="nn">akka.stream._</span>
+<span class="k">import</span> <span class="nn">akka.actor.ActorSystem</span>
+<span class="k">import</span> <span class="nn">akka.util.ByteString</span>
+<span class="k">import</span> <span class="nn">scala.concurrent.ExecutionContext.Implicits.global</span>
+
+<span class="k">implicit</span> <span class="k">val</span> <span class="n">system</span> <span class="k">=</span> <span class="nc">ActorSystem</span><span class="o">(</span><span class="s">"DocumentationSystem"</span><span class="o">)</span>
+<span class="k">implicit</span> <span class="k">val</span> <span class="n">materializer</span> <span class="k">=</span> <span class="nc">ActorMaterializer</span><span class="o">()</span>
+</code></pre>
+</div>
+
+<h2 id="simulating-the-state-space">Simulating the State Space</h2>
+
+<p>An example of a diffusion process is the <a href="https://en.wikipedia.org/wiki/Ornstein%E2%80%93Uhlenbeck_process">Ornstein-Uhlenbeck process</a>, which can be simulated by specifying the parameters of the process, <code class="highlighter-rouge">theta</code>, the mean of the process, <code class="highlighter-rouge">alpha</code> how quickly the process reverts to the mean and <code class="highlighter-rouge">sigma</code> the noise of the process. Then we must specify an initial state, which is done by drawing from a Gaussian distribution, since the exact solution to the OU process is a Gaussian distribution. Then we pass a <code class="highlighter-rouge">stepFunction</code> containing the exact solution to the OU process, relying on only the previous value of the realisation (because the process is  Markovian) and the time difference between realisations.</p>
+
+<p>We can simulate from the SDE using the <a href="http://akka.io/">Akka streams</a> library. We must specify the parameters of the Ornstein Uhlenbeck process, m0 and c0 are the parameters of the initial state, x0 ~ N(m0, c0),  theta is the mean, alpha is how quickly the process reverts to the mean and sigma controls the noise of the process. Note that positive parameters are specified on the log-scale.</p>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">val</span> <span class="n">ouParameter</span> <span class="k">=</span> <span class="nc">SdeParameter</span><span class="o">.</span><span class="n">ouParameter</span><span class="o">(</span><span class="n">m0</span> <span class="k">=</span> <span class="mf">0.0</span><span class="o">,</span> <span class="n">c0</span> <span class="k">=</span> <span class="n">log</span><span class="o">(</span><span class="mf">3.0</span><span class="o">),</span> <span class="n">alpha</span> <span class="k">=</span> <span class="n">log</span><span class="o">(</span><span class="mf">0.5</span><span class="o">),</span> <span class="n">sigma</span> <span class="k">=</span> <span class="n">log</span><span class="o">(</span><span class="mf">0.3</span><span class="o">))(</span><span class="n">theta</span> <span class="k">=</span> <span class="mf">2.0</span><span class="o">,</span> <span class="mf">1.0</span><span class="o">)</span> 
+
+<span class="k">val</span> <span class="n">sde</span> <span class="k">=</span> <span class="nc">Sde</span><span class="o">.</span><span class="n">ouProcess</span><span class="o">(</span><span class="mi">2</span><span class="o">)</span>
+
+<span class="k">val</span> <span class="n">sims</span> <span class="k">=</span> <span class="n">sde</span><span class="o">(</span><span class="n">ouParameter</span><span class="o">).</span>
+  <span class="n">simStream</span><span class="o">(</span><span class="mf">0.0</span><span class="o">,</span> <span class="mf">0.1</span><span class="o">).</span>
+  <span class="n">take</span><span class="o">(</span><span class="mi">200</span><span class="o">)</span>
+</code></pre>
+</div>
+
+<p>We can now save the stream to a file, in order to use it later, or plot it in <code class="highlighter-rouge">R</code>:</p>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="n">sims</span><span class="o">.</span>
+  <span class="n">zipWithIndex</span><span class="o">.</span>
+  <span class="n">map</span> <span class="o">{</span> <span class="k">case</span> <span class="o">(</span><span class="n">x</span><span class="o">,</span> <span class="n">t</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="n">t</span> <span class="o">+</span> <span class="s">", "</span> <span class="o">+</span> <span class="n">x</span><span class="o">.</span><span class="n">show</span> <span class="o">}.</span>
+  <span class="n">runWith</span><span class="o">(</span><span class="nc">Streaming</span><span class="o">.</span><span class="n">writeStreamToFile</span><span class="o">(</span><span class="s">"data/ornsteinUhlenbeck.csv"</span><span class="o">))</span>
+</code></pre>
+</div>
+
+<p><img src="img/ouProcess.png" alt="Ornstein Uhlenbeck Process" width="750" /></p>
+
+<p>Notice, the state space is multidimensional, and as such is represented by a <code class="highlighter-rouge">DenseVector</code>. A single state is represented by a LeafState, this will become clear when considering composition of models. The figure shows a simulation of a two-dimensional uncoupled Ornstein-Uhlenbeck process with <code class="highlighter-rouge">theta = 2.0, 1.0, alpha = 0.05, sigma = 1.0</code>.</p>
+
+<h2 id="simulating-a-single-model">Simulating a Single Model</h2>
+
+<p>The observations of a POMP can be from any parameterised distribution. The observation distribution depends on the latent variables and sometimes on additional parameters not in the system state, such as a scaling parameter representing measurement noise. A many non-Gaussian observation distributions can be used when building a POMP model, the Negative Binomial distribution is often used when considering overdispersed count data. The Negative binomial is parameterised in terms of its mean which varies stochastically and a scale parameter which controls the overdispersion. The variance is mean + mean^2 / scale, hence the overdispersion is controlled by the inverse of the scale. There is a <code class="highlighter-rouge">LeafParameter</code> class which combines the initial State, optional scale parameter and the state space parameters for a single model.</p>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">val</span> <span class="n">sde</span> <span class="k">=</span> <span class="nc">Sde</span><span class="o">.</span><span class="n">brownianMotion</span><span class="o">(</span><span class="mi">1</span><span class="o">)</span>
+<span class="k">val</span> <span class="n">negBinParams</span> <span class="k">=</span> <span class="nc">Parameters</span><span class="o">.</span><span class="n">leafParameter</span><span class="o">(</span><span class="nc">Some</span><span class="o">(</span><span class="n">log</span><span class="o">(</span><span class="mf">3.0</span><span class="o">)),</span> 
+  <span class="nc">SdeParameter</span><span class="o">.</span><span class="n">brownianParameter</span><span class="o">(</span><span class="n">m0</span> <span class="k">=</span> <span class="mf">0.0</span><span class="o">,</span> <span class="n">c0</span> <span class="k">=</span> <span class="n">log</span><span class="o">(</span><span class="mf">1.0</span><span class="o">),</span> <span class="n">sigma</span> <span class="k">=</span> <span class="n">log</span><span class="o">(</span><span class="mf">0.01</span><span class="o">)))</span>
+
+<span class="k">val</span> <span class="n">negBinModel</span> <span class="k">=</span> <span class="nc">Model</span><span class="o">.</span><span class="n">negativeBinomial</span><span class="o">(</span><span class="n">sde</span><span class="o">)</span>
+
+<span class="k">val</span> <span class="n">negBinSims</span> <span class="k">=</span> <span class="nc">SimulateData</span><span class="o">(</span><span class="n">negBinModel</span><span class="o">(</span><span class="n">negBinParams</span><span class="o">)).</span>
+  <span class="n">observations</span>
+
+<span class="n">negBinSims</span><span class="o">.</span>
+  <span class="n">take</span><span class="o">(</span><span class="mi">200</span><span class="o">).</span>
+  <span class="n">map</span><span class="o">((</span><span class="n">d</span><span class="k">:</span> <span class="kt">Data</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="n">d</span><span class="o">.</span><span class="n">show</span><span class="o">).</span>
+  <span class="n">runWith</span><span class="o">(</span><span class="nc">Streaming</span><span class="o">.</span><span class="n">writeStreamToFile</span><span class="o">(</span><span class="s">"data/NegBinModelSims.csv"</span><span class="o">))</span>
+</code></pre>
+</div>
+
+<p><img src="img/NegBinSims.png" alt="Negative Binomial Model" width="750" /></p>
+
+<p>The figure shows the state space, which varies along the whole real line and simulated observations from the Negative Binomial Observation distribution. The linking function, g, is the log-link.</p>
+
+<h2 id="composing-multiple-models">Composing Multiple Models</h2>
+
+<p>If we wish to consider more complex process, for instance a Negative Binomial model with a seasonally varying mean, then we have to add deterministic values to the state before applying the observation distribution. The function, f, is a linear deterministic function which can be used to add seasonal factors to the system state.</p>
+
+<p>Unparameterised models are represented as <code class="highlighter-rouge">Reader[Parameters, Model]</code>. A semigroup is defined on unparameterised models, using the library <a href="https://github.com/typelevel/cats">cats</a>, a semigroup is a set with an associative, closed binary operator. The binary operator is used to compose models, the function is associative, but not commutative, since the composition of two models selects the leftmost Model’s observation and linking functions. The code snippet below shows how to construct a seasonal Negative Binomial model, the observation distribution is Negative Binomial, but the rate of an event occuring follows a daily (period T = 24) cycle if we assume count observations are made once every hour. We have to <code class="highlighter-rouge">import cats.implicits._</code> to use the semigroup notation <code class="highlighter-rouge">|+|</code>.</p>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">val</span> <span class="n">sde2</span> <span class="k">=</span> <span class="nc">Sde</span><span class="o">.</span><span class="n">ouProcess</span><span class="o">(</span><span class="mi">8</span><span class="o">)</span>
+<span class="k">val</span> <span class="n">seasonalParams</span> <span class="k">=</span> <span class="nc">Parameters</span><span class="o">.</span><span class="n">leafParameter</span><span class="o">(</span><span class="nc">None</span><span class="o">,</span>
+    <span class="nc">SdeParameter</span><span class="o">.</span><span class="n">ouParameter</span><span class="o">(</span><span class="mf">0.0</span><span class="o">,</span> <span class="n">log</span><span class="o">(</span><span class="mf">1.0</span><span class="o">),</span> <span class="n">log</span><span class="o">(</span><span class="mf">0.3</span><span class="o">),</span> <span class="n">log</span><span class="o">(</span><span class="mf">0.01</span><span class="o">))</span>
+      <span class="o">(</span><span class="mf">1.5</span><span class="o">,</span> <span class="mf">1.5</span><span class="o">,</span> <span class="mf">1.0</span><span class="o">,</span> <span class="mf">1.0</span><span class="o">,</span> <span class="mf">1.5</span><span class="o">,</span> <span class="mf">1.5</span><span class="o">,</span> <span class="mf">0.1</span><span class="o">,</span> <span class="mf">0.1</span><span class="o">))</span>
+
+<span class="k">val</span> <span class="n">composedParams</span> <span class="k">=</span> <span class="n">negBinParams</span> <span class="o">|+|</span> <span class="n">seasonalParams</span>
+
+<span class="k">val</span> <span class="n">composedMod</span> <span class="k">=</span> <span class="n">negBinModel</span> <span class="o">|+|</span> <span class="nc">Model</span><span class="o">.</span><span class="n">seasonalModel</span><span class="o">(</span><span class="mi">24</span><span class="o">,</span> <span class="mi">4</span><span class="o">,</span> <span class="n">sde2</span><span class="o">)</span>
+
+<span class="k">val</span> <span class="n">composedSims</span> <span class="k">=</span> <span class="nc">SimulateData</span><span class="o">(</span><span class="n">composedMod</span><span class="o">(</span><span class="n">composedParams</span><span class="o">)).</span>
+  <span class="n">observations</span><span class="o">.</span>
+  <span class="n">take</span><span class="o">(</span><span class="mi">500</span><span class="o">)</span>
+</code></pre>
+</div>
+
+<p>Save the simulated data from the composed model in order to plot it</p>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="n">composedSims</span><span class="o">.</span>
+  <span class="n">map</span><span class="o">((</span><span class="n">d</span><span class="k">:</span> <span class="kt">Data</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="n">d</span><span class="o">.</span><span class="n">show</span><span class="o">).</span>
+  <span class="n">runWith</span><span class="o">(</span><span class="nc">Streaming</span><span class="o">.</span><span class="n">writeStreamToFile</span><span class="o">(</span><span class="s">"data/ComposedNegBinSims.csv"</span><span class="o">))</span>
+</code></pre>
+</div>
+
+<p><img src="img/ComposedNegBinSims.png" alt="Composed Model" width="750" /></p>
+
+<h2 id="statistical-inference-the-particle-filter">Statistical Inference: The Particle Filter</h2>
+
+<p>If we have a fully specified model, ie the posterior distributions of the parameters given the data so far are available to us, then we can use a bootstrap particle filter (see <a href="https://www.springer.com/us/book/9780387951461">Sequential Monte Carlo Methods in Practice</a> for a detailed review of the bootstrap particle filter) to determine the hidden state space of the observations.</p>
+
+<p>Consider the simulated Negative Binomial model, the bootstrap particle filter can be applied to the simulated data using a draw from the parameter posterior distribution and the inferred state space can be compared to the previously simulated state space. The data can be read in from a CSV or database, or simulated again. However, since these are stochastic models we can’t compare different realisations of the same model.</p>
+
+<p>Define the particle filter, using 100 particles.</p>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">val</span> <span class="n">t0</span> <span class="k">=</span> <span class="mf">0.0</span>
+<span class="k">val</span> <span class="n">filter</span> <span class="k">=</span> <span class="nc">ParticleFilter</span><span class="o">.</span><span class="n">filter</span><span class="o">(</span><span class="nc">Resampling</span><span class="o">.</span><span class="n">systematicResampling</span><span class="o">,</span> <span class="n">t0</span><span class="o">,</span> <span class="mi">1000</span><span class="o">)</span>
+</code></pre>
+</div>
+
+<p><code class="highlighter-rouge">filter</code> is no an Akka Streams <code class="highlighter-rouge">Flow</code>, which represents a transformation on a live stream. This flow takes in <code class="highlighter-rouge">Data</code> and retruns <code class="highlighter-rouge">PfState</code> containing the current estimate of the log-likelihood, the current estimated state, the effective sample size of the particles along with the time and current observation. Next, we run the particle filter over the observed data stream and calculate credible intervals of the state, using the 100 measurements simulated from the composed model.</p>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">val</span> <span class="n">filteredNegBin</span> <span class="k">=</span> <span class="nc">DataFromFile</span><span class="o">(</span><span class="s">"data/ComposedNegBinSims.csv"</span><span class="o">).</span>
+  <span class="n">observations</span><span class="o">.</span>
+  <span class="n">via</span><span class="o">(</span><span class="n">filter</span><span class="o">(</span><span class="n">composedMod</span><span class="o">(</span><span class="n">composedParams</span><span class="o">))).</span>
+  <span class="n">map</span><span class="o">(</span><span class="nc">ParticleFilter</span><span class="o">.</span><span class="n">getIntervals</span><span class="o">(</span><span class="n">composedMod</span><span class="o">(</span><span class="n">composedParams</span><span class="o">))).</span>
+  <span class="n">map</span><span class="o">(</span><span class="k">_</span><span class="o">.</span><span class="n">show</span><span class="o">).</span>
+  <span class="n">runWith</span><span class="o">(</span><span class="nc">Streaming</span><span class="o">.</span><span class="n">writeStreamToFile</span><span class="o">(</span><span class="s">"data/NegativeBinomialFiltered.csv"</span><span class="o">))</span>
+</code></pre>
+</div>
+
+<p>The figure below shows the actual simulated state, plotted next to the estimate state and 99% <a href="https://en.wikipedia.org/wiki/Credible_interval">credible intervals</a>.</p>
+
+<p><img src="img/NegBinFiltered.png" alt="Filtered Negative Binomial Model" width="750" /></p>
+
+<h2 id="inference-for-the-joint-state-and-parameter-posterior-distribution">Inference for the Joint State and Parameter Posterior Distribution</h2>
+
+<p>Say we have observed a time depending process in the real world, and don’t have the parameters available for the model. We wish to estimate the joint posterior distribution of the state and the parameters of the model simultaneously. One such (offline) algorithm to determine this posterior is the Particle Marginal Metropolis Hastings (PMMH) Algorithm (see <a href="http://www.stats.ox.ac.uk/~doucet/andrieu_doucet_holenstein_PMCMC.pdf">Doucet et al. 2010</a>). The likelihood of the latent state and parameters given the observations can be determined using a particle filter, then a standard Metropolis-Hastings update step is used to create a Markov Chain which converges to the full joint posterior of the latent state and the parameters of the model given the observed real-world process.</p>
+
+<p>We illustrate this can implement the PMMH algorithm for the simulated Negative Binomial observations, and determine if the algorithm is able to recover the parameters. First, we must specify a prior on the parameters:</p>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">def</span> <span class="n">prior</span><span class="k">:</span> <span class="kt">Parameters</span> <span class="o">=&gt;</span> <span class="nc">LogLikelihood</span> <span class="k">=</span> <span class="n">p</span> <span class="k">=&gt;</span> <span class="mf">0.0</span>
+</code></pre>
+</div>
+
+<p>Create a function from Parameters =&gt; LogLikelihood by composing the model (Parameters =&gt; Model) with the filter (Model =&gt; LogLikelihood). The first 400 data points are read in from a file containing the simulated data and <code class="highlighter-rouge">grouped</code> to form a <code class="highlighter-rouge">Seq[Data]</code>. <code class="highlighter-rouge">mapConcat</code> is then used to create a tuple of <code class="highlighter-rouge">(Int, Data)</code> representing an integer identifier for the MCMC chain and all 400 data points. <code class="highlighter-rouge">mapAsync</code> will spawn 2 worker threads to run the PMMH algorithm twice in parallel.</p>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">import</span> <span class="nn">DataProtocols._</span>
+<span class="k">import</span> <span class="nn">spray.json._</span>
+
+<span class="nc">DataFromFile</span><span class="o">(</span><span class="s">"data/ComposedNegBinSims.csv"</span><span class="o">).</span>
+  <span class="n">observations</span><span class="o">.</span>
+  <span class="n">take</span><span class="o">(</span><span class="mi">400</span><span class="o">).</span>
+  <span class="n">grouped</span><span class="o">(</span><span class="mi">400</span><span class="o">).</span>
+  <span class="n">mapConcat</span><span class="o">(</span><span class="n">data</span> <span class="k">=&gt;</span> <span class="o">(</span><span class="mi">1</span> <span class="n">to</span> <span class="mi">2</span><span class="o">).</span><span class="n">map</span><span class="o">(</span><span class="n">chain</span> <span class="k">=&gt;</span> <span class="o">(</span><span class="n">chain</span><span class="o">,</span> <span class="n">data</span><span class="o">))).</span>
+  <span class="n">mapAsync</span><span class="o">(</span><span class="mi">2</span><span class="o">)</span> <span class="o">{</span> <span class="k">case</span> <span class="o">(</span><span class="n">chain</span><span class="o">,</span> <span class="n">d</span><span class="o">)</span> <span class="k">=&gt;</span>
+    <span class="k">val</span> <span class="n">filter</span> <span class="k">=</span> <span class="nc">ParticleFilter</span><span class="o">.</span><span class="n">llStateReader</span><span class="o">(</span><span class="n">d</span><span class="o">.</span><span class="n">toVector</span><span class="o">,</span> <span class="nc">Resampling</span><span class="o">.</span><span class="n">systematicResampling</span><span class="o">,</span> <span class="mi">100</span><span class="o">)</span>
+    <span class="k">val</span> <span class="n">pf</span> <span class="k">=</span> <span class="n">filter</span> <span class="n">compose</span> <span class="n">composedMod</span>
+    <span class="k">val</span> <span class="n">pmmh</span> <span class="k">=</span> <span class="nc">MetropolisHastings</span><span class="o">.</span><span class="n">pmmhState</span><span class="o">(</span><span class="n">composedParams</span><span class="o">,</span> <span class="nc">Parameters</span><span class="o">.</span><span class="n">perturb</span><span class="o">(</span><span class="mf">0.1</span><span class="o">),</span> <span class="o">(</span><span class="n">a</span><span class="o">,</span> <span class="n">b</span><span class="o">)</span> <span class="k">=&gt;</span> <span class="mf">0.0</span><span class="o">,</span> <span class="n">prior</span><span class="o">)</span>
+
+    <span class="n">pmmh</span><span class="o">(</span><span class="n">pf</span><span class="o">).</span>
+      <span class="n">take</span><span class="o">(</span><span class="mi">10</span><span class="o">).</span> <span class="c1">// there are only ten iterations in this example, should use many more in practice
+</span>      <span class="n">map</span><span class="o">(</span><span class="k">_</span><span class="o">.</span><span class="n">toJson</span><span class="o">.</span><span class="n">compactPrint</span><span class="o">).</span> <span class="c1">// convert each stream element to JSON
+</span>      <span class="n">runWith</span><span class="o">(</span><span class="nc">Sink</span><span class="o">.</span><span class="n">seq</span><span class="o">)</span> <span class="c1">// materialize the stream as a sequence
+</span>  <span class="o">}.</span>
+  <span class="n">runWith</span><span class="o">(</span><span class="nc">Sink</span><span class="o">.</span><span class="n">ignore</span><span class="o">)</span>
+</code></pre>
+</div>
+
+<p>The function <code class="highlighter-rouge">pmmh</code> accepts a function <code class="highlighter-rouge">Parameters =&gt; Likelihood</code> and returns an Akka stream of <code class="highlighter-rouge">Source[MetropState]</code> which is consumed using <code class="highlighter-rouge">Sink.seq</code>, this is not always the most practical way to store the iterations from an MCMC, especially when the chain gets large. If we increase the number of iterations (from 10 in the example) we should consider writing the iterations to a file. The package provides two output formats and can be extended with knowledge of Akka Streams. Currently parameter estimates and final state estimates can be written to CSV and JSON files.</p>
+
+<p>Note that the algorithm has been initialised at the same parameter values we used to simulate the model, this kind of prior information is not typically known for real world processes, unless similar processes have been extensively studied.</p>
+
+<p>Shutdown the Actor system:</p>
+
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="n">filteredNegBin</span><span class="o">.</span><span class="n">onComplete</span><span class="o">(</span><span class="k">_</span> <span class="k">=&gt;</span> <span class="n">system</span><span class="o">.</span><span class="n">terminate</span><span class="o">())</span>
+</code></pre>
+</div>
+
+<p>For more information on how to use the library, see the <a href="https://github.com/jonnylaw/ComposableStateSpaceModels/tree/master/src/main/scala/com/github/jonnylaw/examples">examples</a> directory for runnable code.</p>
+</div></div></section><section class="technologies"><div class="container"><div class="row"></div></div></section></main><footer id="site-footer"><div class="container"><div class="row"><div class="col-xs-6"><p>Composable State Space Models is designed and developed by <a href="" target="_blank">com.github.jonnylaw</a></p></div><div class="col-xs-6"><p class="text-right"><a href="https://github.com/jonnylaw/ComposableStateSpaceModels"><span class="fa fa-github"></span>View on GitHub</a></p></div></div><div class="row"><div class="col-xs-6"><p>Website built with <a href="https://47deg.github.io/sbt-microsites/" target="_blank">Sbt-microsites</a> - © 2016 <a href="https://www.47deg.com/" target="_blank">47 Degrees</a></p></div></div></div></footer><script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script><script src="/ComposableStateSpaceModels/highlight/highlight.pack.js"></script><script>hljs.configure({
+languages:['scala','java','bash']
+});
+hljs.initHighlighting();
+             </script><script src="/ComposableStateSpaceModels/js/kazari.js"></script><script><script>
+$(document).ready(function() {
+	kazari.KazariPlugin().decorateCode('https://scala-evaluator-212.herokuapp.com/eval', 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.S2F6YXJp.Jl2eqMfw8IakJF93PjxTbrf-8YUJgX5OoOfy5JHE8Yw', '', 'solarized-dark')
+})
+    </script></script></body></html>
