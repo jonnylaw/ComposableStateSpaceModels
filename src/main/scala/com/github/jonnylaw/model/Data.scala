@@ -9,9 +9,9 @@ import breeze.numerics.{exp, sqrt}
 import java.nio.file._
 import scala.concurrent.Future
 import scala.language.higherKinds
-import com.github.nscala_time.time.Imports._
 import spray.json._
 import DataProtocols._
+import org.joda.time.DateTime
 
 /**
   * A single observation of a time series

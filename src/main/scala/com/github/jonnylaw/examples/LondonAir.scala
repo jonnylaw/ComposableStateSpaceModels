@@ -16,10 +16,11 @@ import akka.http.scaladsl.common.{EntityStreamingSupport, JsonEntityStreamingSup
 import DataProtocols._
 
 
-object UoClient extends App {
+object LondonAirClient extends App {
   implicit val system = ActorSystem("Server")
   implicit val materializer = ActorMaterializer()
   implicit val executionContext = system.dispatcher
   implicit val jsonStreamingSupport: JsonEntityStreamingSupport = EntityStreamingSupport.json()
 
+  
 }
