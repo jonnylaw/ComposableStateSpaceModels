@@ -26,7 +26,7 @@ import TrafficDatabaseTables._
 trait UoAPI {
   val raw_data_uri = Uri("http://uoweb1.ncl.ac.uk/api/v1/sensor/data/raw.json")
   val live_data_uri = Uri("http://uoweb1.ncl.ac.uk/api/v1/sensors/live.json")
-  val api_key = "73q7975bvu81zux05e7m1jbtpn03sv6qlnw3k8vzkn6ioc7jyu3zzbigekuoa987e7nenxvebbbjmo5woq5wnhdp1g" // your api key here
+  val api_key = "asdf" // your api key here
 }
 
 /**
@@ -166,18 +166,4 @@ object InsertTrafficFlowData extends App with UoAPI {
     println(s"Written $s lines")
     system.terminate()
   }
-}
-
-/**
-  * Perform parameter inference by reading past information from the database
-  */
-object PMMHFromDatabase extends App {
-
-}
-
-/**
-  * Perform a filter online
-  */
-object FilterOnline extends App with UoAPI {
-
 }

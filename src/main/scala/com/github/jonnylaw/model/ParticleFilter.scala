@@ -343,7 +343,7 @@ object ParticleFilter {
     * @param n the number of particles to use in the particle filter
     * @param model an unparameterised model
     */
-  def filterLlState(data: Vector[Data], resample: Resample[State], n: Int) = { 
+  def filterLlState(data: Vector[Data], resample: Resample[State], n: Int) = Reader { 
     (mod: Model) => Filter(mod, resample).filter(data)(n)
   }
 
