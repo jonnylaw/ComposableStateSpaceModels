@@ -1,4 +1,3 @@
-
 package com.github.jonnylaw.examples.urbanobservatory
 
 import akka.stream.scaladsl._
@@ -22,6 +21,7 @@ import com.github.nscala_time.time.Imports._
 import com.typesafe.config._
 import slick.jdbc.SQLiteProfile.api._
 import spray.json._
+import scala.concurrent.Future
 
 trait NegBinTrafficModel {
   def dailyIndep = Model.seasonalModel(24, 4, Sde.ouProcess(8))
@@ -95,7 +95,6 @@ trait NegBinTrafficModel {
       negBinPriorDrift(drift) + priorDaily(daily) + priorWeekly(weekly)
     case _ => throw new Exception
   }
-
 }
 
 /**
@@ -108,27 +107,35 @@ object PMMHFromDatabase extends App with NegBinTrafficModel {
 
   // specify the database to use, loading information using typesafe config
   val db = Database.forConfig("sqlite1")
-  val prop = diag(DenseVector.fill(23)(0.01))
 
-  val trafficQuery = trafficFlow.map(t => (t.datetime, t.reading))
+  val trafficQuery = trafficFlow.
+    filter(_.sensorName === "N05171T").
+    sortBy(_.timestamp).
+    map(t => (t.timestamp, t.reading))
 
   val dataStream = db.stream(trafficQuery.result)
 
+  val prop = diag(DenseVector.fill(23)(0.01))
   def resample: Resample[State] = Resampling.systematicResampling _
   val particles = 500
  
   Source.fromPublisher(dataStream).
     map { case (t, r) => TimestampObservation(t, t.getMillis(), Some(r)) }.
-    grouped(586).
+    via(Streaming.thinStream(10)).
+    take(10).
+    grouped(10).
     mapConcat(d => (1 to 2).map(chain => (d, chain))).
     mapAsync(2) { case (data, chain) =>
-      val filter = ParticleFilter.filterLlState(data.toVector, resample, particles) compose model
+      val filter = ParticleFilter.filterLlState(data.toVector, resample, particles).lift[Error] compose model
       val pmmh = MetropolisHastings.pmmhState(params.draw,
         com.github.jonnylaw.model.Parameters.perturbMvn(prop), (from, to) => 0.0, negBinPrior)
 
-      pmmh(filter).
-        map(_.toJson.compactPrint).
-        runWith(Streaming.writeStreamToFile(s"data/TrafficFlow/TrafficFlowPosterior-$chain.json"))
+      Future.successful(data.foreach(println))
+
+      // pmmh(filter).
+      //   map(_.toJson.compactPrint).
+      //   runForeach(Sink.ignore)
+        // runWith(Streaming.writeStreamToFile(s"/data/a9169110/trafficflow/trafficflowposterior-$chain.json"))
     }.
     runWith(Sink.onComplete{ s =>
       println(s)

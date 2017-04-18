@@ -35,7 +35,7 @@ object FlatServer extends App with TestNegBinMod {
   implicit val jsonStreamingSupport: JsonEntityStreamingSupport = EntityStreamingSupport.json()
 
   val route = path("sims") {
-    val simStream = SimulateData(model(params)).
+    val simStream = SimulateData(model(params).right.get).
       observations.
       take(10)
 
@@ -67,7 +67,7 @@ object StreamServer extends App with TestNegBinMod {
     withFramingRenderer(Flow[ByteString].intersperse(start, sep, end))
 
   val route = path("sims") {
-    val simStream = SimulateData(model(params)).
+    val simStream = SimulateData(model(params).right.get).
       observations.
       zip(Source.tick(1.second, 1.second, ())).
       map(_._1)
@@ -87,15 +87,12 @@ object StreamServer extends App with TestNegBinMod {
     .onComplete(_ => system.terminate()) // and shutdown when done
 }
 
-/**
-  * Using the parameter posterior of the model, calculate an online one-step forecast
-  */
 object Client extends App with TestNegBinMod {
   implicit val system = ActorSystem("Client")
   implicit val materializer = ActorMaterializer()
   implicit val executionContext = system.dispatcher
 
-  val filter = ParticleFilter.filter(Resampling.multinomialResampling, 0.0, 100).compose(model)
+  val filter = ParticleFilter.filter(Resampling.multinomialResampling, 0.0, 100).lift[Error] compose model
 
   val res: Future[HttpResponse] = 
     Http().singleRequest(HttpRequest(GET, uri = "http://localhost:8080/sims"))
@@ -108,9 +105,6 @@ object Client extends App with TestNegBinMod {
         map(_.utf8String).
         map(_.parseJson.convertTo[TimedObservation]).
         runWith(Sink.seq)
-        // via(filter(params)).
-        // toMat(Sink.seq)(Keep.right).
-        // run()
 
       res.onComplete { 
         case Success(readings) => readings.foreach(println)

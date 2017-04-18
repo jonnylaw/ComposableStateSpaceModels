@@ -26,7 +26,7 @@ import TrafficDatabaseTables._
 trait UoAPI {
   val raw_data_uri = Uri("http://uoweb1.ncl.ac.uk/api/v1/sensor/data/raw.json")
   val live_data_uri = Uri("http://uoweb1.ncl.ac.uk/api/v1/sensors/live.json")
-  val api_key = "asdf" // your api key here
+  val api_key = "adsaf"
 }
 
 /**
@@ -53,7 +53,10 @@ object TrafficFlowStatic extends App with UoAPI {
     mapConcat(s => s.data.trafficFlow.data.toList).
     map{ l => TimestampObservation(l._1, l._1.getMillis(), Some(l._2)) }.
     runForeach(println).
-    onComplete(_ => system.terminate())
+    onComplete { s => 
+      println(s)
+      system.terminate()
+    }
 }
 
 /**
@@ -137,14 +140,17 @@ object InsertTrafficFlowData extends App with UoAPI {
   implicit val executionContext = system.dispatcher
 
   // read in the data from the API
-  val query: Query = Query("api_key" -> api_key,
+  val query: Query = Query(
+    "api_key" -> api_key,
     "sensor_name" -> "N05171T",
-    "start_time" -> "20170401",
-    "end_time" -> "20170413",
+    "start_time" -> "20170301",
+    "end_time" -> "20170331",
     "variable" -> "traffic flow")
 
   val res: Future[HttpResponse] = 
     Http().singleRequest(HttpRequest(GET, uri = raw_data_uri.withQuery(query)))
+
+  println(raw_data_uri.withQuery(query))
 
   val sensorReadings = Flow[Sensor].mapConcat(x => x.data.trafficFlow.data.map (a => (x.name, a._1, a._2)))
 
@@ -159,11 +165,11 @@ object InsertTrafficFlowData extends App with UoAPI {
     via(sensorReadings).
     groupedWithin(100, FiniteDuration(10L, "seconds")).
     mapAsync(1)(a => db.run(DBIO.seq(trafficFlow ++= a))).
-    runWith(Sink.fold(0.0)((acc, _) => acc + 100))
+    runWith(Sink.ignore)
 
   writeSensorData.
   onComplete { s =>
-    println(s"Written $s lines")
+    println(s)
     system.terminate()
   }
 }

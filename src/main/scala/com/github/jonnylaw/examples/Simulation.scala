@@ -24,7 +24,7 @@ trait TestNegBinMod {
       (1.5, 1.5, 1.0, 1.0, 1.5, 1.5, 0.1, 0.1))
 
   val params = p |+| p1
-
+  
   val model = Model.negativeBinomial(sde) |+| Model.seasonalModel(24, 4, sde2)
 }
 
@@ -32,7 +32,7 @@ object SimModelToCSV extends App with TestNegBinMod {
   implicit val system = ActorSystem("SimulateToCSV")
   implicit val materializer = ActorMaterializer()
 
-  SimulateData(model(params)).
+  SimulateData(model(params).right.get).
     observations.
     take(5000).
     map(_.show).
@@ -44,7 +44,7 @@ object SimModelToJSON extends App with TestNegBinMod {
   implicit val system = ActorSystem("SimulateToJson")
   implicit val materializer = ActorMaterializer()
 
-  SimulateData(model(params)).
+  SimulateData(model(params).right.get).
     observations.
     take(5000).
     map(_.toJson.compactPrint).

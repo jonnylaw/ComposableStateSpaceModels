@@ -8,7 +8,7 @@ import breeze.linalg.{DenseMatrix, DenseVector}
 import breeze.numerics._
 import akka.stream.scaladsl._
 import cats._
-import cats.data.{Reader, Kleisli}
+import cats.data.{Reader, Kleisli, EitherT}
 import scala.language.higherKinds
 import cats.implicits._
 import scala.concurrent._
@@ -20,7 +20,7 @@ import scala.concurrent._
   * @param state the current path of the state
   * @param accepted the total number of accepted moves in the metropolis hastings algorithm
   */
-case class ParamsState(ll: LogLikelihood, params: Parameters, accepted: Int) extends Serializable
+case class ParamsState(ll: LogLikelihood, params: Parameters, accepted: Int) 
 
 /**
   * The state of the metropolis-hastings algorithms
@@ -29,7 +29,7 @@ case class ParamsState(ll: LogLikelihood, params: Parameters, accepted: Int) ext
   * @param state the proposed path of the state from the particle filter
   * @param accepted the total number of accepted moves in the metropolis hastings algorithm
   */
-case class MetropState(ll: LogLikelihood, params: Parameters, sde: StateSpace, accepted: Int) extends Serializable
+case class MetropState(ll: LogLikelihood, params: Parameters, sde: StateSpace, accepted: Int)
 
 trait MetropolisHastings {
   /**
@@ -60,7 +60,7 @@ trait MetropolisHastings {
     * A particle filter to calculate the pseudo-marginal likelihood of the composable model
     * the bootstrap particle filter for the PMMH algorithm
     */
-  def pf: Parameters => (LogLikelihood, Vector[StateSpace])
+  def pf: BootstrapFilter
 
   /**
     * A single step of the metropolis hastings algorithm to be 
@@ -74,11 +74,11 @@ trait MetropolisHastings {
     for {
       propParams <- proposal(s.params)
       state = pf(propParams)
-      a = state._1 + logTransition(propParams, s.params) + prior(propParams) - 
+      a = state.right.get._1 + logTransition(propParams, s.params) + prior(propParams) - 
       logTransition(s.params, propParams) - s.ll - prior(s.params)
       u = Uniform(0, 1).draw
       prop = if (log(u) < a) {
-        MetropState(state._1, propParams, state._2.last, s.accepted + 1)
+        MetropState(state.right.get._1, propParams, state.right.get._2.last, s.accepted + 1)
       } else {
         s
       }
@@ -112,14 +112,15 @@ trait MetropolisHastings {
   *  parameters to the newly proposed set of parameters, for symmetric proposal distributions this 
   * always evaluates to zero
   * @param proposal a generic proposal distribution for the metropolis algorithm (eg. Gaussian)
-
+  * @param parameterTransition a function2 (from, to) => LogLikelihood of the probability of moving between parameter proposals
+  * @param prior a function representing the the prior distriution over the parameters
   */
 case class ParticleMetropolisHastings(
-  pf: Parameters => (LogLikelihood, Vector[StateSpace]),
   initialParams: Parameters,
   proposal: Parameters => Rand[Parameters],
   parameterTransition: (Parameters, Parameters) => LogLikelihood,
-  prior: Parameters => LogLikelihood) extends MetropolisHastings {
+  prior: Parameters => LogLikelihood,
+  pf: BootstrapFilter) extends MetropolisHastings {
 
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = parameterTransition(from, to)
 }
@@ -134,6 +135,6 @@ object MetropolisHastings {
     proposal: Parameters => Rand[Parameters],
     logTransition: (Parameters, Parameters) => LogLikelihood,
     prior: Parameters => LogLikelihood) = Reader { (pf: BootstrapFilter) =>
-    ParticleMetropolisHastings(pf.run, initP, proposal, logTransition, prior).iters
+    ParticleMetropolisHastings(initP, proposal, logTransition, prior, pf).iters
   }
 }

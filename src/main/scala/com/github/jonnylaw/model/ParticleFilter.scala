@@ -18,7 +18,6 @@ import GraphDSL.Implicits._
 import scala.collection.parallel.immutable.ParVector
 import scala.concurrent._
 import scala.language.higherKinds
-import Collection.ops._
 
 /**
   * Credible intervals from a set of samples in a distribution
@@ -287,7 +286,7 @@ object ParticleFilter {
   /**
     * Filter from a value of the state
     */
-  def filterInit(resample: Resample[State], t0: Time, n: Int, initState: State) = { (mod: Model) =>
+  def filterInit(resample: Resample[State], t0: Time, n: Int, initState: State) = Reader { (mod: Model) =>
     FilterInit(mod, resample, initState).filterStream(t0)(n)
   }
 
@@ -308,7 +307,7 @@ object ParticleFilter {
     t0: Time,
     n: Int,
     resample: Resample[State],
-    mod: Parameters => Model
+    mod: UnparamModel
   ) = Flow.fromGraph(GraphDSL.create() {
       implicit builder: GraphDSL.Builder[NotUsed] =>
       
@@ -319,12 +318,15 @@ object ParticleFilter {
     val reduce = builder.add(Flow[PfState].reduce((a, b) =>
       PfState(a.t, a.observation, a.particles ++ b.particles, b.ll, b.ess + a.ess)))
 
-    val summarise = builder.add(Flow[PfState].map(ParticleFilter.getIntervals(mod(values.head._1))))
+    val summarise = builder.add(Flow[PfState].map(ParticleFilter.getIntervals(mod, values.head._1).run))
 
-    val filterFlow = (s: (Parameters, State)) => filterInit(resample, t0, n, s._2)(mod(s._1))
+    val filterFlow = (s: (Parameters, State)) => {
+      val pf = filterInit(resample, t0, n, s._2).lift[Error].compose(mod)
+      pf(s._1)
+    }
 
-    bcast ~> filterFlow(values.head) ~> merge ~> reduce ~> summarise
-    bcast ~> filterFlow(values(1))   ~> merge
+    bcast ~> filterFlow(values.head).right.get ~> merge ~> reduce ~> summarise
+    bcast ~> filterFlow(values(1)).right.get   ~> merge
 
     FlowShape(bcast.in, summarise.out)
   })
@@ -347,9 +349,6 @@ object ParticleFilter {
     (mod: Model) => Filter(mod, resample).filter(data)(n)
   }
 
-  def llStateReader(data: Vector[Data], resample: Resample[State], n: Int) =
-    Reader { (mod: Model) => Filter(mod, resample).filter(data)(n) }
-
   /**
     * Construct a particle filter to determine the pseudo-marginal likelihood 
     * of a POMP model
@@ -359,8 +358,8 @@ object ParticleFilter {
     * @param parameters the starting parameters of the filter
     * @return a value of logLikelihood
     */
-  def likelihood(data: Vector[Data], resample: Resample[State], n: Int) = { (model: Model) =>
-    Filter(model, resample).llFilter(data.sortBy((d: Data) => d.t))(n)
+  def likelihood(data: Vector[Data], resample: Resample[State], n: Int): Reader[Model, LogLikelihood] = Reader { 
+    (model: Model) => Filter(model, resample).llFilter(data.sortBy((d: Data) => d.t))(n)
   }
 
   /**
@@ -409,17 +408,19 @@ object ParticleFilter {
   }
 
   /**
-    * Transforms PfState into PfOut, including gamma, gamma intervals and state intervals
+    * Transforms PfState into PfOut, including eta, eta intervals and state intervals
     */
-  def getIntervals(mod: Model): PfState => PfOut = s => {
-    val state = s.particles
-    val stateMean = meanState(state)
-    val stateIntervals = getallCredibleIntervals(state, 0.975)
-    val etas = state map (x => mod.link(mod.f(x, s.t)))
-    val meanEta = mod.link(mod.f(stateMean, s.t))
-    val etaIntervals = getOrderStatistic(etas, 0.975)
+  def getIntervals(model: UnparamModel, params: Parameters) = Reader { (s: PfState) =>
+    model(params) map { mod =>
+      val state = s.particles
+      val stateMean = meanState(state)
+      val stateIntervals = getallCredibleIntervals(state, 0.975)
+      val etas = state map (x => mod.link(mod.f(x, s.t)))
+      val meanEta = mod.link(mod.f(stateMean, s.t))
+      val etaIntervals = getOrderStatistic(etas, 0.975)
 
-    PfOut(s.t, s.observation, meanEta, etaIntervals, stateMean, stateIntervals)
+      PfOut(s.t, s.observation, meanEta, etaIntervals, stateMean, stateIntervals)
+    }
   }
 
   /**

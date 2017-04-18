@@ -1,11 +1,14 @@
 package com.github.jonnylaw.examples
 
 import akka.stream.scaladsl._
+import akka.NotUsed
 import akka.stream._
 import akka.actor.ActorSystem
 import akka.util.ByteString
 import breeze.numerics.log
-import cats.implicits._
+import cats.syntax.either._
+import cats.instances._
+import cats.instances.either._
 import com.github.jonnylaw.model._
 import DataProtocols._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -26,14 +29,18 @@ object Filtering extends App with TestNegBinMod {
     observations
 
   val t0 = 0.0
-  val filter = ParticleFilter.filter(Resampling.systematicResampling, t0, 1000)
+  val filter = ParticleFilter.filter(Resampling.systematicResampling, t0, 1000).lift[Error] compose model
 
-  data.
-    via(filter(model(params))).
-    map(ParticleFilter.getIntervals(model(params))).
-    map(_.show).
-    runWith(Streaming.writeStreamToFile("data/NegativeBinomialFiltered.csv")).
-    onComplete(_ => system.terminate())
+  filter(params) map { (pf: Flow[Data, PfState, NotUsed]) =>
+    data.
+      via(pf).
+      map(ParticleFilter.getIntervals(model, params).run).
+      via(Streaming.safeShow).
+      runWith(Streaming.writeStreamToFile("data/NegativeBinomialFiltered.csv"))
+  } match {
+    case Right(s) => s.onComplete(_ => system.terminate()) 
+    case Left(e) => throw new Exception(e)
+  }
 }
 
 /**
@@ -52,7 +59,7 @@ object OnlineFiltering extends App with TestNegBinMod {
     observations.
     drop(4000)
 
-  val t0 = 400 * 0.1
+  val t0 = 4000 * 0.1
 
   val resample: Resample[State] = Resampling.systematicResampling _
 
@@ -61,14 +68,10 @@ object OnlineFiltering extends App with TestNegBinMod {
       runWith(Sink.seq)
     simPosterior = Streaming.createDist(posterior)(x => (x.params, x.sde.state))
     io <- testData.
-    take(2).
-      via(ParticleFilter.filterOnline(simPosterior, 2, t0, 100, resample, model.run)).
-      map(_.show).
-      runForeach(println)
+      via(ParticleFilter.filterOnline(simPosterior, 2, t0, 100, resample, model)).
+      via(Streaming.safeShow).
+      runWith(Streaming.writeStreamToFile("data/NegativeBinomialOnlineFilter.csv"))
   } yield io
-
-
-    // runWith(Streaming.writeStreamToFile("data/NegativeBinomialOnlineFilter.csv")).
 
   res.
     onComplete(s => {

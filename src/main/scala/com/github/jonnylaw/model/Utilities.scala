@@ -11,10 +11,9 @@ object Utilities {
   def meanCovSamples(samples: Seq[DenseVector[Double]]) = {
     val n = samples.size
     val m = new DenseMatrix(n, samples.head.size, samples.map(_.data).toArray.transpose.flatten)
-    val sampleMean = samples.reduce(_ + _) :* 1.0/n
+    val sampleMean = samples.reduce(_ + _).map(_ * 1.0/n)
     val sampleCovariance = covmat.matrixCovariance(m)
 
     (sampleMean, sampleCovariance)
   }
-
 }

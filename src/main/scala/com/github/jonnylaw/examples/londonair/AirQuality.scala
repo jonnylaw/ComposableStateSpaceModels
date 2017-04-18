@@ -1,4 +1,4 @@
-package com.github.jonnylaw.examples.urbanobservatory
+package com.github.jonnylaw.examples.londonair
 
 import spray.json._
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
@@ -6,12 +6,11 @@ import com.github.jonnylaw.model._
 import com.github.nscala_time.time.Imports._
 import java.sql.Timestamp
 import slick.jdbc.SQLiteProfile.api._
-// import slick.jdbc.H2Profile.api._
 
 /**
   * Json marshalling for Traffic Flow
   */
-object UoSensors extends SprayJsonSupport with DefaultJsonProtocol {
+object LondonAirSensors extends SprayJsonSupport with DefaultJsonProtocol {
   case class Sensor(name: String, data: SensorData)
   case class SensorData(trafficFlow: TrafficFlow)
   case class TrafficFlow(meta: Meta, data: Map[DateTime, Double])
@@ -39,14 +38,29 @@ object UoSensors extends SprayJsonSupport with DefaultJsonProtocol {
 /**
   * Slick database implementation for Urban Observatory Traffic Flow Data
   */
-object TrafficDatabaseTables {
+object LondonAirDatabaseTables {
   implicit def dateTime =
     MappedColumnType.base[DateTime, Timestamp](
       dt => new Timestamp(dt.getMillis),
       ts => new DateTime(ts.getTime)
     )
 
-  class SensorTable(tag: Tag) extends Table[(String, Boolean, String, DateTime)](tag, "sensor") {
+  class SitesTable(tag: Tag) extends Table[(String, Boolean, String, DateTime)](tag, "site") {
+    "@DataManager": "King's College London",
+    "@DataOwner": "Merton",
+    "@DateClosed": "",
+    "@DateOpened": "2017-01-27 00:00:00",
+    "@Latitude": "51.40162",
+    "@LatitudeWGS84": "6692543.79001",
+    "@LocalAuthorityCode": "24",
+    "@LocalAuthorityName": "Merton",
+    "@Longitude": "-0.19589212",
+    "@LongitudeWGS84": "-21810.7165116",
+    "@SiteCode": "ME9",
+    "@SiteLink": "http://www.londonair.org.uk/london/asp/publicdetails.asp?site=ME9",
+    "@SiteName": "Merton - Morden Civic Centre 2",
+    "@SiteType": "Roadside"
+
     def sensorName = column[String]("sensor_name", O.PrimaryKey)
     def isActive = column[Boolean]("is_active")
     def units = column[String]("units")
@@ -56,7 +70,7 @@ object TrafficDatabaseTables {
   }
   val sensors = TableQuery[SensorTable]
 
-  class TrafficFlowTable(tag: Tag) extends Table[(String, DateTime, Double)](tag, "trafficflow") {
+  class AirQualityTable(tag: Tag) extends Table[(String, DateTime, Double)](tag, "airquality") {
     def sensorName = column[String]("sensor_name")
     def timestamp = column[DateTime]("timestamp")
     def reading = column[Double]("reading")
