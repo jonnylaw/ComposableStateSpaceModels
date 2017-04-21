@@ -177,6 +177,6 @@ interpolated %>%
   geom_line() +
   geom_ribbon(aes(ymin = eta_lower, ymax = eta_upper), alpha = 0.5, colour = "NA") +
   theme(legend.position = "bottom") +
-  ggtitle("Negative Binomial Model Interpolated, with 95\% credible intervals")
+  ggtitle("Negative Binomial Model Interpolated, with 95% credible intervals")
 
-ggsave("src/main/resources/site/figures/NegBinInterpolated.png")
+sq ggsave("src/main/resources/site/figures/NegBinInterpolated.png")
