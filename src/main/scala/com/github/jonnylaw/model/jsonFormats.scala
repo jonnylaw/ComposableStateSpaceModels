@@ -6,13 +6,13 @@ import spray.json._
 import scala.util.{Try, Success, Failure}
 import org.joda.time.DateTime   
 import com.github.nscala_time.time.Imports._
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
+import spray.json._ 
 
 /**
   * Marshalling from JSON and to JSON for Simulated Data and MCMC data 
   * from the Composed Models Package
   */
-object DataProtocols extends SprayJsonSupport with DefaultJsonProtocol {
+object DataProtocols extends DefaultJsonProtocol {
 
   implicit def denseVectorFormat = new RootJsonFormat[DenseVector[Double]] {
     def write(vec: DenseVector[Double]) = JsArray(vec.data.map(_.toJson).toVector)
@@ -44,7 +44,6 @@ object DataProtocols extends SprayJsonSupport with DefaultJsonProtocol {
   }
 
   implicit val leafParamFormat = jsonFormat2(LeafParameter.apply)
-  implicit val branchParamFormat: JsonFormat[BranchParameter] = lazyFormat(jsonFormat2(BranchParameter.apply))
 
   implicit def paramsFormat = new RootJsonFormat[Parameters] {
     def write(obj: Parameters) = {
@@ -64,11 +63,11 @@ object DataProtocols extends SprayJsonSupport with DefaultJsonProtocol {
       }
       case x => deserializationError("Expected Some Parameters, but got " + x)
     }
-
   }
 
+  implicit val branchParamFormat: JsonFormat[BranchParameter] = lazyFormat(jsonFormat2(BranchParameter.apply))
+
   implicit val leafFormat = jsonFormat1(Leaf[DenseVector[Double]])
-  implicit val branchFormat: JsonFormat[Branch[DenseVector[Double]]] = lazyFormat(jsonFormat2(Branch[DenseVector[Double]]))
 
   implicit val stateFormat = new RootJsonFormat[State] {
     def write(obj: State) = {
@@ -88,6 +87,8 @@ object DataProtocols extends SprayJsonSupport with DefaultJsonProtocol {
       case x => deserializationError("Expected Some states, but got " + x)
     }
   }
+
+  implicit val branchFormat: JsonFormat[Branch[DenseVector[Double]]] = lazyFormat(jsonFormat2(Branch[DenseVector[Double]]))
 
   implicit def dateTimeJsonFormat = new RootJsonFormat[DateTime] {
     val dateTimeFormat = new DateTime()
