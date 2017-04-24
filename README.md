@@ -8,10 +8,10 @@ For library documentation, see the [guide](https://jonnylaw.github.io/Composable
 
 ### Using a build.sbt File
 
-This library is built for Scala 2.11.8, add the following dependency to your `build.sbt` file in the project root.
+This library is built for Scala 2.12.1, add the following dependency to your `build.sbt` file in the project root.
 
 ```scala
-libraryDependencies += "com.github.jonnylaw" %% "composablemodels" % "0.6.0"
+libraryDependencies += "com.github.jonnylaw" %% "composablemodels" % "0.6.1"
 ```
 
 ### Interactive Installation
@@ -20,7 +20,7 @@ If you want to play around with the library interactively, then run sbt and ente
 
 ```bash
 $ sbt
-> set scalaVersion := "2.11.8"
-> set libraryDependencies += "com.github.jonnylaw" %% "composablemodels" % "0.6.0"
+> set scalaVersion := "2.12.1"
+> set libraryDependencies += "com.github.jonnylaw" %% "composablemodels" % "0.6.1"
 > console
 ```
