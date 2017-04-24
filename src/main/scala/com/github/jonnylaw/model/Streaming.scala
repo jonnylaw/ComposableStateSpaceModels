@@ -8,7 +8,7 @@ import breeze.stats.distributions.Rand
 import breeze.linalg.DenseMatrix
 import cats._
 import cats.implicits._
-import cats.data.Reader
+import cats.data.{Reader, Kleisli}
 import java.io._
 import java.nio.file._
 import scala.concurrent._
@@ -24,7 +24,7 @@ object Streaming {
     */
   def pilotRun(
     data: Vector[Data], 
-    model: Reader[Parameters, Model], 
+    model: UnparamModel, 
     param: Parameters, 
     resample: Resample[State],
     particles: Vector[Int],
@@ -33,11 +33,11 @@ object Streaming {
     val proposal = (p: Parameters) => Rand.always(p)
     val prior = (p: Parameters) => 0.0
 
-    def mll(n: Int) = ParticleFilter.likelihood(data, resample, n)(model(param))
+    def mll(particles: Int) = ParticleFilter.likelihood(data, resample, particles) compose model
 
     def iters(n: Int): Future[(Int, Double)] = {
       val lls = Source.repeat(1).
-        map(i => mll(n)).
+        map(i => mll(n)(param)).
         take(repetitions).
         runWith(Sink.seq)
 

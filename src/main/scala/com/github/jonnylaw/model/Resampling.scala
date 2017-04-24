@@ -18,9 +18,9 @@ object Resampling {
     * @param prob a vector of unnormalised probabilities
     * @return a vector of normalised probabilities
     */
-  def normalise[F[_]](prob: F[Double])(implicit f: Collection[F]): F[Double] = {
+  def normalise(prob: Seq[Double]): Seq[Double] = {
     val total = prob.foldLeft(0.0)(_ + _)
-    prob map (x => x/total)
+    prob.map (x => x/total)
   }
 
   /**
@@ -61,7 +61,6 @@ object Resampling {
     * An efficient implementation of systematic resampling
     */
   def systematicResampling[A](particles: Vector[A], weights: Vector[LogLikelihood]) = {
-
     val ecdf = treeEcdf(particles, weights)
 
     val u = scala.util.Random.nextDouble
@@ -111,14 +110,14 @@ object Resampling {
   /**
     * Generic cumulative sum
     */
-  def cumSum[A](l: Vector[A])(implicit N: Numeric[A]): Vector[A] = {
+  def cumSum[A](l: Seq[A])(implicit N: Numeric[A]): Seq[A] = {
     l.scanLeft(N.zero)((a, b) => N.plus(a, b))
   }
 
   /**
     * Calculate the empirical cumulative distribution function for a collection of weights
     */
-  def empDist(w: Vector[Double]): Vector[Double] = {
+  def empDist(w: Seq[Double]): Seq[Double] = {
     cumSum(normalise(w))
   }
 

@@ -3,10 +3,9 @@ package com.github.jonnylaw
 import breeze.stats.distributions.{Rand, Process}
 import breeze.stats.distributions.Rand._
 import breeze.linalg.DenseVector
-import cats.data.Kleisli
 import cats._
 import cats.implicits._
-import cats.data.{Reader, StateT}
+import cats.data.{Reader, Kleisli, StateT}
 import scala.collection.parallel.immutable.ParVector
 import scala.reflect.ClassTag
 import scala.language.higherKinds
@@ -35,7 +34,6 @@ package object model {
       case Left(b) => tailRecM(b)(f)
     }
   }
-
 
   implicit def numericDenseVector = new Numeric[DenseVector[Double]] {
     def fromInt(x: Int): DenseVector[Double] = DenseVector(x.toDouble)
@@ -173,25 +171,5 @@ package object model {
 
   implicit def forecastOutShow(implicit S: Show[State]) = new Show[ForecastOut] {
     def show(a: ForecastOut): String = s"${a.t}, ${a.obs}, ${a.obsIntervals.toString}, ${a.eta}, ${a.etaIntervals.toString}, ${S.show(a.state)}, ${a.stateIntervals.mkString(", ")}"
-  }
-
-  /**
-    * Set the taskSupport for Parallel collections globally for the session using reflection
-    * Source: stackoverflow.com/questions/17865823/how-do-i-set-the-default-number-of-threads-for-scala-2-10-parallel-collections
-    * @param numThreads the number of threads to use for a parallel collection
-    */
-  def setParallelismGlobally(numThreads: Int): Unit = {
-    val parPkgObj = scala.collection.parallel.`package`
-    val defaultTaskSupportField = parPkgObj.getClass.getDeclaredFields.find{
-      _.getName == "defaultTaskSupport"
-    }.get
-
-    defaultTaskSupportField.setAccessible(true)
-    defaultTaskSupportField.set(
-      parPkgObj,
-      new scala.collection.parallel.ForkJoinTaskSupport(
-        new scala.concurrent.forkjoin.ForkJoinPool(numThreads)
-      )
-    )
   }
 }

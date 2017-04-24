@@ -4,7 +4,7 @@ import breeze.stats.distributions._
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
 import breeze.numerics.{sqrt, exp}
 import cats.{Semigroup, Applicative}
-import cats.data.Reader
+import cats.data.{Reader, Kleisli}
 import cats.implicits._
 import akka.stream._
 import akka.stream.scaladsl._
@@ -129,7 +129,7 @@ private final case class OuProcess(p: OuParameter, dimension: Int) extends Sde {
 
   override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = {
 
-    val mean: State = s map (x => (x - thetaVec) * exp(- params.alpha * dt) :+ thetaVec)
+    val mean: State = s map (x => (x - thetaVec) * exp(- params.alpha * dt) + thetaVec)
     val variance = (params.sigma * params.sigma/ 2 * params.alpha ) * (1 - exp(-2 * params.alpha * dt))
 
     // the cholesky decomposition of a diagonal matrix is just the square root of the diagonal
@@ -161,17 +161,15 @@ case class StateSpace(time: Time, state: State) {
 }
 
 object Sde {
-  def genBrownianMotion(dimension: Int): SdeParameter => Sde = p => p match {
-    case param: GenBrownianParameter =>
-      GenBrownianMotion(param, dimension)
+  def genBrownianMotion(dimension: Int): UnparamSde = Reader { p => p match {
+    case param: GenBrownianParameter => GenBrownianMotion(param, dimension)
     case _ => throw new Exception(s"Incorrect parameters supplied to GenBrownianmotion, expected GenBrownianParameter, received $p")
-  }
+  }}
 
-  def brownianMotion(dimension: Int): SdeParameter => Sde = p => p match {
-    case param: BrownianParameter =>
-      BrownianMotion(param, dimension)
+  def brownianMotion(dimension: Int): UnparamSde = Reader { p => p match {
+    case param: BrownianParameter => BrownianMotion(param, dimension)
     case _ => throw new Exception(s"Incorrect parameters supplied to Brownianmotion, expected BrownianParameter, received $p")
-  }
+  }}
 
   /**
     * The Ornstein Uhlenbeck Process with mean theta, mean reverting parameter alpha > 0 and diffusion sigma > 0
@@ -181,11 +179,10 @@ object Sde {
     * @param dimension the dimension of the diffusion process
     * @return a function from SdeParameter => Sde 
     */
-  def ouProcess(dimension: Int): SdeParameter => Sde = p => p match {
-    case param: OuParameter =>
-      OuProcess(param, dimension)
+  def ouProcess(dimension: Int): UnparamSde = Reader { p => p match {
+    case param: OuParameter => OuProcess(param, dimension)
     case _ => throw new Exception(s"Incorrect parameters supplied to OuProcess, expected OuParameter, received $p")
-  }
+  }}
 
   implicit def sdeSemigroup = new Semigroup[Sde] {
     def combine(sde1: Sde, sde2: Sde): Sde = new Sde {

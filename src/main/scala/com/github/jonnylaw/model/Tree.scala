@@ -92,11 +92,6 @@ object Tree {
     t.flatten == t1.flatten
   }
 
-  /**
-    * Fill an already constructed tree
-    */
-//  def fillTree(t: Tree[A])(l: Seq[B]): Tree[A] = 
-
   implicit val treeFun = new Functor[Tree] {
     def pure[A](a: A): Tree[A] = leaf(a)
 

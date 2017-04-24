@@ -42,7 +42,7 @@ trait Model {
 }
 
 object Model {
-  def poissonModel(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+  def poissonModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => PoissonModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
@@ -50,37 +50,37 @@ object Model {
   def seasonalModel(
     period: Int,
     harmonics: Int,
-    sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+    sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
       case param: LeafParameter => SeasonalModel(period, harmonics, sde(param.sdeParam), param)
       case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def linearModel(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+  def linearModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => LinearModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def studentsTModel(sde: SdeParameter => Sde, df: Int): Reader[Parameters, Model] = Reader { p => p match {
+  def studentsTModel(sde: UnparamSde, df: Int): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => StudentsTModel(sde(param.sdeParam), df, param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def bernoulliModel(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+  def bernoulliModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => BernoulliModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def lgcpModel(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+  def lgcpModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => LogGaussianCox(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def negativeBinomial(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+  def negativeBinomial(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => NegativeBinomialModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def zeroInflatedPoisson(sde: SdeParameter => Sde): Reader[Parameters, Model] = Reader { p => p match {
+  def zeroInflatedPoisson(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => ZeroInflatedPoisson(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}

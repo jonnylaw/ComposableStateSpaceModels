@@ -1,5 +1,5 @@
 library(tidyverse); library(jsonlite); library(coda); library(ggmcmc); library(ggthemes); 
-library(jsonlite); library(magrittr)
+library(jsonlite); library(magrittr); library(gridExtra)
 
 theme_set(theme_few())
 
@@ -24,7 +24,7 @@ ggsave("src/main/resources/site/figures/ouProcess.png")
 single_sims = read_csv("data/NegBinModelSims.csv", col_names = c("time", "y", "eta", "gamma", "state"))
 
 single_sims %>%
-  select(time, y, state) %>%
+  select(time, y, gamma) %>%
   gather(key, value, -time) %>%
   ggplot(aes(x = time, y = value, colour = key)) +
   geom_line() + 
@@ -37,7 +37,7 @@ ggsave("src/main/resources/site/figures/NegBinSims.png")
 # Plot Neg Bin Sims #
 #####################
 
-negbin_sims = read_csv("data/ComposedNegBinSims.csv", 
+negbin_sims = read_csv("data/ComposedNegBinSims.csv", n_max = 500,
                        col_names = c("time", "y", "eta", "gamma", sapply(1:9, function(i) paste("state", i, sep = "_"))))
 
 negbin_sims %>%
@@ -88,7 +88,8 @@ negbin_pilot %>%
 # Negative Binomial Parameter Estimation #
 ##########################################
 
-params = c("size", "m0", "c0", "sigma", "m0_1", "c0_1", "sigma_1", "alpha", sapply(1:8, function(i) paste("theta", i, sep = "_")))
+params = c("size", "m0", "c0", "sigma", "m0_1", "c0_1", "sigma_1", "alpha", 
+           sapply(1:8, function(i) paste("theta", i, sep = "_")))
 
 chain1 = read_csv("data/NegativeBinomialPosterior-1.csv", col_names = c(params, "accepted")) %>%
   mutate(size = exp(size), c0 = exp(c0), sigma = exp(sigma), sigma_1 = exp(sigma_1), alpha = exp(alpha))
@@ -151,19 +152,31 @@ filtered %>%
 #################
 
 ## Remove some observations of the process systematically, predict the state at that time
+negbin_full = read_csv("data/NegativeBinomial.csv",
+                       col_names = c("time", "observation", "eta", "gamma", sapply(1:9, function(i) paste("state", i, sep = "_"))))
+
+negbin_full %>%
+  filter(or(time < 420, time > 450)) %>%
+  ggplot(aes(x = time, y = observation)) +
+  geom_point() +
+  ggtitle("Seasonal Negative Binomial Model with \nmissing values between t = 420 and t = 450")
+
+ggsave("src/main/resources/site/figures/missing_values.png")
 
 interpolated = read_csv("data/NegativeBinomialInterpolated.csv",
                         col_names = c("time", "observation",
-                                       "eta_hat", "eta_lower", "eta_upper",
-                                       sapply(1:9, function(i) paste("state", i, "hat", sep = "_")), 
-                                       sapply(1:9, function(i) c(paste("state", i, "lower", sep = "_"), paste("state", i, "upper", sep = "_")))))
+                                      "eta_hat", "eta_lower", "eta_upper",
+                                      sapply(1:9, function(i) paste("state", i, "hat", sep = "_")), 
+                                      sapply(1:9, function(i) c(paste("state", i, "lower", sep = "_"), paste("state", i, "upper", sep = "_")))))
 
 interpolated %>%
-  inner_join(negbin_sims %>% select(time, y), by = "time") %>%
-  select(time, y, contains("eta")) %>%
+  # inner_join(negbin_full %>% select(time, y), by = "time") %>%
+  select(time, observation, contains("eta")) %>%
   gather(key, value, -time, -eta_lower, -eta_upper) %>%
   ggplot(aes(x = time, y = value, colour = key)) +
   geom_line() +
-  geom_ribbon(aes(ymin = eta_lower, ymax = eta_upper), alpha = 0.5, colour = "NA", fill = "#1f5081")
+  geom_ribbon(aes(ymin = eta_lower, ymax = eta_upper), alpha = 0.5, colour = "NA") +
+  theme(legend.position = "bottom") +
+  ggtitle("Negative Binomial Model Interpolated, with 95% credible intervals")
 
-ggsave("src/main/resources/site/figures/NegBinInterpolated.png")
+sq ggsave("src/main/resources/site/figures/NegBinInterpolated.png")

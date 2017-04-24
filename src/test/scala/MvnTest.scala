@@ -6,7 +6,6 @@ import org.scalacheck.Prop.forAll
 import org.scalacheck._
 import Arbitrary.arbitrary
 
-
 object MvnTest extends Properties("MultivariateNormal") {
   val denseVector = (n: Int) => Gen.containerOfN[Array, Double](n, arbitrary[Double]).
     map(a => DenseVector(a))

@@ -24,7 +24,7 @@ trait TestNegBinMod {
       (1.5, 1.5, 1.0, 1.0, 1.5, 1.5, 0.1, 0.1))
 
   val params = p |+| p1
-
+  
   val model = Model.negativeBinomial(sde) |+| Model.seasonalModel(24, 4, sde2)
 }
 
