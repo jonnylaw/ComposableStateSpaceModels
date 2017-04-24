@@ -6,7 +6,7 @@ import breeze.stats.{mean, variance}
 import breeze.linalg.{DenseVector, diag, DenseMatrix}
 import cats.implicits._
 import cats.{Monoid, Applicative}
-import cats.data.{Kleisli, Reader}
+import cats.data.Reader
 
 class ModelSuite extends FlatSpec with Matchers {
   // a simple linear model with no observation noise, for testing
@@ -19,9 +19,9 @@ class ModelSuite extends FlatSpec with Matchers {
   }
 
   // smart constructor for linear model
-  def linearModelNoNoise(sde: UnparamSde): UnparamModel = Kleisli { p: Parameters => p match {
+  def linearModelNoNoise(sde: UnparamSde): UnparamModel = Reader { p: Parameters => p match {
     case param: LeafParameter => sde(param.sdeParam) map (s => LinearModelNoNoise(s, param))
-    case _ => Left(throw new Exception)
+    case _ => throw new Exception
   }}
 
   case class SeasonalModelNoNoise(
@@ -46,19 +46,19 @@ class ModelSuite extends FlatSpec with Matchers {
   def seasonalModelNoNoise(
     period: Int,
     h: Int,
-    sde: UnparamSde): UnparamModel = Kleisli { p: Parameters => p match {
+    sde: UnparamSde): UnparamModel = Reader { p: Parameters => p match {
     case param: LeafParameter => sde(param.sdeParam) map (s => SeasonalModelNoNoise(period, h, s, param))
-    case _ => Left(throw new Exception)
+    case _ => throw new Exception
   }}
 
-  def stepNull: UnparamSde = Kleisli[Error, SdeParameter, Sde] { (p: SdeParameter) => 
-    Right(new Sde {
+  def stepNull: UnparamSde = Reader { (p: SdeParameter) => 
+    new Sde {
       def initialState: Rand[State] = Rand.always(Tree.leaf(DenseVector(0.0)))
       def drift(state: State): Tree[DenseVector[Double]] = Tree.leaf(DenseVector(1.0))
       def diffusion(state: State) = Tree.leaf(DenseMatrix((0.0)))
       def dimension: Int = 1
       override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = Rand.always(s)
-    })
+    }
   }
 
   "Brownian Motion step function" should "Change the value of the state" in {
@@ -66,9 +66,7 @@ class ModelSuite extends FlatSpec with Matchers {
 
     val x0 = Tree.leaf(DenseVector(1.0))
 
-    Sde.brownianMotion(1)(p).map( s =>
-      assert(s.stepFunction(2)(x0).draw.getNode(0) != x0.getNode(0))
-    )
+    assert(Sde.brownianMotion(1)(p).stepFunction(2)(x0).draw.getNode(0) != x0.getNode(0))
   }
 
   "Compose two models" should "work" in {
