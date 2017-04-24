@@ -19,13 +19,12 @@ package object model {
   type Time = Double
   type TimeIncrement = Double
   type LogLikelihood = Double
-  type Error[A] = Either[Throwable, A]
-  type UnparamModel = Kleisli[Error, Parameters, Model]
-  type UnparamSde = Kleisli[Error, SdeParameter, Sde]
+  type UnparamModel = Reader[Parameters, Model]
+  type UnparamSde = Reader[SdeParameter, Sde]
   type StepFunction = (SdeParameter) => (State, TimeIncrement) => Rand[State]
   type State = Tree[DenseVector[Double]]
   type Resample[A] = (Vector[A], Vector[LogLikelihood]) => Vector[A]
-  type BootstrapFilter = Kleisli[Error, Parameters, (LogLikelihood, Vector[StateSpace])]
+  type BootstrapFilter = Reader[Parameters, (LogLikelihood, Vector[StateSpace])]
 
   implicit def randMonad = new Monad[Rand] {
     def pure[A](x: A): Rand[A] = always(x)

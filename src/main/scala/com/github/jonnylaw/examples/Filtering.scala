@@ -6,9 +6,8 @@ import akka.stream._
 import akka.actor.ActorSystem
 import akka.util.ByteString
 import breeze.numerics.log
-import cats.syntax.either._
 import cats.instances._
-import cats.instances.either._
+import cats.implicits._
 import com.github.jonnylaw.model._
 import DataProtocols._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -29,18 +28,14 @@ object Filtering extends App with TestNegBinMod {
     observations
 
   val t0 = 0.0
-  val filter = ParticleFilter.filter(Resampling.systematicResampling, t0, 1000).lift[Error] compose model
+  val filter = ParticleFilter.filter(Resampling.systematicResampling, t0, 1000) compose model
 
-  filter(params) map { (pf: Flow[Data, PfState, NotUsed]) =>
-    data.
-      via(pf).
-      map(ParticleFilter.getIntervals(model, params).run).
-      via(Streaming.safeShow).
-      runWith(Streaming.writeStreamToFile("data/NegativeBinomialFiltered.csv"))
-  } match {
-    case Right(s) => s.onComplete(_ => system.terminate()) 
-    case Left(e) => throw new Exception(e)
-  }
+  data.
+    via(filter(params)).
+    map(ParticleFilter.getIntervals(model, params).run).
+    map(_.show).
+    runWith(Streaming.writeStreamToFile("data/NegativeBinomialFiltered.csv")).
+    onComplete(_ => system.terminate())
 }
 
 /**
@@ -69,7 +64,7 @@ object OnlineFiltering extends App with TestNegBinMod {
     simPosterior = Streaming.createDist(posterior)(x => (x.params, x.sde.state))
     io <- testData.
       via(ParticleFilter.filterOnline(simPosterior, 2, t0, 100, resample, model)).
-      via(Streaming.safeShow).
+      map(_.show).
       runWith(Streaming.writeStreamToFile("data/NegativeBinomialOnlineFilter.csv"))
   } yield io
 

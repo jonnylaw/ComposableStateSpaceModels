@@ -32,7 +32,7 @@ object SimModelToCSV extends App with TestNegBinMod {
   implicit val system = ActorSystem("SimulateToCSV")
   implicit val materializer = ActorMaterializer()
 
-  SimulateData(model(params).right.get).
+  SimulateData(model(params)).
     observations.
     take(5000).
     map(_.show).
@@ -44,7 +44,7 @@ object SimModelToJSON extends App with TestNegBinMod {
   implicit val system = ActorSystem("SimulateToJson")
   implicit val materializer = ActorMaterializer()
 
-  SimulateData(model(params).right.get).
+  SimulateData(model(params)).
     observations.
     take(5000).
     map(_.toJson.compactPrint).

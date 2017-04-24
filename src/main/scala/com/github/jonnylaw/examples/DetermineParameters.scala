@@ -5,7 +5,6 @@ import akka.stream._
 import akka.actor.ActorSystem
 import akka.util.ByteString
 import breeze.numerics.log
-import cats.data.Kleisli
 import cats.implicits._
 import com.github.jonnylaw.model._
 import DataProtocols._
@@ -74,7 +73,7 @@ object DeterminePosterior extends App with TestNegBinMod {
       println(s"Running chain $chain")
       println(s"First observation ${d.head}")
       val filter = ParticleFilter.filterLlState(d.toVector, resample, 100)
-      val pf = filter.lift[Error] compose model
+      val pf = filter compose model
       val pmmh = MetropolisHastings.pmmhState(params, Parameters.perturb(0.1), (a, b) => 0.0, prior)
 
       pmmh(pf).

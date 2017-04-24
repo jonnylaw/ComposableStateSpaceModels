@@ -321,12 +321,12 @@ object ParticleFilter {
     val summarise = builder.add(Flow[PfState].map(ParticleFilter.getIntervals(mod, values.head._1).run))
 
     val filterFlow = (s: (Parameters, State)) => {
-      val pf = filterInit(resample, t0, n, s._2).lift[Error].compose(mod)
+      val pf = filterInit(resample, t0, n, s._2).compose(mod)
       pf(s._1)
     }
 
-    bcast ~> filterFlow(values.head).right.get ~> merge ~> reduce ~> summarise
-    bcast ~> filterFlow(values(1)).right.get   ~> merge
+    bcast ~> filterFlow(values.head) ~> merge ~> reduce ~> summarise
+    bcast ~> filterFlow(values(1))   ~> merge
 
     FlowShape(bcast.in, summarise.out)
   })

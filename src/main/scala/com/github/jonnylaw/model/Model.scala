@@ -6,9 +6,8 @@ import breeze.linalg.{DenseMatrix, DenseVector}
 
 import cats._
 import cats.Semigroup
-import cats.data.{Kleisli, Reader}
-import cats.syntax.either._
-import cats.syntax.semigroup._
+import cats.implicits._
+import cats.data.Reader
 
 import StateSpace._
 
@@ -43,47 +42,47 @@ trait Model {
 }
 
 object Model {
-  def poissonModel(sde: UnparamSde): UnparamModel = Kleisli { p => p match {
-    case param: LeafParameter => sde(param.sdeParam).map(s => PoissonModel(s, param))
-    case _ => Left(throw new Exception("Can't build model from branch parameter"))
+  def poissonModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => PoissonModel(sde(param.sdeParam), param)
+    case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
   def seasonalModel(
     period: Int,
     harmonics: Int,
-    sde: UnparamSde): UnparamModel = Kleisli { p => p match {
-      case param: LeafParameter => sde(param.sdeParam).map(s => SeasonalModel(period, harmonics, s, param))
-      case _ => Left(throw new Exception("Can't build model from branch parameter"))
+    sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+      case param: LeafParameter => SeasonalModel(period, harmonics, sde(param.sdeParam), param)
+      case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def linearModel(sde: UnparamSde): UnparamModel = Kleisli { p => p match {
-    case param: LeafParameter => sde(param.sdeParam).map(s => LinearModel(s, param))
-    case _ => Left(throw new Exception("Can't build model from branch parameter"))
+  def linearModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => LinearModel(sde(param.sdeParam), param)
+    case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def studentsTModel(sde: UnparamSde, df: Int): UnparamModel = Kleisli { p => p match {
-    case param: LeafParameter => sde(param.sdeParam).map(s => StudentsTModel(s, df, param))
-    case _ => Left(throw new Exception("Can't build model from branch parameter"))
+  def studentsTModel(sde: UnparamSde, df: Int): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => StudentsTModel(sde(param.sdeParam), df, param)
+    case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def bernoulliModel(sde: UnparamSde): UnparamModel = Kleisli { p => p match {
-    case param: LeafParameter => sde(param.sdeParam).map(s => BernoulliModel(s, param))
-    case _ => Left(throw new Exception("Can't build model from branch parameter"))
+  def bernoulliModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => BernoulliModel(sde(param.sdeParam), param)
+    case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def lgcpModel(sde: UnparamSde): UnparamModel = Kleisli { p => p match {
-    case param: LeafParameter => sde(param.sdeParam).map(s => LogGaussianCox(s, param))
-    case _ => Left(throw new Exception("Can't build model from branch parameter"))
+  def lgcpModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => LogGaussianCox(sde(param.sdeParam), param)
+    case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def negativeBinomial(sde: UnparamSde): UnparamModel = Kleisli { p => p match {
-    case param: LeafParameter => sde(param.sdeParam).map(s => NegativeBinomialModel(s, param))
-    case _ => Left(throw new Exception("Can't build model from branch parameter"))
+  def negativeBinomial(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => NegativeBinomialModel(sde(param.sdeParam), param)
+    case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def zeroInflatedPoisson(sde: UnparamSde): UnparamModel = Kleisli { p => p match {
-    case param: LeafParameter => sde(param.sdeParam).map(s => ZeroInflatedPoisson(s, param))
-    case _ => Left(throw new Exception("Can't build model from branch parameter"))
+  def zeroInflatedPoisson(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => ZeroInflatedPoisson(sde(param.sdeParam), param)
+    case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
   /**
@@ -103,29 +102,26 @@ object Model {
     * @param mod2 the right-hand model in the composition
     * @return a composed model of mod1 and mod2, which can be composed again
     */
-  def compose(mod1: UnparamModel, mod2: UnparamModel): UnparamModel = Kleisli { p => p match {
-    case BranchParameter(lp, rp) => 
-      for {
-        m1 <- mod1(lp)
-        m2 <- mod2(rp)
-        m = new Model {
-          def observation = x => m1.observation(x)
+  def compose(mod1: UnparamModel, mod2: UnparamModel): UnparamModel = Reader { p => p match {
+    case BranchParameter(lp, rp) => {
+      new Model {
+        def observation = x => mod1(lp).observation(x)
 
-          override def link(x: Double) = m1.link(x)
+        override def link(x: Double) = mod1(lp).link(x)
 
-          def f(s: State, t: Time) = s match {
-            case Branch(ls, rs) =>
-              m1.f(ls, t) + m2.f(rs, t)
-            case x: Leaf[DenseVector[Double]] =>
-              m1.f(x, t)
-          }
-
-          def sde: Sde = m1.sde |+| m2.sde
-
-          def dataLikelihood = (s, y) => m1.dataLikelihood(s, y)
+        def f(s: State, t: Time) = s match {
+          case Branch(ls, rs) =>
+            mod1(lp).f(ls, t) + mod2(rp).f(rs, t)
+          case x: Leaf[DenseVector[Double]] =>
+            mod1(lp).f(x, t)
         }
-      } yield m
-    case _ => Left(throw new Exception("Can't Build composed model from leafParameter"))
+
+        def sde: Sde = mod1(lp).sde |+| mod2(rp).sde
+
+        def dataLikelihood = (s, y) => mod1(lp).dataLikelihood(s, y)
+      }
+    }
+    case _ => throw new Exception("Can't Build composed model from leafParameter")
   }}
 }
 

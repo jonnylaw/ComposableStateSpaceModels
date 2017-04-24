@@ -8,7 +8,7 @@ import breeze.linalg.{DenseMatrix, DenseVector}
 import breeze.numerics._
 import akka.stream.scaladsl._
 import cats._
-import cats.data.{Reader, Kleisli, EitherT}
+import cats.data.Reader
 import scala.language.higherKinds
 import cats.implicits._
 import scala.concurrent._
@@ -74,11 +74,11 @@ trait MetropolisHastings {
     for {
       propParams <- proposal(s.params)
       state = pf(propParams)
-      a = state.right.get._1 + logTransition(propParams, s.params) + prior(propParams) - 
+      a = state._1 + logTransition(propParams, s.params) + prior(propParams) - 
       logTransition(s.params, propParams) - s.ll - prior(s.params)
       u = Uniform(0, 1).draw
       prop = if (log(u) < a) {
-        MetropState(state.right.get._1, propParams, state.right.get._2.last, s.accepted + 1)
+        MetropState(state._1, propParams, state._2.last, s.accepted + 1)
       } else {
         s
       }

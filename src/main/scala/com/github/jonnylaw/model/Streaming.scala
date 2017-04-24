@@ -15,7 +15,6 @@ import scala.concurrent._
 import scala.concurrent.duration._
 import scala.collection.parallel.immutable.ParVector
 import scala.language.higherKinds
-import scala.util.Try
 import spray.json._
 
 object Streaming {
@@ -34,11 +33,11 @@ object Streaming {
     val proposal = (p: Parameters) => Rand.always(p)
     val prior = (p: Parameters) => 0.0
 
-    def mll(particles: Int) = ParticleFilter.likelihood(data, resample, particles).lift[Error] compose model
+    def mll(particles: Int) = ParticleFilter.likelihood(data, resample, particles) compose model
 
     def iters(n: Int): Future[(Int, Double)] = {
       val lls = Source.repeat(1).
-        map(i => mll(n)(param).right.get).
+        map(i => mll(n)(param)).
         take(repetitions).
         runWith(Sink.seq)
 
@@ -48,12 +47,6 @@ object Streaming {
     Source.apply(particles).
       mapAsyncUnordered(4){ iters }
   }
-
-  def safeShow[A](implicit s: Show[A]) = Flow[Error[A]].
-    map{
-      case Right(x) => s.show(x)
-      case Left(err) => throw new Exception(err)
-    }
 
   def pmmhToJson(file: String,
     initParams: Parameters,
