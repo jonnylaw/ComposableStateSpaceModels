@@ -30,11 +30,11 @@ sealed trait Parameters { self =>
     case EmptyParameter => Parameters.emptyParameter
   }
 
-  def flatten: Vector[Double]
+  def flatten: Seq[Double]
 
   def length: Int = this.flatten.length
 
-  def map(f: Double => Double): Parameters
+  // def map(f: Double => Double): Parameters
 
   def toMap: Map[String, Double] = self match {
     case BranchParameter(l, r) => l.toMap ++ r.toMap
@@ -99,7 +99,7 @@ case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends 
     case _ => Failure(throw new Exception(s"Can't sum LeafParameter and $that"))
   }
 
-  def flatten: Vector[Double] = scale match {
+  def flatten: Seq[Double] = scale match {
     case Some(v) => Vector(v) ++ sdeParam.flatten
     case None => sdeParam.flatten
   }
@@ -112,9 +112,9 @@ case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends 
     } yield Parameters.leafParameter(v, sde)
   }
 
-  def map(f: Double => Double): Parameters = {
-    Parameters.leafParameter(scale.map(f), sdeParam.map(f))
-  }
+  // def map(f: Double => Double): Parameters = {
+  //   Parameters.leafParameter(scale.map(f), sdeParam.map(_.map(f)))
+  // }
 }
 
 case class BranchParameter(left: Parameters, right: Parameters) extends Parameters {
@@ -134,18 +134,18 @@ case class BranchParameter(left: Parameters, right: Parameters) extends Paramete
     } yield Parameters.branchParameter(l, r)
   }
 
-  def flatten: Vector[Double] = left.flatten ++ right.flatten
+  def flatten: Seq[Double] = left.flatten ++ right.flatten
 
-  def map(f: Double => Double): Parameters = {
-    Parameters.branchParameter(left.map(f), right.map(f))
-  }
+  // def map(f: Double => Double): Parameters = {
+  //   Parameters.branchParameter(left.map(f), right.map(f))
+  // }
 }
 
 case object EmptyParameter extends Parameters {
   def perturb(delta: Double): Rand[Parameters] = Rand.always(Parameters.emptyParameter)
   def sum(that: Parameters): Try[Parameters] = Success(that)
   def flatten = Vector()
-  def map(f: Double => Double): Parameters = EmptyParameter
+  // def map(f: Double => Double): Parameters = EmptyParameter
 }
 
 object Parameters {
@@ -180,12 +180,12 @@ object Parameters {
   /**
     * Calculate the mean of the parameter values
     */
-  def mean(params: Seq[Parameters]): Try[Parameters] = {
-    val sum = params.foldLeft(Success(Parameters.emptyParameter): Try[Parameters])((a, b) =>
-      a.flatMap(Parameters.sumParameters(_, b)))
+  def mean(params: Seq[Parameters]): Try[Parameters] = ???
+  //   val sum = params.foldLeft(Success(Parameters.emptyParameter): Try[Parameters])((a, b) =>
+  //     a.flatMap(Parameters.sumParameters(_, b)))
 
-    sum.map(_.map(_/params.length))
-  }
+  //   sum.map(_.map(_/params.length))
+  // }
 
   def proposeIdent: Parameters => Rand[Parameters] = p => new Rand[Parameters] {
     def draw = p

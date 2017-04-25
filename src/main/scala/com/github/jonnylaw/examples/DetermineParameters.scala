@@ -29,7 +29,7 @@ object PilotRun extends App with TestNegBinMod {
   val resample: Resample[State] = Resampling.systematicResampling _
 
   val res = for {
-    data <- DataFromFile("data/NegativeBinomial.csv").
+    data <- DataFromFile("data/NegBin/NegativeBinomial.csv").
       observations.
       zip(Source(Stream.from(1))).
       filter { case (_, i) => i % 10 == 0 }.
@@ -37,7 +37,7 @@ object PilotRun extends App with TestNegBinMod {
       runWith(Sink.seq)
     vars = Streaming.pilotRun(data.toVector, model, params, resample, particles, 100)
     io <- vars.map { case (n, v) => s"$n, $v" }.
-      runWith(Streaming.writeStreamToFile("data/NegativeBinomialPilotRun.csv"))
+      runWith(Streaming.writeStreamToFile("data/NegBin/NegativeBinomialPilotRun.csv"))
   } yield io
 
   res.onComplete { s =>
@@ -61,7 +61,7 @@ object DeterminePosterior extends App with TestNegBinMod {
   val resample: Resample[State] = Resampling.systematicResampling _
   val prior = (p: Parameters) => 0.0
 
-  DataFromFile("data/NegativeBinomial.csv").
+  DataFromFile("data/NegBin/NegativeBinomial.csv").
     observations.
     zip(Source(Stream.from(1))).
     filter { case (_, i) => i % 10 == 0 }.
@@ -74,13 +74,13 @@ object DeterminePosterior extends App with TestNegBinMod {
       println(s"First observation ${d.head}")
       val filter = ParticleFilter.filterLlState(d.toVector, resample, 100)
       val pf = filter compose model
-      val pmmh = MetropolisHastings.pmmhState(params, Parameters.perturb(0.1), (a, b) => 0.0, prior)
+      val pmmh = MetropolisHastings.pmmhState(params, Parameters.perturb(0.05), (a, b) => 0.0, prior)
 
       pmmh(pf).
         via(Streaming.monitorStateStream).async.
         take(100000).
         map(_.toJson.compactPrint).
-        runWith(Streaming.writeStreamToFile(s"data/NegativeBinomialPosterior-$chain.json"))
+        runWith(Streaming.writeStreamToFile(s"data/NegBin/NegativeBinomialPosterior-$chain.json"))
     }.
     runWith(Sink.onComplete { s => 
       println(s)
@@ -95,10 +95,10 @@ object JsonToCSV extends App {
   implicit val system = ActorSystem("PMMH")
   implicit val materializer = ActorMaterializer()
 
-  val files = List("data/NegativeBinomialPosterior-1.json", "data/NegativeBinomialPosterior-2.json")
+  val files = List("data/NegBin/NegativeBinomialPosterior-1.json", "data/NegBin/NegativeBinomialPosterior-2.json")
 
   Future.sequence(files.zipWithIndex map { case (file, i) =>
-    Streaming.jsonToCSV(file, s"data/NegativeBinomialPosterior-$i.csv")
+    Streaming.jsonToCSV(file, s"data/NegBin/NegativeBinomialPosterior-$i.csv")
   }).onComplete { s =>
     println(s)
     system.terminate()

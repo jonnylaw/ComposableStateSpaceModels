@@ -7,9 +7,10 @@ theme_set(theme_few())
 # Ornstein Uhlenbeck #
 ######################
 
-ornstein_uhlenbeck = read_csv("data/ornsteinUhlenbeck.csv", col_names = c("time", "x_1", "x_2"))
+ornstein_uhlenbeck = read_csv("data/ornsteinUhlenbeck.csv", col_names = c("time", sapply(1:2, function(i) paste("x", i, sep = "_"))))
 
 ornstein_uhlenbeck %>%
+  select(time, x_1, x_2) %>%
   gather(key, value, -time) %>%
   ggplot(aes(x = time, y = value, colour = key)) +
   geom_line() +
@@ -37,7 +38,7 @@ ggsave("src/main/resources/site/figures/NegBinSims.png")
 # Plot Neg Bin Sims #
 #####################
 
-negbin_sims = read_csv("data/ComposedNegBinSims.csv", n_max = 500,
+negbin_sims = read_csv("data/NegBin/NegativeBinomial.csv", n_max = 500,
                        col_names = c("time", "y", "eta", "gamma", sapply(1:9, function(i) paste("state", i, sep = "_"))))
 
 negbin_sims %>%
@@ -179,4 +180,37 @@ interpolated %>%
   theme(legend.position = "bottom") +
   ggtitle("Negative Binomial Model Interpolated, with 95% credible intervals")
 
-sq ggsave("src/main/resources/site/figures/NegBinInterpolated.png")
+ggsave("src/main/resources/site/figures/NegBinInterpolated.png")
+
+##################
+# Gaussian Model #
+##################
+
+## Simulation
+
+gaussian_sims = read_csv("data/gaussian_sims.csv", col_names = c("time", "observation", "eta", "gamma", "state"))
+
+gaussian_sims %>%
+  select(time, observation, state) %>%
+  gather(key, value, -time) %>%
+  ggplot(aes(x = time, y = value, colour = key)) +
+  geom_line() +
+  theme(legend.position = "bottom")
+
+ggsave("src/main/resources/site/figures/GaussianSims.png")
+
+## Filtering
+
+gaussian_filtered = read_csv("data/gaussian_filtered.csv", col_names = c("time", "observation", "eta_hat", "eta_lower", "eta_upper", 
+                                                                         "state_hat", "state_lower", "state_upper"))
+
+gaussian_filtered %>%
+  inner_join(gaussian_sims, by = "time") %>%
+  select(time, contains("eta")) %>%
+  gather(key, value, -eta_upper, -eta_lower, -time) %>%
+  ggplot(aes(x = time, y = value, colour = key)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = eta_lower, ymax = eta_upper), alpha = 0.5, colour = "NA") +
+  theme(legend.position = "bottom")
+
+ggsave("src/main/resources/site/figures/GaussianFiltered.png")

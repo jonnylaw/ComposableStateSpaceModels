@@ -307,29 +307,19 @@ object ParticleFilter {
     t0: Time,
     n: Int,
     resample: Resample[State],
-    mod: UnparamModel
-  ) = Flow.fromGraph(GraphDSL.create() {
-      implicit builder: GraphDSL.Builder[NotUsed] =>
-      
-    val values: IndexedSeq[(Parameters, State)] = post.sample(samples)
-    
-    val bcast = builder.add(Broadcast[Data](samples))
-    val merge = builder.add(Merge[PfState](samples))
-    val reduce = builder.add(Flow[PfState].reduce((a, b) =>
-      PfState(a.t, a.observation, a.particles ++ b.particles, b.ll, b.ess + a.ess)))
-
-    val summarise = builder.add(Flow[PfState].map(ParticleFilter.getIntervals(mod, values.head._1).run))
-
-    val filterFlow = (s: (Parameters, State)) => {
-      val pf = filterInit(resample, t0, n, s._2).compose(mod)
-      pf(s._1)
-    }
-
-    bcast ~> filterFlow(values.head) ~> merge ~> reduce ~> summarise
-    bcast ~> filterFlow(values(1))   ~> merge
-
-    FlowShape(bcast.in, summarise.out)
-  })
+    mod: UnparamModel,
+    data: Seq[Data]
+  )(implicit mat: Materializer) = {
+    Source(post.sample(n).to[collection.immutable.Iterable]).
+      mapAsync(8){ case (params, state) => 
+        Source(data.to[collection.immutable.Iterable]).
+          via(filterInit(resample, t0, n, state)(mod(params))).
+          runWith(Sink.seq)
+      }.
+      mapConcat(identity).
+      reduce((a, b) => PfState(a.t, a.observation, a.particles ++ b.particles, b.ll, b.ess + a.ess)).
+      map(ParticleFilter.getIntervals(mod, post.draw._1).run)
+  }
 
   /**
     * 

@@ -3,7 +3,9 @@ layout: docs
 title: Models
 ---
 
-A composable state space model is a latent state model used to model time series data. Each simple state space model can be composed together with other models to build complex models hierarchically. The state space of the model evolves in continuous time according to a [stochastic differential equation](https://en.wikipedia.org/wiki/Stochastic_differential_equation) which are essentially differential equations with a random element.
+# Composable State Space Models
+
+A composable state space model is a parametric probabilistic latent state model used to forecast and interpolate time dependent data. This library provides several latent-state models with a variety of observation and state evolution models, these models can be composed together to build complex models hierarchically. The latent space of the model evolves in continuous time according to a [stochastic differential equation](https://en.wikipedia.org/wiki/Stochastic_differential_equation), this allows us to model data which arrives irregularly, this is common in sensor deployments in the real world, where sensors can sample adaptively, or the server receiving the data can go offline for an undetermined amount of time. The composable state space models provided in this library intend to be flexible enough to model a variety of time dependent data.
 
 ## A Single Gaussian Model
 
