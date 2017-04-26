@@ -12,17 +12,16 @@ trait ParameterGen {
     map(a => DenseVector(a))
 
   val genBrownian: Gen[SdeParameter] = for {
-    v <- arbitrary[Double]
-  } yield SdeParameter.brownianParameter(v)(v)(v)
+    v <- Gen.nonEmptyContainerOf[List, Double](arbitrary[Double])
+  } yield SdeParameter.brownianParameter(v: _*)(v: _*)(v: _*)
 
   val genOrnstein: Gen[SdeParameter] = for {
-    v <- arbitrary[Double]
-    theta <- Gen.containerOf[List, Double](arbitrary[Double])
-  } yield SdeParameter.ouParameter(v)(v)(v)(v)(theta: _*)
+    v <- Gen.nonEmptyContainerOf[List, Double](arbitrary[Double])
+  } yield SdeParameter.ouParameter(v: _*)(v: _*)(v: _*)(v: _*)(v: _*)
 
   val genGenBrownian: Gen[SdeParameter] = for {
-    v <- arbitrary[Double]
-  } yield SdeParameter.genBrownianParameter(v)(v)(v)(v)
+    v <- Gen.nonEmptyContainerOf[List, Double](arbitrary[Double])
+  } yield SdeParameter.genBrownianParameter(v: _*)(v: _*)(v: _*)(v: _*)
 
   val genSde: Gen[SdeParameter] = Gen.oneOf(genGenBrownian, Gen.oneOf(genBrownian, genOrnstein))
 
@@ -31,15 +30,19 @@ trait ParameterGen {
     sde <- genSde
   } yield Parameters.leafParameter(Some(v), sde)
 
-  val genBranch = for {
-    left <- genLeaf
-    right <- genLeaf
+  def genBranch(level: Int) = for {
+    left <- genParameters(level)
+    right <- genParameters(level)
   } yield left |+| right
+
+  def genParameters(level: Int): Gen[Parameters] = if (level >= 10) genLeaf else Gen.oneOf(genLeaf, genBranch(level + 1))
+
+  lazy val parameters: Gen[Parameters] = genParameters(0)
 }
 
 object ParameterFunctionSuite extends Properties("Parameters") with ParameterGen {
   val input = (n: Int) => for {
-    p <- genBranch 
+    p <- parameters
     d <- denseVector(p.length)
     e <- denseVector(p.length)
   } yield (p, d, e)

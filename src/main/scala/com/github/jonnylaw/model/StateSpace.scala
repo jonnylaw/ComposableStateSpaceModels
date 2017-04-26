@@ -48,10 +48,7 @@ trait Sde { self =>
   }
 
   def simProcess(t0: Time, dt: TimeIncrement) = {
-    MarkovChain(StateSpace(t0, initialState.draw))(s => for {
-      x <- stepFunction(dt)(s.state)
-      t = s.time + dt
-    } yield StateSpace(t, x))
+    MarkovChain(initialState.draw)(stepFunction(dt))
   }
 
   def simStream(t0: Time, dt: TimeIncrement) = {

@@ -36,7 +36,7 @@ object Interpolate extends App with TestNegBinMod {
   val res = raw_data.
     map {
       s => (s, s.last.particles.transpose).zipped.map { case (x, p) =>  PfState(x.t, x.observation, p, x.ll, x.ess) }.
-        map(ParticleFilter.getIntervals(model, params).run)
+        map(ParticleFilter.getIntervals(model, params))
     }
 
   Source.fromFuture(res).

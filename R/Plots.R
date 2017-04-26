@@ -38,7 +38,7 @@ ggsave("src/main/resources/site/figures/NegBinSims.png")
 # Plot Neg Bin Sims #
 #####################
 
-negbin_sims = read_csv("data/NegBin/NegativeBinomial.csv", n_max = 500,
+negbin_sims = read_csv("data/NegBin/NegativeBinomial.csv",
                        col_names = c("time", "y", "eta", "gamma", sapply(1:9, function(i) paste("state", i, sep = "_"))))
 
 negbin_sims %>%
@@ -55,7 +55,7 @@ ggsave("src/main/resources/site/figures/ComposedNegBinSims.png")
 # Filtering the Negative Binomial #
 ###################################
 
-negbin_filtered = read_csv("data/NegativeBinomialFiltered.csv", n_max = 500,
+negbin_filtered = read_csv("data/NegBin/NegativeBinomialFiltered.csv",
                          col_names = c("time", "observation",
                                        "eta_hat", "eta_lower", "eta_upper",
                                        sapply(1:9, function(i) paste("state", i, "hat", sep = "_")), 
@@ -103,37 +103,11 @@ mcmc.list(mcmc(chain1[1:n,]), mcmc(chain2[1:n,])) %>%
   ggs() %>% 
   ggmcmc(file = "negative_binomial.pdf")
 
-##############################
-# Tuned Parameter Estimation #
-##############################
-
-chain3 = lapply(readLines("data/NegBinPosterior-1-0.json"), function(x) fromJSON(x)$params) %>% 
-  unlist() %>%
-  matrix(ncol = 5, byrow = T) %>%
-  as_data_frame()
-
-chain4 = lapply(readLines("data/NegBinPosterior-1-1.json"), function(x) fromJSON(x)$params) %>% 
-  unlist() %>%
-  matrix(ncol = 5, byrow = T) %>%
-  as_data_frame()
-
-colnames(chain3) = params
-colnames(chain4) = params
-
-chain3 %<>%
-  mutate(size = exp(size), c0 = exp(c0), sigma = exp(sigma))
-chain4 %<>%
-  mutate(size = exp(size), c0 = exp(c0), sigma = exp(sigma))
-
-mcmc.list(mcmc(chain3), mcmc(chain4)) %>% 
-  ggs() %>% 
-  ggmcmc(file = "negative_binomial_tuned.pdf")
-
 ####################
 # Online Filtering #
 ####################
 
-filtered = read_csv("data/NegativeBinomialOnlineFilter.csv", 
+filtered = read_csv("data/NegBin/NegativeBinomialOnlineFilter.csv", 
                     col_names = c("time", "observation",
                                   "eta_hat", "eta_lower", "eta_upper",
                                   sapply(1:9, function(i) paste("state", i, "hat", sep = "_")), 

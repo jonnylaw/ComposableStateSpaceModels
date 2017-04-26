@@ -89,16 +89,18 @@ object DeterminePosterior extends App with TestNegBinMod {
 /**
   * Convert the JSON files to CSVs
   */
-object JsonToCSV extends App {
-  implicit val system = ActorSystem("PMMH")
-  implicit val materializer = ActorMaterializer()
+object JsonToCSV {
+  def main(args: Array[String]): Unit = {
+    implicit val system = ActorSystem("PMMH")
+    implicit val materializer = ActorMaterializer()
 
-  val files = List("data/NegBin/NegativeBinomialPosterior-1.json", "data/NegBin/NegativeBinomialPosterior-2.json")
+    val files = List("data/NegBin/NegativeBinomialPosterior-1.json", "data/NegBin/NegativeBinomialPosterior-2.json")
 
-  Future.sequence(files.zipWithIndex map { case (file, i) =>
-    Streaming.jsonToCSV(file, s"data/NegBin/NegativeBinomialPosterior-$i.csv")
-  }).onComplete { s =>
-    println(s)
-    system.terminate()
+    Future.sequence(files.zipWithIndex map { case (file, i) =>
+      Streaming.jsonToCSV(file, s"data/NegBin/NegativeBinomialPosterior-$i.csv")
+    }).onComplete { s =>
+      println(s)
+      system.terminate()
+    }
   }
 }

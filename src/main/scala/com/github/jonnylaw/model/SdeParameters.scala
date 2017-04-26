@@ -22,6 +22,7 @@ sealed trait SdeParameter { self =>
   }
   def add(delta: DenseVector[Double]): SdeParameter
   def map(f: DenseVector[Double] => DenseVector[Double]): SdeParameter
+  def mapDbl(f: Double => Double): SdeParameter
   def toMap: Map[String, Double]
 }
 
@@ -50,6 +51,10 @@ case class GenBrownianParameter(
 
   def map(f: DenseVector[Double] => DenseVector[Double]): SdeParameter = {
     SdeParameter.genBrownianParameter(f(m0): _*)(f(c0): _*)(f(mu): _*)(f(sigma): _*)
+  }
+
+  def mapDbl(f: Double => Double): SdeParameter = {
+    SdeParameter.genBrownianParameter(m0.map(f): _*)(c0.map(f): _*)(mu.map(f): _*)(sigma.map(f): _*)
   }
 
   def toMap: Map[String, Double] = {
@@ -81,6 +86,10 @@ case class BrownianParameter(
 
   def map(f: DenseVector[Double] => DenseVector[Double]): SdeParameter = {
     SdeParameter.brownianParameter(f(m0): _*)(f(c0): _*)(f(sigma): _*)
+  }
+
+  def mapDbl(f: Double => Double): SdeParameter = {
+    SdeParameter.brownianParameter(m0.map(f): _*)(c0.map(f): _*)(sigma.map(f): _*)
   }
 
   def toMap: Map[String, Double] = {
@@ -116,6 +125,10 @@ case class OuParameter(
 
   def map(f: DenseVector[Double] => DenseVector[Double]): SdeParameter = {
     SdeParameter.ouParameter(f(m0): _*)(f(c0): _*)(f(alpha): _*)(f(sigma): _*)(f(theta): _*)
+  }
+
+  def mapDbl(f: Double => Double): SdeParameter = {
+    SdeParameter.ouParameter(m0.map(f): _*)(c0.map(f): _*)(alpha.map(f): _*)(sigma.map(f): _*)(theta.map(f): _*)
   }
 
   def toMap: Map[String, Double] = {

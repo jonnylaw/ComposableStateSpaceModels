@@ -87,6 +87,12 @@ sealed trait Parameters { self =>
     case BranchParameter(l, r) if (l.size <= i) => r.getNode(i - l.size)
     case BranchParameter(l, r) if (l.size > i) => l.getNode(i)
   }
+
+  def mapDbl(f: Double => Double): Parameters = self match {
+    case LeafParameter(v, sdeParam) => Parameters.leafParameter(v.map(f), sdeParam.mapDbl(f))
+    case BranchParameter(l, r) => l.mapDbl(f) |+| r.mapDbl(f)
+    case EmptyParameter => EmptyParameter
+  }
 }
 case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends Parameters {
 
@@ -111,10 +117,6 @@ case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends 
       v = scale.map(_ + innov)
     } yield Parameters.leafParameter(v, sde)
   }
-
-  // def map(f: Double => Double): Parameters = {
-  //   Parameters.leafParameter(scale.map(f), sdeParam.map(_.map(f)))
-  // }
 }
 
 case class BranchParameter(left: Parameters, right: Parameters) extends Parameters {
@@ -135,10 +137,6 @@ case class BranchParameter(left: Parameters, right: Parameters) extends Paramete
   }
 
   def flatten: Seq[Double] = left.flatten ++ right.flatten
-
-  // def map(f: Double => Double): Parameters = {
-  //   Parameters.branchParameter(left.map(f), right.map(f))
-  // }
 }
 
 case object EmptyParameter extends Parameters {
@@ -180,12 +178,12 @@ object Parameters {
   /**
     * Calculate the mean of the parameter values
     */
-  def mean(params: Seq[Parameters]): Try[Parameters] = ???
-  //   val sum = params.foldLeft(Success(Parameters.emptyParameter): Try[Parameters])((a, b) =>
-  //     a.flatMap(Parameters.sumParameters(_, b)))
+  def mean(params: Seq[Parameters]): Try[Parameters] = {
+    val sum = params.foldLeft(Success(Parameters.emptyParameter): Try[Parameters])((a, b) =>
+      a.flatMap(Parameters.sumParameters(_, b)))
 
-  //   sum.map(_.map(_/params.length))
-  // }
+    sum.map(_.mapDbl(_/params.length))
+  }
 
   def proposeIdent: Parameters => Rand[Parameters] = p => new Rand[Parameters] {
     def draw = p

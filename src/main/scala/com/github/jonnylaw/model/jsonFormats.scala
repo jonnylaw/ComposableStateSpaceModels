@@ -21,6 +21,7 @@ object DataProtocols extends DefaultJsonProtocol {
         val s: Array[Double] = elements.map(_.convertTo[Double]).toArray[Double]
         DenseVector(s)
       }
+      case JsNumber(a) => DenseVector(a.toDouble)
       case x => deserializationError("Expected DenseVector as JsArray, but got " + x)
     }
   }

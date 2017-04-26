@@ -4,12 +4,12 @@ import akka.stream.scaladsl._
 import akka.stream._
 import akka.actor.ActorSystem
 import breeze.numerics.log
-import breeze.linalg._
 import cats.implicits._
 import com.github.jonnylaw.model._
 import DataProtocols._
 import scala.concurrent.ExecutionContext.Implicits.global
 import spray.json._
+import scala.concurrent.Future
 
 /**
   * Specify a model to use 
@@ -20,7 +20,7 @@ trait TestNegBinMod {
   val p = Parameters.leafParameter(Some(log(3.0)), sdeParam)
 
   val sde2 = Sde.ouProcess(8)
-  val sde2Param = SdeParameter.ouParameter(0.0)(log(1.0))(log(0.3))(log(0.1))(1.0, 2.0)
+  val sde2Param = SdeParameter.ouParameter(0.0)(log(1.0))(log(0.3))(log(0.1))(1.5, 1.5, 1.0, 1.0, 1.5, 1.5, 0.1, 0.1)
   val p1 = Parameters.leafParameter(None, sde2Param)    
 
   val params = p |+| p1
@@ -35,31 +35,25 @@ object SimOrnstein extends App with TestNegBinMod {
   sde2(sde2Param).
     simStream(0.0, 0.01).
     take(5000).
-    map(_.show).
+    zipWithIndex.
+    map { case (x, t) => t + ", " + x.show }.
     runWith(Streaming.writeStreamToFile("data/ornsteinUhlenbeck.csv")).
     onComplete(_ => system.terminate())
 }
 
-object SimModelToCSV extends App with TestNegBinMod {
-  implicit val system = ActorSystem("SimulateToCSV")
-  implicit val materializer = ActorMaterializer()
-
-  SimulateData(model(params)).
-    observations.
-    take(5000).
-    map(_.show).
-    runWith(Streaming.writeStreamToFile("data/NegBin/NegativeBinomial.csv")).
-    onComplete(_ => system.terminate())
-}
-
-object SimModelToJSON extends App with TestNegBinMod {
+/**
+  * Simulate Data from the Negative Binomial model and write it to CSV and JSON files asynchronously
+  *
+  */
+object SimulateNegativeBinomial extends App with TestNegBinMod {
   implicit val system = ActorSystem("SimulateToJson")
   implicit val materializer = ActorMaterializer()
 
   SimulateData(model(params)).
     observations.
     take(5000).
-    map(_.toJson.compactPrint).
-    runWith(Streaming.writeStreamToFile("data/NegBin/NegativeBinomial.json")).
+    alsoTo(Streaming.dataCsvSink("data/NegBin/NegativeBinomial.csv")).
+    toMat(Streaming.dataJsonSink("data/NegBin/NegativeBinomial.csvb"))(Keep.right).
+    run().
     onComplete(_ => system.terminate())
 }
