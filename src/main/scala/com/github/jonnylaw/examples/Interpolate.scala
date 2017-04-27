@@ -13,7 +13,7 @@ object Interpolate extends App with TestNegBinMod {
   implicit val system = ActorSystem("Interpolation")
   implicit val materializer = ActorMaterializer()
 
-  val testData = DataFromFile("data/NegativeBinomial.csv").
+  val testData = DataFromFile("data/NegBin/NegativeBinomial.csv").
     observations.
     drop(4000)
 
@@ -36,13 +36,13 @@ object Interpolate extends App with TestNegBinMod {
   val res = raw_data.
     map {
       s => (s, s.last.particles.transpose).zipped.map { case (x, p) =>  PfState(x.t, x.observation, p, x.ll, x.ess) }.
-        map(ParticleFilter.getIntervals(model, params).run)
+        map(ParticleFilter.getIntervals(model, params))
     }
 
   Source.fromFuture(res).
     mapConcat(identity).
     map((s: PfOut) => s.show).
-    runWith(Streaming.writeStreamToFile("data/NegativeBinomialInterpolated.csv")).
+    runWith(Streaming.writeStreamToFile("data/NegBin/NegativeBinomialInterpolated.csv")).
     onComplete { s =>
       println(s)
       system.terminate()

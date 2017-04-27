@@ -44,6 +44,14 @@ case class PfState(
   ll: LogLikelihood, 
   ess: Int)
 
+case class PfStateOnline(
+  t: Time,
+  observation: Option[Observation],
+  parameters: Vector[Parameters],
+  particles: Vector[Vector[State]],
+  ll: LogLikelihood, 
+  ess: Int)
+
 case class PfStateInterpolate(
   t: Time,
   observation: Option[Observation],
@@ -270,14 +278,14 @@ object ParticleFilter {
     * @param t0 the starting time of the observations
     * @param n the number of particles to use in the filter
     * @return a Reader monad representing the function Model => Flow[Task, Data, PfState]
-    * When given a Model, this can be used to filter an fs2 stream of data
+    * When given a Model, this can be used to filter an akka stream of data
     * eg:
     * val mod: Model
     * val resample: Resample[F, G, State]
     * val pf = filter(resample, 0.0, 100)
-    * val data: Source[NotUsed, Data] = // data as an fs2 stream
+    * val data: Source[NotUsed, Data] = // data as an akka stream
     * data.
-    *   through(pf(mod))
+    *   via(pf(mod))
     */
   def filter(resample: Resample[State], t0: Time, n: Int) = Reader { (mod: Model) =>
     Filter(mod, resample).filterStream(t0)(n)
@@ -291,45 +299,37 @@ object ParticleFilter {
   }
 
   /**
-    * Function which takes a sample from the joint posterior
-    * then runs and combines many particle filters
-    * @param post the joint posterior distribution of the parameters and the state
-    * @param samples the number of samples to take from the joint posterior, this determines the number of particle filters
-    * @param t0 the initial starting point of the particle filter
-    * @param n the number of particles in each of the particle filters
-    * @param resample the resampling scheme
-    * @param mod an unparameterised model to use for the online filter
-    * @retrun an Akka stream Flow which can be used to run many particle filters online
+    * Filter online 
     */
-  def filterOnline(
-    post: Rand[(Parameters, State)],
-    samples: Int,
-    t0: Time,
-    n: Int,
-    resample: Resample[State],
-    mod: UnparamModel
-  ) = Flow.fromGraph(GraphDSL.create() {
-      implicit builder: GraphDSL.Builder[NotUsed] =>
-      
-    val values: IndexedSeq[(Parameters, State)] = post.sample(samples)
+  def filterOnline(resample: Resample[State], t0: Time, n: Int, init: Vector[(State, Parameters)], mod: UnparamModel) = {
+    val initState = PfStateOnline(t0, None, init.map(_._2), init.map(x => Vector.fill(n)(x._1)), 0.0, 0)
+
+    def stepFilterOnline(s: PfStateOnline, y: Data): PfStateOnline = s.particles.zip(s.parameters).par.map { 
+      case (state, params) =>
+        val dt = y.t - s.t
+        val x1 = state map (x => mod(params).sde.stepFunction(dt)(x).draw)
+
+        y.observation match {
+          case None => PfState(y.t, None, x1, s.ll, s.ess)
+          case Some(obs) =>
+            val w = x1 map (x => mod(params).dataLikelihood(mod(params).f(x, y.t), obs))
+            val max = w.max
+            val w1 = w map (a => exp(a - max))
+            val resampledX = resample(x1, w1)
+            val ll = s.ll + max + log(ParticleFilter.mean(w1))
+            val ess = ParticleFilter.effectiveSampleSize(w1)
+
+            PfState(y.t, Some(obs), resampledX, ll, ess)
+        }
+    }.foldLeft(PfStateOnline(t0, None, Vector[Parameters](), Vector(), 0.0, 0))((acc, b) => 
+      PfStateOnline(b.t, b.observation, s.parameters, acc.particles :+ b.particles, b.ll, b.ess + acc.ess))
     
-    val bcast = builder.add(Broadcast[Data](samples))
-    val merge = builder.add(Merge[PfState](samples))
-    val reduce = builder.add(Flow[PfState].reduce((a, b) =>
-      PfState(a.t, a.observation, a.particles ++ b.particles, b.ll, b.ess + a.ess)))
 
-    val summarise = builder.add(Flow[PfState].map(ParticleFilter.getIntervals(mod, values.head._1).run))
-
-    val filterFlow = (s: (Parameters, State)) => {
-      val pf = filterInit(resample, t0, n, s._2).compose(mod)
-      pf(s._1)
-    }
-
-    bcast ~> filterFlow(values.head) ~> merge ~> reduce ~> summarise
-    bcast ~> filterFlow(values(1))   ~> merge
-
-    FlowShape(bcast.in, summarise.out)
-  })
+    Flow[Data].
+      scan(initState)(stepFilterOnline).
+      map(s => (s.parameters, PfState(s.t, s.observation, s.particles.flatten, s.ll, s.ess))).
+      map { case (params, s) => ParticleFilter.getIntervals(mod, params.head)(s) }
+  }
 
   /**
     * 
@@ -410,7 +410,7 @@ object ParticleFilter {
   /**
     * Transforms PfState into PfOut, including eta, eta intervals and state intervals
     */
-  def getIntervals(model: UnparamModel, params: Parameters) = Reader { (s: PfState) =>
+  def getIntervals(model: UnparamModel, params: Parameters)(s: PfState) =
     model(params) map { mod =>
       val state = s.particles
       val stateMean = meanState(state)
@@ -421,7 +421,6 @@ object ParticleFilter {
 
       PfOut(s.t, s.observation, meanEta, etaIntervals, stateMean, stateIntervals)
     }
-  }
 
   /**
     * Calculate the effective sample size of a particle cloud, from the un-normalised weights

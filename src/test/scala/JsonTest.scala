@@ -21,38 +21,40 @@ class JsonSuite extends Properties("Json") with ParameterGen {
 
   val genState: Gen[State] = Gen.oneOf(genBranchState, genLeafState)
 
-  property("toJson should serialise State to Json") = Prop.forAll(genState) { x0 =>
+  property("toJson should serialise State to JSON") = Prop.forAll(genState) { x0 =>
     x0 == x0.toJson.compactPrint.parseJson.convertTo[State]
   }
 
-  // val genBrownian: Gen[SdeParameter] = for {
-  //   v <- arbitrary[Double]
-  // } yield SdeParameter.brownianParameter(v, v, v)
-
-  // val genOrnstein: Gen[SdeParameter] = for {
-  //   v <- arbitrary[Double]
-  //   theta <- Gen.containerOf[List, Double](arbitrary[Double])
-  // } yield SdeParameter.ouParameter(v, v, v, v)(theta: _*)
-
-  // val genGenBrownian: Gen[SdeParameter] = for {
-  //   v <- arbitrary[Double]
-  // } yield SdeParameter.genBrownianParameter(v, v, v, v)
-
-  // val genSde: Gen[SdeParameter] = Gen.oneOf(genGenBrownian, Gen.oneOf(genBrownian, genOrnstein))
-
-  // val genLeaf = for {
-  //   v <- Gen.oneOf(arbitrary[Double] map (Some(_)), Gen.const(None))
-  //   sde <- genSde
-  // } yield Parameters.leafParameter(v, sde)
-
-  // val genBranch = for {
-  //   left <- genLeaf
-  //   right <- genLeaf
-  // } yield left |+| right
-
-  // val genParams: Gen[Parameters] = Gen.oneOf(genLeaf, genBranch)
-
-  property("toJson should serialise Parameters to Json") = Prop.forAll(genBranch) { p =>
+  property("toJson should serialise Parameters to JSON") = Prop.forAll(parameters) { p =>
     Parameters.isIsomorphic(p, p.toJson.compactPrint.parseJson.convertTo[Parameters])
+  }
+
+  val genObservationWithState = for {
+    t <- arbitrary[Double]
+    y <- arbitrary[Double]
+    eta <- arbitrary[Double]
+    gamma <- arbitrary[Double]
+    sdeState <- genState
+  } yield ObservationWithState(t, Some(y), eta, gamma, sdeState)
+
+  property("toJson should serialise Data to JSON") = Prop.forAll(genObservationWithState) { d =>
+    d.toJson.compactPrint.parseJson.convertTo[TimedObservation] == TimedObservation(d.t, d.observation)
+  }
+
+  val genMetropState = for {
+    ll <- arbitrary[Double]
+    p <- parameters
+    t <- arbitrary[Double]
+    sde <- genState
+    accepted <- arbitrary[Int]
+  } yield MetropState(ll, p, StateSpace(t, sde), accepted)
+
+  property("toJson should serialise MetropState to JSON") = Prop.forAll(genMetropState) { d =>
+    val parsed = d.toJson.compactPrint.parseJson.convertTo[MetropState]
+
+    parsed.ll == d.ll &&
+    parsed.accepted == d.accepted &&
+    Parameters.isIsomorphic(parsed.params, d.params) &&
+    Tree.isIsomorphic(parsed.sde.state, d.sde.state)
   }
 }

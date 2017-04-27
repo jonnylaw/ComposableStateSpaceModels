@@ -48,54 +48,54 @@ package object model {
     def compare(x: DenseVector[Double],y: DenseVector[Double]): Int = ???
   }
 
-  implicit def parVectorCollection = new Collection[ParVector] {
-    def pure[A](a: A): ParVector[A] = ParVector(a)
-    def isEmpty[A](fa: ParVector[A]): Boolean = fa.isEmpty
-    def map[A, B](fa: ParVector[A])(f: A => B): ParVector[B] = fa.map(f)
-    def flatMap[A, B](fa: ParVector[A])(f: A => ParVector[B]): ParVector[B] = fa.flatMap(f)
-    def get[A](fa: ParVector[A])(i: Int): A = fa(i)
-    def indexWhere[A](fa: ParVector[A])(cond: A => Boolean): Int = fa.indexWhere(cond)
-    def scanLeft[A, B](fa: ParVector[A],z: B)(f: (B, A) => B): ParVector[B] = fa.scanLeft(z)(f)
-    def foldLeft[A, B](fa: ParVector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
-    def empty[A]: ParVector[A] = ParVector()
-    def append[A](fa: ParVector[A])(a: A): ParVector[A] = a +: fa
-    def size[A](fa: ParVector[A]) = fa.size
-    def combineK[A](x: ParVector[A], y: ParVector[A]): ParVector[A] = x ++ y
-    def indices[A](fa: ParVector[A]) = fa.zipWithIndex.map(_._2)
-    def toArray[A: ClassTag](fa: ParVector[A]): Array[A] = fa.toArray
-    def fill[A](n: Int)(a: => A): ParVector[A] = ParVector.fill(n)(a)
-    def unzip[A, B](fa: ParVector[(A, B)]): (ParVector[A], ParVector[B]) = fa.unzip
-    def max[A: Ordering](fa: ParVector[A]): A = fa.max
-    def toVector[A](fa: ParVector[A]): Vector[A] = fa.toVector
-    def zip[A, B](fa: ParVector[A], fb: ParVector[B]): ParVector[(A, B)] = fa.zip(fb)
-    def drop[A](fa: ParVector[A])(n: Int): ParVector[A] = fa.drop(n)
-    def toTreeMap[A: Ordering, B](fa: ParVector[(A, B)]): TreeMap[A, B] = 
-      TreeMap.empty[A, B] ++ fa
-  }
+  // implicit def parVectorCollection = new Collection[ParVector] {
+  //   def pure[A](a: A): ParVector[A] = ParVector(a)
+  //   def isEmpty[A](fa: ParVector[A]): Boolean = fa.isEmpty
+  //   def map[A, B](fa: ParVector[A])(f: A => B): ParVector[B] = fa.map(f)
+  //   def flatMap[A, B](fa: ParVector[A])(f: A => ParVector[B]): ParVector[B] = fa.flatMap(f)
+  //   def get[A](fa: ParVector[A])(i: Int): A = fa(i)
+  //   def indexWhere[A](fa: ParVector[A])(cond: A => Boolean): Int = fa.indexWhere(cond)
+  //   def scanLeft[A, B](fa: ParVector[A],z: B)(f: (B, A) => B): ParVector[B] = fa.scanLeft(z)(f)
+  //   def foldLeft[A, B](fa: ParVector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
+  //   def empty[A]: ParVector[A] = ParVector()
+  //   def append[A](fa: ParVector[A])(a: A): ParVector[A] = a +: fa
+  //   def size[A](fa: ParVector[A]) = fa.size
+  //   def combineK[A](x: ParVector[A], y: ParVector[A]): ParVector[A] = x ++ y
+  //   def indices[A](fa: ParVector[A]) = fa.zipWithIndex.map(_._2)
+  //   def toArray[A: ClassTag](fa: ParVector[A]): Array[A] = fa.toArray
+  //   def fill[A](n: Int)(a: => A): ParVector[A] = ParVector.fill(n)(a)
+  //   def unzip[A, B](fa: ParVector[(A, B)]): (ParVector[A], ParVector[B]) = fa.unzip
+  //   def max[A: Ordering](fa: ParVector[A]): A = fa.max
+  //   def toVector[A](fa: ParVector[A]): Vector[A] = fa.toVector
+  //   def zip[A, B](fa: ParVector[A], fb: ParVector[B]): ParVector[(A, B)] = fa.zip(fb)
+  //   def drop[A](fa: ParVector[A])(n: Int): ParVector[A] = fa.drop(n)
+  //   def toTreeMap[A: Ordering, B](fa: ParVector[(A, B)]): TreeMap[A, B] = 
+  //     TreeMap.empty[A, B] ++ fa
+  // }
 
-  implicit def vectorCollection = new Collection[Vector] {
-    def pure[A](a: A): Vector[A] = Vector(a)
-    def isEmpty[A](fa: Vector[A]): Boolean = fa.isEmpty
-    def map[A, B](fa: Vector[A])(f: A => B): Vector[B] = fa.map(f)
-    def flatMap[A, B](fa: Vector[A])(f: A => Vector[B]): Vector[B] = fa.flatMap(f)
-    def get[A](fa: Vector[A])(i: Int): A = fa(i)
-    def indexWhere[A](fa: Vector[A])(cond: A => Boolean): Int = fa.indexWhere(cond)
-    def scanLeft[A, B](fa: Vector[A],z: B)(f: (B, A) => B): Vector[B] = fa.scanLeft(z)(f)
-    def foldLeft[A, B](fa: Vector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
-    def empty[A]: Vector[A] = Vector()
-    def append[A](fa: Vector[A])(a: A): Vector[A] = a +: fa
-    def size[A](fa: Vector[A]) = fa.size
-    def combineK[A](x: Vector[A], y: Vector[A]): Vector[A] = x ++ y
-    def indices[A](fa: Vector[A]) = fa.zipWithIndex.map(_._2)
-    def fill[A](n: Int)(a: => A) = Vector.fill(n)(a)
-    def toArray[A: ClassTag](fa: Vector[A]): Array[A] = fa.toArray
-    def unzip[A, B](fa: Vector[(A, B)]): (Vector[A], Vector[B]) = fa.unzip
-    def max[A: Ordering](fa: Vector[A]): A = fa.max
-    def toVector[A](fa: Vector[A]): Vector[A] = fa
-    def zip[A, B](fa: Vector[A], fb: Vector[B]): Vector[(A, B)] = fa.zip(fb)
-    def drop[A](fa: Vector[A])(n: Int): Vector[A] = fa.drop(n)
-    def toTreeMap[A: Ordering, B](fa: Vector[(A, B)]): TreeMap[A, B] = TreeMap.empty[A, B] ++ fa
-  }
+  // implicit def vectorCollection = new Collection[Vector] {
+  //   def pure[A](a: A): Vector[A] = Vector(a)
+  //   def isEmpty[A](fa: Vector[A]): Boolean = fa.isEmpty
+  //   def map[A, B](fa: Vector[A])(f: A => B): Vector[B] = fa.map(f)
+  //   def flatMap[A, B](fa: Vector[A])(f: A => Vector[B]): Vector[B] = fa.flatMap(f)
+  //   def get[A](fa: Vector[A])(i: Int): A = fa(i)
+  //   def indexWhere[A](fa: Vector[A])(cond: A => Boolean): Int = fa.indexWhere(cond)
+  //   def scanLeft[A, B](fa: Vector[A],z: B)(f: (B, A) => B): Vector[B] = fa.scanLeft(z)(f)
+  //   def foldLeft[A, B](fa: Vector[A],b: B)(f: (B, A) => B): B = fa.foldLeft(b)(f)
+  //   def empty[A]: Vector[A] = Vector()
+  //   def append[A](fa: Vector[A])(a: A): Vector[A] = a +: fa
+  //   def size[A](fa: Vector[A]) = fa.size
+  //   def combineK[A](x: Vector[A], y: Vector[A]): Vector[A] = x ++ y
+  //   def indices[A](fa: Vector[A]) = fa.zipWithIndex.map(_._2)
+  //   def fill[A](n: Int)(a: => A) = Vector.fill(n)(a)
+  //   def toArray[A: ClassTag](fa: Vector[A]): Array[A] = fa.toArray
+  //   def unzip[A, B](fa: Vector[(A, B)]): (Vector[A], Vector[B]) = fa.unzip
+  //   def max[A: Ordering](fa: Vector[A]): A = fa.max
+  //   def toVector[A](fa: Vector[A]): Vector[A] = fa
+  //   def zip[A, B](fa: Vector[A], fb: Vector[B]): Vector[(A, B)] = fa.zip(fb)
+  //   def drop[A](fa: Vector[A])(n: Int): Vector[A] = fa.drop(n)
+  //   def toTreeMap[A: Ordering, B](fa: Vector[(A, B)]): TreeMap[A, B] = TreeMap.empty[A, B] ++ fa
+  // }
 
   // various shows for printing nicely
   implicit val stateShow = new Show[State] {
@@ -117,13 +117,17 @@ package object model {
     def show(a: DecomposedModel): String = s"${a.time}, ${a.observation}, ${a.eta}, ${a.gamma}, ${a.state.mkString(", ")}"
   }
 
-  implicit def sdeParamShow = new Show[SdeParameter] {
+  implicit def dvShow = new Show[DenseVector[Double]] {
+    def show(dv: DenseVector[Double]) = dv.data.mkString(", ")
+  }
+
+  implicit def sdeParamShow(implicit S: Show[DenseVector[Double]]) = new Show[SdeParameter] {
     def show(p: SdeParameter): String = p match {
       case GenBrownianParameter(m0, c0, mu, sigma) =>
-        s"""$m0, $c0, $mu, $sigma"""
+        s"""${S.show(m0)}, ${S.show(c0)}, ${S.show(mu)}, ${S.show(sigma)}"""
       case BrownianParameter(m0, c0, sigma) =>
-        s"""$m0, $c0, $sigma"""
-      case OuParameter(m, c, a, s, t) => s"$m, $c, $a, $s, ${t.mkString(", ")}"
+        s"""${S.show(m0)}, ${S.show(c0)}, ${S.show(sigma)}"""
+      case OuParameter(m, c, a, s, t) => s"${S.show(m)}, ${S.show(c)}, ${S.show(a)}, ${S.show(s)}, ${S.show(t)}"
     }
   }
 

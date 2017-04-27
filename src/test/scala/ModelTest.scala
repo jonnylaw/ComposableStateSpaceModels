@@ -57,12 +57,12 @@ class ModelSuite extends FlatSpec with Matchers {
       def drift(state: State): Tree[DenseVector[Double]] = Tree.leaf(DenseVector(1.0))
       def diffusion(state: State) = Tree.leaf(DenseMatrix((0.0)))
       def dimension: Int = 1
-      override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = Rand.always(s)
+      override def stepFunction(dt: TimeIncrement)(s: State) = Rand.always(s)
     }
   }
 
   "Brownian Motion step function" should "Change the value of the state" in {
-    val p = SdeParameter.brownianParameter(1.0, 1.0, 1.0)
+    val p = SdeParameter.brownianParameter(1.0)(1.0)(1.0)
 
     val x0 = Tree.leaf(DenseVector(1.0))
 
@@ -70,9 +70,7 @@ class ModelSuite extends FlatSpec with Matchers {
   }
 
   "Compose two models" should "work" in {
-    val singleP = Parameters.leafParameter(
-      Some(1.0), SdeParameter.brownianParameter(
-      1.0, 1.0, 1.0))
+    val singleP = Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0))
 
     val p = singleP |+| singleP
 
@@ -89,7 +87,7 @@ class ModelSuite extends FlatSpec with Matchers {
 
   "Combine three models" should "result in a state space of three combined states" in {
     val p = List.fill(3)(
-      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(1.0, 1.0, 1.0))).
+      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0))).
       reduce((a, b) => a |+| b)
 
     val threeLinear = linearModelNoNoise(stepNull) |+|
@@ -104,8 +102,7 @@ class ModelSuite extends FlatSpec with Matchers {
 
   "Combine three Models" should "advance each state space seperately" in {
     val p = List.fill(3)(
-      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(
-      1.0, 1.0, 1.0))).
+      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0))).
       reduce((a, b) => a |+| b)
 
     val threeLinear = linearModelNoNoise(Sde.brownianMotion(1)) |+|
@@ -124,8 +121,7 @@ class ModelSuite extends FlatSpec with Matchers {
 
   "Combine three models" should "return an observation which is the sum of the state space, plus measurement error" in {
     val p = List.fill(3)(
-      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(
-      1.0, 1.0, 1.0))).
+      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0))).
       reduce((a, b) => a |+| b)
 
     val threeLinear = linearModelNoNoise(stepNull) |+|

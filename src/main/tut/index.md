@@ -147,7 +147,7 @@ val filter = ParticleFilter.filter(Resampling.systematicResampling, t0, 1000)
 val filteredNegBin = DataFromFile("data/ComposedNegBinSims.csv").
   observations.
   via(filter(composedMod(composedParams))).
-  map(ParticleFilter.getIntervals(composedMod(composedParams))).
+  map(ParticleFilter.getIntervals(composedMod, composedParams).run).
   map(_.show).
   runWith(Streaming.writeStreamToFile("data/NegativeBinomialFiltered.csv"))
 ```
@@ -178,7 +178,7 @@ DataFromFile("data/ComposedNegBinSims.csv").
   grouped(400).
   mapConcat(data => (1 to 2).map(chain => (chain, data))).
   mapAsync(2) { case (chain, d) =>
-    val filter = ParticleFilter.llStateReader(d.toVector, Resampling.systematicResampling, 100)
+    val filter = ParticleFilter.filterLlState(d.toVector, Resampling.systematicResampling, 100)
     val pf = filter compose composedMod
     val pmmh = MetropolisHastings.pmmhState(composedParams, Parameters.perturb(0.1), (a, b) => 0.0, prior)
 

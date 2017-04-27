@@ -8,8 +8,10 @@ import cats.data.{Reader, Kleisli}
 import cats.implicits._
 import akka.stream._
 import akka.stream.scaladsl._
+import SdeParameter._
 
 trait Sde { self =>
+  implicit val rand: RandBasis = Rand
   def initialState: Rand[State]
   def drift(state: State): Tree[DenseVector[Double]]
   def diffusion(state: State): Tree[DenseMatrix[Double]]
@@ -19,14 +21,14 @@ trait Sde { self =>
     * Exact transition density of an SDE, if this exists, otherwise the default implementation
     * is the Euler Maruyama method
     */
-  def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand): Rand[State] = {
+  def stepFunction(dt: TimeIncrement)(s: State): Rand[State] = {
     stepEulerMaruyama(dt)(s)
   }
 
   /**
     * A Wiener Process, given a time increment it generates a vector of Gaussian(0, dt) 
     */
-  def dW(dt: TimeIncrement)(implicit rand: RandBasis = Rand): Rand[State] = {
+  def dW(dt: TimeIncrement): Rand[State] = {
     val sample = DenseMatrix.eye[Double](dimension) * sqrt(dt) * DenseVector.rand(dimension, rand.gaussian(0, 1))
     Rand.always(Tree.leaf(sample))
   }
@@ -66,18 +68,23 @@ trait Sde { self =>
 }
 
 private final case class GenBrownianMotion(p: GenBrownianParameter, dimension: Int) extends Sde {
-  val params = GenBrownianParameter(p.m0, exp(p.c0), p.mu, exp(p.sigma))
+  val params: GenBrownianParameter = 
+    (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match { 
+      case GenBrownianParameter(m, c, mu, s) => GenBrownianParameter(m, c.map(exp(_)), mu, s.map(exp(_)))
+    }
 
-  def initialState: Rand[State] = {
-    val res: Rand[List[Double]] = Applicative[Rand].replicateA(dimension, Gaussian(params.m0, params.c0))
-    res.map(x => Tree.leaf(DenseVector(x.toArray)))
+  def initialState: Rand[State] = new Rand[State] {
+    def draw = {
+      val root = diag(params.c0.map(sqrt(_))) // calculate cholesky of diagonal matrix
+      Tree.leaf(root * DenseVector.rand(dimension, rand.gaussian(0, 1)) +:+ params.m0)
+    }
   }
 
-  def drift(state: State) = Tree.leaf(DenseVector.fill(dimension)(params.mu))
+  def drift(state: State) = Tree.leaf(Sde.buildParamRepeat(dimension)(params.mu))
 
-  def diffusion(state: State) = Tree.leaf(DenseMatrix.eye[Double](1) * params.sigma)
+  def diffusion(state: State) = Tree.leaf(diag(params.sigma))
 
-  override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = {
+  override def stepFunction(dt: TimeIncrement)(s: State) = {
     val res = s map { x => 
       val mean = x + params.mu * dt
       val varianceMatrix = DenseMatrix.eye[Double](dimension) * sqrt(params.sigma * dt)
@@ -90,18 +97,21 @@ private final case class GenBrownianMotion(p: GenBrownianParameter, dimension: I
 }
 
 private final case class BrownianMotion(p: BrownianParameter, dimension: Int) extends Sde {
-  val params = BrownianParameter(p.m0, exp(p.c0), exp(p.sigma))
+  val params: BrownianParameter = (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match { 
+    case BrownianParameter(m, c, s) => BrownianParameter(m, c.map(exp(_)), s.map(exp(_))) 
+  }
 
   def initialState: Rand[State] = {
-    val res: Rand[List[Double]] = Applicative[Rand].replicateA(dimension, Gaussian(params.m0, params.c0))
-    res.map(x => Tree.leaf(DenseVector(x.toArray)))
+    val root = diag(params.c0.map(sqrt(_))) // calculate cholesky of diagonal matrix
+    val res = Tree.leaf(root * DenseVector.rand(dimension, rand.gaussian(0, 1)) +:+ params.m0)
+    Rand.always(res)
   }
 
   def drift(state: State) = Tree.leaf(DenseVector.fill(dimension)(1.0))
 
-  def diffusion(state: State) = Tree.leaf(DenseMatrix.eye[Double](1) * params.sigma)
+  def diffusion(state: State) = Tree.leaf(diag(params.sigma))
 
-  override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = {
+  override def stepFunction(dt: TimeIncrement)(s: State) = {
     val res = s map { x => 
       val mean = x
       val varianceMatrix = DenseMatrix.eye[Double](dimension) * sqrt(params.sigma * dt)
@@ -120,39 +130,38 @@ private final case class OuProcess(p: OuParameter, dimension: Int) extends Sde {
   /**
     * Transform the parameters, as they are stored on a log scale
     */
-  val params = OuParameter(p.m0, exp(p.c0), exp(p.alpha), exp(p.sigma), p.theta)
+  val params: OuParameter = 
+    (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match { 
+      case OuParameter(m, c, a, s, t) => OuParameter(m, c.map(exp(_)), a.map(exp(_)), s.map(exp(_)), t)
+    }
 
-  /**
-    * Convert the mean to a DenseVector of the appropriate dimension
-    */
-  val thetaVec = DenseVector.tabulate(dimension)(i => params.theta(i % params.theta.size))
+  def variance(dt: TimeIncrement) = (params.sigma *:* params.sigma /:/ (params.alpha *:* 2.0)) *:* (DenseVector.ones[Double](dimension) - exp(params.alpha *:* -2.0 * dt))
 
-  override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = {
+  override def stepFunction(dt: TimeIncrement)(s: State) = {
+    val res: State = s map { x =>
+      val mean =  params.theta + (x - params.theta) * exp(- params.alpha * dt)
 
-    val mean: State = s map (x => (x - thetaVec) * exp(- params.alpha * dt) + thetaVec)
-    val variance = (params.sigma * params.sigma/ 2 * params.alpha ) * (1 - exp(-2 * params.alpha * dt))
+      diag(variance(dt).map(sqrt(_))) * DenseVector.rand(dimension, rand.gaussian(0, 1)) += mean
+    }
 
-    // the cholesky decomposition of a diagonal matrix is just the square root of the diagonal
-    val varianceMatrix = DenseMatrix.eye[Double](dimension) * sqrt(variance)
-
-    val res = mean map (m => m + varianceMatrix * DenseVector.rand(dimension, rand.gaussian(0, 1)))
     Rand.always(res)
   }
 
   def initialState: Rand[State] = {
-    val res: Rand[List[Double]] = Applicative[Rand].replicateA(dimension, Gaussian(params.m0, params.c0))
-    res.map(x => Tree.leaf(DenseVector(x.toArray)))
+    val root = diag(params.c0.map(sqrt(_))) // calculate cholesky of diagonal matrix
+    val res = Tree.leaf(root * DenseVector.rand(dimension, rand.gaussian(0, 1)) + params.m0)
+    Rand.always(res)
   }
 
   def drift(state: State) = {
-    state map (x => params.alpha * (thetaVec - x))
+    state map (x => params.alpha * (params.theta - x))
   }
 
-  def diffusion(state: State) = Tree.leaf(DenseMatrix.eye[Double](dimension) * params.sigma)
+  def diffusion(state: State) = Tree.leaf(diag(params.sigma))
 }
 
 /**
-  * Representing a realisation from a stochastic differential equation
+  * A realisation from a stochastic differential equation
   * @param time
   * @param state
   */
@@ -161,6 +170,14 @@ case class StateSpace(time: Time, state: State) {
 }
 
 object Sde {
+  /**
+    * Given a target dimension and a vector of values, cyclically repeat the vector of values 
+    * until the target dimension is reached
+    */
+  def buildParamRepeat(dim: Int)(m: DenseVector[Double]): DenseVector[Double] = {
+    DenseVector.tabulate(dim)(i => m(i % m.size))
+  }
+
   def genBrownianMotion(dimension: Int): UnparamSde = Reader { p => p match {
     case param: GenBrownianParameter => GenBrownianMotion(param, dimension)
     case _ => throw new Exception(s"Incorrect parameters supplied to GenBrownianmotion, expected GenBrownianParameter, received $p")
@@ -201,7 +218,7 @@ object Sde {
         case state: Leaf[DenseVector[Double]] => throw new Exception
       }
 
-      override def stepFunction(dt: TimeIncrement)(s: State)(implicit rand: RandBasis = Rand) = s match {
+      override def stepFunction(dt: TimeIncrement)(s: State) = s match {
         case Branch(l, r) => for {
           ls <- sde1.stepFunction(dt)(l)
           rs <- sde2.stepFunction(dt)(r)
@@ -211,7 +228,7 @@ object Sde {
 
       def dimension: Int = sde1.dimension + sde2.dimension
 
-      override def dW(dt: TimeIncrement)(implicit rand: RandBasis = Rand): Rand[Tree[DenseVector[Double]]] = {
+      override def dW(dt: TimeIncrement): Rand[Tree[DenseVector[Double]]] = {
         for {
           l <- sde1.dW(dt)
           r <- Applicative[Rand].replicateA(sde2.dimension, Gaussian(0.0, sqrt(dt))).map(x => (DenseVector(x.toArray)))

@@ -108,8 +108,7 @@ object Streaming {
     * @param burnIn the number of iterations to drop from the front of the PMMH run
     * @param thin keep every thin'th iteration, specify thin = 1 for no thinning
     */
-  def readPosterior(file: String, burnIn: Int, thin: Int)
-    (implicit f: JsonFormat[MetropState]): Source[MetropState, Future[IOResult]] = {
+  def readPosterior(file: String, burnIn: Int, thin: Int)(implicit f: JsonFormat[MetropState]) = {
     FileIO.fromPath(Paths.get(file)).
       via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
       map(_.utf8String).
@@ -154,6 +153,13 @@ object Streaming {
       f(Resampling.sampleOne(s.toVector))
     }
   }
+
+  def dataJsonSink(fileOut: String)(implicit f: JsonFormat[Data]): Sink[Data, Future[IOResult]] = Flow[Data].
+    map(_.toJson.compactPrint).
+    toMat(Streaming.writeStreamToFile(fileOut))(Keep.right)
+
+  def dataCsvSink(fileOut: String): Sink[Data, Future[IOResult]] = Flow[Data].map(_.show).
+    toMat(Streaming.writeStreamToFile(fileOut))(Keep.right)
 
   /**
     * An Akka Sink to write a stream of strings to a file

@@ -6,6 +6,7 @@
 target/
 .ensime
 *.jar
+.idea
 
 # emacs backup files
 .#*
@@ -22,3 +23,7 @@ makefile
 
 # Binary Files
 *.pdf
+
+# keys
+travis-deploy-key.pub
+travis-deploy-key
