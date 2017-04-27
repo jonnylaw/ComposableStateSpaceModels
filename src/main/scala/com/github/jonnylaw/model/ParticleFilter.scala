@@ -278,14 +278,14 @@ object ParticleFilter {
     * @param t0 the starting time of the observations
     * @param n the number of particles to use in the filter
     * @return a Reader monad representing the function Model => Flow[Task, Data, PfState]
-    * When given a Model, this can be used to filter an fs2 stream of data
+    * When given a Model, this can be used to filter an akka stream of data
     * eg:
     * val mod: Model
     * val resample: Resample[F, G, State]
     * val pf = filter(resample, 0.0, 100)
-    * val data: Source[NotUsed, Data] = // data as an fs2 stream
+    * val data: Source[NotUsed, Data] = // data as an akka stream
     * data.
-    *   through(pf(mod))
+    *   via(pf(mod))
     */
   def filter(resample: Resample[State], t0: Time, n: Int) = Reader { (mod: Model) =>
     Filter(mod, resample).filterStream(t0)(n)
@@ -304,7 +304,7 @@ object ParticleFilter {
   def filterOnline(resample: Resample[State], t0: Time, n: Int, init: Vector[(State, Parameters)], mod: UnparamModel) = {
     val initState = PfStateOnline(t0, None, init.map(_._2), init.map(x => Vector.fill(n)(x._1)), 0.0, 0)
 
-    def stepFilterOnline(s: PfStateOnline, y: Data): PfStateOnline = s.particles.zip(s.parameters).map { 
+    def stepFilterOnline(s: PfStateOnline, y: Data): PfStateOnline = s.particles.zip(s.parameters).par.map { 
       case (state, params) =>
         val dt = y.t - s.t
         val x1 = state map (x => mod(params).sde.stepFunction(dt)(x).draw)
@@ -328,7 +328,7 @@ object ParticleFilter {
     Flow[Data].
       scan(initState)(stepFilterOnline).
       map(s => (s.parameters, PfState(s.t, s.observation, s.particles.flatten, s.ll, s.ess))).
-      map { case (params, s) => ParticleFilter.getIntervals(mod, params.head)(s) }.async
+      map { case (params, s) => ParticleFilter.getIntervals(mod, params.head)(s) }
   }
 
   /**

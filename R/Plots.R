@@ -63,11 +63,11 @@ negbin_filtered = read_csv("data/NegBin/NegativeBinomialFiltered.csv",
 
 negbin_filtered %>%
   inner_join(negbin_sims, by = "time") %>%
-  select(contains("state_1"), time) %>%
-  gather(key, value, -time, -state_1_upper, -state_1_lower) %>%
+  select(contains("eta"), time) %>%
+  gather(key, value, -time, -eta_upper, -eta_lower) %>%
   ggplot(aes(x = time, y = value, colour = key)) +
   geom_line() +
-  geom_ribbon(aes(ymin = state_1_lower, ymax = state_1_upper), alpha = 0.5, colour = "NA", fill = "#1f5081") +
+  geom_ribbon(aes(ymin = eta_lower, ymax = eta_upper), alpha = 0.5, colour = "NA", fill = "#1f5081") +
   theme(legend.position = "bottom")
 
 ggsave("src/main/resources/site/figures/NegBinFiltered.png")
@@ -115,37 +115,33 @@ filtered = read_csv("data/NegBin/NegativeBinomialOnlineFilter.csv",
 
 filtered %>%
   inner_join(negbin_sims, by = "time") %>%
-  select(contains("state_2"), time) %>%
-  gather(key, value, -time, -state_2_upper, -state_2_lower) %>%
+  select(contains("state_1"), time) %>%
+  gather(key, value, -time, -state_1_upper, -state_1_lower) %>%
   ggplot(aes(x = time, y = value, colour = key)) +
   geom_line() +
-  geom_ribbon(aes(ymin = state_2_lower, ymax = state_2_upper), alpha = 0.5, colour = "NA", fill = "#1f5081") +
+  geom_ribbon(aes(ymin = state_1_lower, ymax = state_1_upper), alpha = 0.5, colour = "NA", fill = "#1f5081") +
   theme(legend.position = "bottom")
 
 #################
 # Interpolation #
 #################
 
-## Remove some observations of the process systematically, predict the state at that time
-negbin_full = read_csv("data/NegativeBinomial.csv",
-                       col_names = c("time", "observation", "eta", "gamma", sapply(1:9, function(i) paste("state", i, sep = "_"))))
-
-negbin_full %>%
+negbin_sims %>%
   filter(or(time < 420, time > 450)) %>%
-  ggplot(aes(x = time, y = observation)) +
+  ggplot(aes(x = time, y = y)) +
   geom_point() +
   ggtitle("Seasonal Negative Binomial Model with \nmissing values between t = 420 and t = 450")
 
 ggsave("src/main/resources/site/figures/missing_values.png")
 
-interpolated = read_csv("data/NegativeBinomialInterpolated.csv",
+interpolated = read_csv("data/NegBin/NegativeBinomialInterpolated.csv",
                         col_names = c("time", "observation",
                                       "eta_hat", "eta_lower", "eta_upper",
                                       sapply(1:9, function(i) paste("state", i, "hat", sep = "_")), 
                                       sapply(1:9, function(i) c(paste("state", i, "lower", sep = "_"), paste("state", i, "upper", sep = "_")))))
 
 interpolated %>%
-  # inner_join(negbin_full %>% select(time, y), by = "time") %>%
+  # inner_join(negbin_sims %>% select(time, y), by = "time") %>%
   select(time, observation, contains("eta")) %>%
   gather(key, value, -time, -eta_lower, -eta_upper) %>%
   ggplot(aes(x = time, y = value, colour = key)) +

@@ -53,7 +53,7 @@ object SimulateNegativeBinomial extends App with TestNegBinMod {
     observations.
     take(5000).
     alsoTo(Streaming.dataCsvSink("data/NegBin/NegativeBinomial.csv")).
-    toMat(Streaming.dataJsonSink("data/NegBin/NegativeBinomial.csvb"))(Keep.right).
+    toMat(Streaming.dataJsonSink("data/NegBin/NegativeBinomial.json"))(Keep.right).
     run().
     onComplete(_ => system.terminate())
 }

@@ -15,13 +15,7 @@ x(t_0) &\sim N(m(t_0), C(t_0))
 
 The true mean of the process at time \\(t\\), \\(x(t)\\) is obscured by measurement noise \\(v(t)\\). The goal of inference is to determine the true mean of the process, given the noisy measurements \\(y(t)\\). 
 
-## Kalman Filter
-
-In this case, the [Kalman Filter](https://en.wikipedia.org/wiki/Kalman_filter) can be used to determine the posterior distribution of the state at time \\(t\\). This model is tractable, since the sum of two Gaussian distributions is Gaussian with the mean and variance added. Assume that the posterior distribution of the latent state, \\(x(t_i)\\) is \\(N(m(t_i), C(t_i))\\):
-
-* The prior distribution for \\(x(t_{i+1}) \sim N(m(t_i), C(t_i) + W(t_{i+1})) \\)
-* The forecast distribution for \\(y(t_{i+1}) \sim N(m(t_i), C(t_i) + W(t_{i+1}) + V(t_{i+1})) \\)
-* Then the posterior distribution for \\(x(t_{i+1}) \sim N(m(t_{i+1}), C(t_{i+1})) \\), where \\(m(t_{i+1}) = m(t_i) + \\)
+In this case, the [Kalman Filter](https://en.wikipedia.org/wiki/Kalman_filter) can be used to determine the posterior distribution of the state at time \\(t\\). This model is tractable, since the sum of two Gaussian distributions is Gaussian with the mean and variance added. 
 
 ## Particle Filter
 
