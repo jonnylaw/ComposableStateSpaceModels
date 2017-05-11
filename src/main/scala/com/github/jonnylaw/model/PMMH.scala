@@ -125,6 +125,36 @@ case class ParticleMetropolisHastings(
   def logTransition(from: Parameters, to: Parameters): LogLikelihood = parameterTransition(from, to)
 }
 
+/**
+  * Recalculate the likelihood
+  */
+case class ApproxPMMH(
+  initialParams: Parameters,
+  proposal: Parameters => Rand[Parameters],
+  parameterTransition: (Parameters, Parameters) => LogLikelihood,
+  prior: Parameters => LogLikelihood,
+  pf: BootstrapFilter) extends MetropolisHastings {
+
+  def logTransition(from: Parameters, to: Parameters): LogLikelihood = parameterTransition(from, to)
+
+  override def mhStep: MetropState => Rand[MetropState] = s => {
+    for {
+      propParams <- proposal(s.params)
+      state = pf(propParams)
+      oldState = pf(s.params)
+      a = state._1 + logTransition(propParams, s.params) + prior(propParams) - 
+      logTransition(s.params, propParams) - oldState._1 - prior(s.params)
+      u = Uniform(0, 1).draw
+      prop = if (log(u) < a) {
+        MetropState(state._1, propParams, state._2.last, s.accepted + 1)
+      } else {
+        MetropState(oldState._1, s.params, oldState._2.last, s.accepted)
+      }
+    } yield prop
+  }
+}
+
+
 object MetropolisHastings {
   /**
     * Determine the joint posterior distribution p(x, theta | y) of a POMP model
@@ -137,4 +167,13 @@ object MetropolisHastings {
     prior: Parameters => LogLikelihood) = Reader { (pf: BootstrapFilter) =>
     ParticleMetropolisHastings(initP, proposal, logTransition, prior, pf).iters
   }
+
+  def approxPmmh(
+    initP: Parameters,
+    proposal: Parameters => Rand[Parameters],
+    logTransition: (Parameters, Parameters) => LogLikelihood,
+    prior: Parameters => LogLikelihood) = Reader { (pf: BootstrapFilter) =>
+    ApproxPMMH(initP, proposal, logTransition, prior, pf).iters
+  }
 }
+

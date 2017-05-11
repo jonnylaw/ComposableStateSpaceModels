@@ -42,12 +42,17 @@ trait Model {
 }
 
 object Model {
-  def poissonModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+  def poisson(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => PoissonModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def seasonalModel(
+  def beta(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+    case param: LeafParameter => BetaModel(sde(param.sdeParam), param)
+    case _ => throw new Exception("Can't build model from branch parameter")
+  }}
+
+  def seasonal(
     period: Int,
     harmonics: Int,
     sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
@@ -55,22 +60,22 @@ object Model {
       case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def linearModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+  def linear(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => LinearModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def studentsTModel(sde: UnparamSde, df: Int): Reader[Parameters, Model] = Reader { p => p match {
+  def studentsT(sde: UnparamSde, df: Int): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => StudentsTModel(sde(param.sdeParam), df, param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def bernoulliModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+  def bernoulli(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => BernoulliModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
-  def lgcpModel(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
+  def lgcp(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
     case param: LeafParameter => LogGaussianCox(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
@@ -298,10 +303,10 @@ private final case class ZeroInflatedPoisson(sde: Sde, params: LeafParameter) ex
   }
 }
 
-  /**
-    * The bernoulli model with a one dimensional latent state
-    * @param sde a solution to a diffusion process 
-    */
+/**
+  * The bernoulli model with a one dimensional latent state
+  * @param sde a solution to a diffusion process 
+  */
 private final case class BernoulliModel(sde: Sde, p: LeafParameter) extends Model {
   def observation = p => Uniform(0, 1).map(_ < link(p)).map(a => if (a) 1.0 else 0.0)
 
@@ -326,10 +331,26 @@ private final case class BernoulliModel(sde: Sde, p: LeafParameter) extends Mode
   }
 }
 
-  /**
-    * The Log-Gaussian Cox-Process is used to model time to event data with 
-    * log-gaussian varying hazard rate
-    */
+private final case class BetaModel(sde: Sde, p: LeafParameter) extends Model {
+  def  observation = gamma => p.scale match {
+    case Some(beta) => new Beta(link(gamma), beta)
+    case None => throw new Exception("Must provide shape parameter for Beta Model")
+  }
+
+  override def link(x: Gamma) = exp(-x)
+
+  def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
+
+  def dataLikelihood = (gamma, y) => {
+    val b = new Beta(link(gamma), 1.0)
+    b.logPdf(y)
+  }
+}
+
+/**
+  * The Log-Gaussian Cox-Process is used to model time to event data with 
+  * log-gaussian varying hazard rate
+  */
 private final case class LogGaussianCox(sde: Sde, p: LeafParameter) extends Model {
   def observation = ???
 

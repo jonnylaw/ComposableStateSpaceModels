@@ -7,7 +7,8 @@ theme_set(theme_few())
 # Ornstein Uhlenbeck #
 ######################
 
-ornstein_uhlenbeck = read_csv("data/ornsteinUhlenbeck.csv", col_names = c("time", sapply(1:2, function(i) paste("x", i, sep = "_"))))
+ornstein_uhlenbeck = read_csv("data/ornsteinUhlenbeck.csv", n_max = 5000,
+                              col_names = c("time", sapply(1:2, function(i) paste("x", i, sep = "_"))))
 
 ornstein_uhlenbeck %>%
   select(time, x_1, x_2) %>%

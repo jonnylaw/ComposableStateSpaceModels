@@ -28,11 +28,11 @@ import breeze.numerics.log
 val m0 = 0.0
 val c0 = log(1.0)
 val sigma = log(0.02)
-val sdeParam = SdeParameter.brownianParameter(m0, c0, sigma)
+val sdeParam = SdeParameter.brownianParameter(m0)(c0)(sigma)
 val sde = Sde.brownianMotion(1)
 ```
 
-Note that strictly positive parameters are specified on the log-scale. The parameters of Brownian motion include the parameters of the initial state \\(x(t_0) \sim \mathcal{N}(m_0, C_0) \\) and the value of the diffusion coefficient, \\(\sigma\\). The function `Sde.brownianMotion` accepts an integer which determines how many dimensions the SDE has, in this case it is univariate Brownian motion.
+Note that strictly positive parameters are specified on the log-scale. The parameters of Brownian motion include the parameters of the initial state \\(x(t_0) \sim \mathcal{N}(m_0, C_0) \\) and the value of the diffusion coefficient, \\(\sigma\\). The function `Sde.brownianMotion` accepts an integer which determines how many dimensions the SDE has, in this case it is univariate Brownian motion. The function `brownianParameter` is fully curried, this is to allow for variadic parameters, which means the number of parameters is not fixed. For instance a two-dimensional Brownian motion SDE can share the same set of parameters, or can have seperate diffusion parameters.
 
 Now, we must specify the observation variance \\(V\\), which is required by the Gaussian Model. The variance is an option parameter, and hence represented by a Scala `Option`, and is specified on the log scale.
 

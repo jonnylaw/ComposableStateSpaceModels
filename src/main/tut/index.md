@@ -50,7 +50,7 @@ An example of a diffusion process is the [Ornstein-Uhlenbeck process](https://en
 We can simulate from the SDE using the [Akka streams](http://akka.io/) library. We must specify the parameters of the Ornstein Uhlenbeck process, m0 and c0 are the parameters of the initial state, x0 ~ N(m0, c0),  theta is the mean, alpha is how quickly the process reverts to the mean and sigma controls the noise of the process. Note that positive parameters are specified on the log-scale.
 
 ```tut:silent:book
-val ouParameter = SdeParameter.ouParameter(m0 = 0.0, c0 = log(3.0), alpha = log(0.5), sigma = log(0.3))(theta = 2.0, 1.0) 
+val ouParameter = SdeParameter.ouParameter(m0 = 0.0)(c0 = log(3.0))(alpha = log(0.5))(sigma = log(0.3))(theta = 2.0, 1.0) 
 
 val sde = Sde.ouProcess(2)
 
@@ -80,7 +80,7 @@ The observations of a POMP can be from any parameterised distribution. The obser
 ```tut:silent:book
 val sde = Sde.brownianMotion(1)
 val negBinParams = Parameters.leafParameter(Some(log(3.0)), 
-  SdeParameter.brownianParameter(m0 = 0.0, c0 = log(1.0), sigma = log(0.01)))
+  SdeParameter.brownianParameter(m0 = 0.0)(c0 = log(1.0))(sigma = log(0.01)))
 
 val negBinModel = Model.negativeBinomial(sde)
 
@@ -106,7 +106,7 @@ Unparameterised models are represented as `Reader[Parameters, Model]`. A semigro
 ```tut:book:silent
 val sde2 = Sde.ouProcess(8)
 val seasonalParams = Parameters.leafParameter(None,
-    SdeParameter.ouParameter(0.0, log(1.0), log(0.3), log(0.01))
+    SdeParameter.ouParameter(0.0)(log(1.0))(log(0.3))(log(0.01))
       (1.5, 1.5, 1.0, 1.0, 1.5, 1.5, 0.1, 0.1))
 
 val composedParams = negBinParams |+| seasonalParams
@@ -147,7 +147,7 @@ val filter = ParticleFilter.filter(Resampling.systematicResampling, t0, 1000)
 val filteredNegBin = DataFromFile("data/ComposedNegBinSims.csv").
   observations.
   via(filter(composedMod(composedParams))).
-  map(ParticleFilter.getIntervals(composedMod, composedParams).run).
+  map(ParticleFilter.getIntervals(composedMod, composedParams)).
   map(_.show).
   runWith(Streaming.writeStreamToFile("data/NegativeBinomialFiltered.csv"))
 ```

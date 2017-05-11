@@ -304,7 +304,7 @@ object ParticleFilter {
   def filterOnline(resample: Resample[State], t0: Time, n: Int, init: Vector[(State, Parameters)], mod: UnparamModel) = {
     val initState = PfStateOnline(t0, None, init.map(_._2), init.map(x => Vector.fill(n)(x._1)), 0.0, 0)
 
-    def stepFilterOnline(s: PfStateOnline, y: Data): PfStateOnline = s.particles.zip(s.parameters).par.map { 
+    def stepFilterOnline(s: PfStateOnline, y: Data): PfStateOnline = s.particles.zip(s.parameters).map { 
       case (state, params) =>
         val dt = y.t - s.t
         val x1 = state map (x => mod(params).sde.stepFunction(dt)(x).draw)
@@ -358,7 +358,7 @@ object ParticleFilter {
     * @param parameters the starting parameters of the filter
     * @return a value of logLikelihood
     */
-  def likelihood(data: Vector[Data], resample: Resample[State], n: Int): Reader[Model, LogLikelihood] = Reader { 
+  def likelihood(data: Vector[Data], resample: Resample[State], n: Int) = Reader { 
     (model: Model) => Filter(model, resample).llFilter(data.sortBy((d: Data) => d.t))(n)
   }
 

@@ -14,21 +14,26 @@ import scala.concurrent.Future
 /**
   * Specify a model to use 
   */
-trait TestNegBinMod {
+trait TestModel {
   val sde = Sde.brownianMotion(1)
   val sdeParam = SdeParameter.brownianParameter(0.0)(log(1.0))(log(0.01))
-  val p = Parameters.leafParameter(Some(log(3.0)), sdeParam)
+  // val p = Parameters.leafParameter(Some(log(3.0)), sdeParam)
 
   val sde2 = Sde.ouProcess(8)
   val sde2Param = SdeParameter.ouParameter(0.0)(log(1.0))(log(0.3))(log(0.1))(1.5, 1.5, 1.0, 1.0, 1.5, 1.5, 0.1, 0.1)
-  val p1 = Parameters.leafParameter(None, sde2Param)    
+  // val p1 = Parameters.leafParameter(None, sde2Param)    
 
-  val params = p |+| p1
+  // val params = p |+| p1
   
-  val model = Model.negativeBinomial(sde) |+| Model.seasonalModel(24, 4, sde2)
+  // val model = Model.negativeBinomial(sde) |+| Model.seasonal(24, 4, sde2)
+
+  val params = Parameters.leafParameter(Some(2.0), sdeParam)
+  val model = Model.beta(sde)
+
+  val modelName = "Beta"
 }
 
-object SimOrnstein extends App with TestNegBinMod {
+object SimOrnstein extends App with TestModel {
   implicit val system = ActorSystem("SimulateOU")
   implicit val materializer = ActorMaterializer()
 
@@ -42,18 +47,17 @@ object SimOrnstein extends App with TestNegBinMod {
 }
 
 /**
-  * Simulate Data from the Negative Binomial model and write it to CSV and JSON files asynchronously
-  *
+  * Simulate Data from the Test model and write it to CSV and JSON files asynchronously
   */
-object SimulateNegativeBinomial extends App with TestNegBinMod {
-  implicit val system = ActorSystem("SimulateToJson")
+object SimulateModel extends App with TestModel {
+  implicit val system = ActorSystem("SimulateModel")
   implicit val materializer = ActorMaterializer()
 
   SimulateData(model(params)).
     observations.
     take(5000).
-    alsoTo(Streaming.dataCsvSink("data/NegBin/NegativeBinomial.csv")).
-    toMat(Streaming.dataJsonSink("data/NegBin/NegativeBinomial.json"))(Keep.right).
+    alsoTo(Streaming.dataCsvSink(s"data/${modelName}_sims.csv")).
+    toMat(Streaming.dataJsonSink(s"data/${modelName}_sims.json"))(Keep.right).
     run().
     onComplete(_ => system.terminate())
 }

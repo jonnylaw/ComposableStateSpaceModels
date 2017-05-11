@@ -21,7 +21,7 @@ import java.nio.file.Paths
   * estimate of the likelihood is also required. 
   * A rule of thumb for the variance of the estimated log-likelihood is 1.0
   */
-object PilotRun extends App with TestNegBinMod {
+object PilotRun extends App with TestModel {
   implicit val system = ActorSystem("PilotRun")
   implicit val materializer = ActorMaterializer()
 
@@ -29,7 +29,7 @@ object PilotRun extends App with TestNegBinMod {
   val resample: Resample[State] = Resampling.systematicResampling _
 
   val res = for {
-    data <- DataFromFile("data/NegBin/NegativeBinomial.csv").
+    data <- DataFromFile(s"data/${modelName}_sims.csv").
       observations.
       zip(Source(Stream.from(1))).
       filter { case (_, i) => i % 10 == 0 }.
@@ -37,7 +37,7 @@ object PilotRun extends App with TestNegBinMod {
       runWith(Sink.seq)
     vars = Streaming.pilotRun(data.toVector, model, params, resample, particles, 100)
     io <- vars.map { case (n, v) => s"$n, $v" }.
-      runWith(Streaming.writeStreamToFile("data/NegBin/NegativeBinomialPilotRun.csv"))
+      runWith(Streaming.writeStreamToFile(s"data/${modelName}PilotRun.csv"))
   } yield io
 
   res.onComplete { s =>
@@ -54,14 +54,14 @@ object PilotRun extends App with TestNegBinMod {
   * 4. Use mapAsync to run two chains in parallel
   * 5. Write the chains to file in JSON format
   */
-object DeterminePosterior extends App with TestNegBinMod {
+object DeterminePosterior extends App with TestModel {
   implicit val system = ActorSystem("PMMH")
   implicit val materializer = ActorMaterializer()
 
   val resample: Resample[State] = Resampling.systematicResampling _
   val prior = (p: Parameters) => 0.0
 
-  DataFromFile("data/NegBin/NegativeBinomial.csv").
+  DataFromFile(s"data/${modelName}_sims.csv").
     observations.
     zip(Source(Stream.from(1))).
     filter { case (_, i) => i % 10 == 0 }.
@@ -78,7 +78,7 @@ object DeterminePosterior extends App with TestNegBinMod {
         via(Streaming.monitorStateStream).async.
         take(100000).
         map(_.toJson.compactPrint).
-        runWith(Streaming.writeStreamToFile(s"data/NegBin/NegativeBinomialPosterior-$chain.json"))
+        runWith(Streaming.writeStreamToFile(s"data/${modelName}Posterior-$chain.json"))
     }.
     runWith(Sink.onComplete { s => 
       println(s)
@@ -89,18 +89,16 @@ object DeterminePosterior extends App with TestNegBinMod {
 /**
   * Convert the JSON files to CSVs
   */
-object JsonToCSV {
-  def main(args: Array[String]): Unit = {
-    implicit val system = ActorSystem("PMMH")
-    implicit val materializer = ActorMaterializer()
+object JsonToCSV extends App with TestModel {
+  implicit val system = ActorSystem("PMMH")
+  implicit val materializer = ActorMaterializer()
 
-    val files = List("data/NegBin/NegativeBinomialPosterior-1.json", "data/NegBin/NegativeBinomialPosterior-2.json")
+  val files = List(s"data/${modelName}Posterior-1.json", s"data/${modelName}Posterior-2.json")
 
-    Future.sequence(files.zipWithIndex map { case (file, i) =>
-      Streaming.jsonToCSV(file, s"data/NegBin/NegativeBinomialPosterior-$i.csv")
-    }).onComplete { s =>
-      println(s)
-      system.terminate()
-    }
+  Future.sequence(files.zipWithIndex map { case (file, i) =>
+    Streaming.jsonToCSV(file, s"data/${modelName}Posterior-$i.csv")
+  }).onComplete { s =>
+    println(s)
+    system.terminate()
   }
 }

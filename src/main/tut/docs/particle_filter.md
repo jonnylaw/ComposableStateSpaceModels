@@ -31,16 +31,20 @@ The observation distribution is denoted by \\(\pi\\) and has optional static par
 
 Roughly speaking, the particle filter approximates the latent state with a particle cloud. Consider a parameterised model where the values of \\(\theta\\) are know, then the steps to implement the bootstrap particle filter are as follows:
 
-* Set \\(i = 0\\), Initialise the particle cloud by simulating N particles from the initial state distribution N times \\(x(t_0)^{(k)} \sim p(x(t_0)^{(k)} | \theta), k = 1,...,N \\)
-* Advance the particle cloud to the time of the next observation \\(x(t_{i+i})^{(k)} \sim p((x(t_i)^{(k)} | x(t_{i-1})^{(k)}, \theta)), k=1,\dots,N\\)
-* Calculate the marginal likelihood of the observation at time \\(t_i\\), for each particle: \\(w^\star(t_i)^{(k)} \sim \pi(y(t_i) | x(t_i)^{(k)}, \theta), k=0,\dots,N\\)
-* Normalise the weights \\(w(t_i)^{(k)} = w^\star(t_i)^{(k)} / \sum_{j=1}^N w^\star(t_i)^{(j)}\\)
-* Resample the particle using an appropriate resampling scheme, so that each particle is represented in the sample in proportion with the value of its associated weight. This gives an approximate sample from the filtering distribution, \\(p(x(t_i) | y(t_i))\\).
-* If there are observations remaining, increment the value of \\(i\\) and go to step 2
+1. Set \\(i = 0\\), Initialise the particle cloud by simulating N particles from the initial state distribution N times:
+$$x(t_0)^{(k)} \sim p(x(t_0)^{(k)} | \theta), k = 1,...,N $$
+2. Advance the particle cloud to the time of the next observation:
+ $$x(t_{i+i})^{(k)} \sim p((x(t_i)^{(k)} | x(t_{i-1})^{(k)}, \theta)), k=1,\dots,N$$
+3. Calculate the marginal likelihood of the observation at time \\(t_i\\), for each particle: 
+$$w^\star(t_i)^{(k)} \sim \pi(y(t_i) | x(t_i)^{(k)}, \theta), k=0,\dots,N\\)$$
+4. Normalise the weights:
+$$w(t_i)^{(k)} = w^\star(t_i)^{(k)} / \sum_{j=1}^N w^\star(t_i)^{(j)}\\)$$
+5. Resample the particle using an appropriate resampling scheme, so that each particle is represented in the sample in proportion with the value of its associated weight. This gives an approximate sample from the filtering distribution, \\(p(x(t_i) | y(t_i))\\).
+6. If there are observations remaining, increment the value of \\(i\\) and go to step 2
 
 The value of interest is the filtering distribution, which is represented by a collection of particles at each time step. A statistic of interest is the mean of the filtering distribution, along with order statistics representing the uncertainty in estimating the filtering distribution. Increasing the number of particles in the filter will increase the accuracy of the estimate of the filtering distribution, at the cost of extra computation.
 
-As an example of the particle filter, we will apply it to the tractable Gaussian model presented above:
+As an example of the particle filter, we will apply it to the Gaussian model presented above:
 
 ```tut:book:silent
 import com.github.jonnylaw.model._
@@ -49,7 +53,7 @@ import akka.stream._
 import akka.actor.ActorSystem
 import cats.implicits._
 
-val sdeParameter = SdeParameter.brownianParameter(sigma = 1.0, m0 = 1.0, c0 = 3.0)
+val sdeParameter = SdeParameter.brownianParameter(m0 = 1.0)(c0 = 3.0)(sigma = 1.0)
 val p = Parameters.leafParameter(scale = Some(3.0), sdeParameter)
 val sde = Sde.brownianMotion(1)
 val model = Model.linearModel(sde)
@@ -83,7 +87,7 @@ The filter is a function from a model to an Akka stream flow, once it is compose
 DataFromFile("data/gaussian_sims.csv").
   observations.
   via(filter(p)).
-  map(ParticleFilter.getIntervals(model, p).run).
+  map(ParticleFilter.getIntervals(model, p)).
   map(_.show).
   runWith(Streaming.writeStreamToFile("data/gaussian_filtered.csv")).
   onComplete(_ => system.terminate())

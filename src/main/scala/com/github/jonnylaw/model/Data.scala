@@ -233,9 +233,11 @@ object SimulateData {
 
   /**
     * Get the transformed state of the nth model
-    * @state the state to transform from a composed model
-    * @model a model component from the composed model which produced the state
-    * @position the position of the model in the tree, indexed from zero
+    * @param state the state to transform from a composed model
+    * @param model a model component from the composed model which produced the state
+    * @param position the position of the model in the tree, indexed from zero
+    * @param t the time to use for the state transformation function f
+    * @return The value of the transformed state Eta at time t
     */
   def getState(state: State, model: Model, position: Int)(t: Time): Eta = {
     val s = Tree.leaf(state.getNode(position))

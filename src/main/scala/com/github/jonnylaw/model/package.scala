@@ -21,6 +21,7 @@ package object model {
   type LogLikelihood = Double
   type UnparamModel = Reader[Parameters, Model]
   type UnparamSde = Reader[SdeParameter, Sde]
+  type Error[A] = Either[Throwable, A]
   type StepFunction = (SdeParameter) => (State, TimeIncrement) => Rand[State]
   type State = Tree[DenseVector[Double]]
   type Resample[A] = (Vector[A], Vector[LogLikelihood]) => Vector[A]

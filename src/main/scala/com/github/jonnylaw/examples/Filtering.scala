@@ -21,11 +21,11 @@ import spray.json._
   * 3. Run the filter using the same parameters we simulated the model with
   * 4. Save the output to a file asynchronously
   */
-object Filtering extends App with TestNegBinMod {
+object Filtering extends App with TestModel {
   implicit val system = ActorSystem("Filtering")
   implicit val materializer = ActorMaterializer()
 
-  val data = DataFromJson("data/NegBin/NegativeBinomial.json").
+  val data = DataFromJson(s"data/${modelName}_sims.json").
     observations
 
   val t0 = 0.0
@@ -35,7 +35,7 @@ object Filtering extends App with TestNegBinMod {
     via(filter(params)).
     map(ParticleFilter.getIntervals(model, params)).
     map(_.show).
-    runWith(Streaming.writeStreamToFile("data/NegBin/NegativeBinomialFiltered.csv")).
+    runWith(Streaming.writeStreamToFile(s"data/${modelName}Filtered.csv")).
     onComplete(_ => system.terminate())
 }
 
@@ -48,26 +48,30 @@ object Filtering extends App with TestNegBinMod {
   * 4. Run several filters each starting with a sample (x, theta) from the joint posterior of the state and parameters
   * 5. Write the results of the filter to a file
   */
-object OnlineFiltering extends App with TestNegBinMod {
+object OnlineFiltering extends App with TestModel {
   implicit val system = ActorSystem("OnlineFiltering")
   implicit val materializer = ActorMaterializer()
 
-  val testData = DataFromJson("data/NegBin/NegativeBinomial.json").
+  val testData = DataFromJson(s"data/${modelName}_sims.json").
     observations.
     drop(4000)
-
-  val t0 = 4000 * 0.1
 
   val resample: Resample[State] = Resampling.systematicResampling _
 
   val res = for {
-    posterior <- Streaming.readPosterior("data/NegBin/NegativeBinomialPosterior-1.json", 10000, 2).
+    // get the starting time of the data Stream
+    t0 <- testData.map(_.t).runWith(Streaming.minSink)
+
+    // read in the posterior distribution from a file
+    posterior <- Streaming.readPosterior(s"data/${modelName}Posterior-1.json", 10000, 2).
       runWith(Sink.seq)
     simPosterior = Streaming.createDist(posterior)(x => (x.sde.state, x.params))
+
+    // run the particle filter and write the results to a file
     io <- testData.
       via(ParticleFilter.filterOnline(resample, t0, 1000, simPosterior.sample(100).toVector, model)).
       map(_.show).
-      runWith(Streaming.writeStreamToFile("data/NegBin/NegativeBinomialOnlineFilter.csv"))
+      runWith(Streaming.writeStreamToFile(s"data/${modelName}OnlineFilter.csv"))
   } yield io
 
   res.

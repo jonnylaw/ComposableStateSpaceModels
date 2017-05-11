@@ -158,7 +158,8 @@ object Streaming {
     map(_.toJson.compactPrint).
     toMat(Streaming.writeStreamToFile(fileOut))(Keep.right)
 
-  def dataCsvSink(fileOut: String): Sink[Data, Future[IOResult]] = Flow[Data].map(_.show).
+  def dataCsvSink(fileOut: String): Sink[Data, Future[IOResult]] = Flow[Data].
+    map(_.show).
     toMat(Streaming.writeStreamToFile(fileOut))(Keep.right)
 
   /**
@@ -166,10 +167,13 @@ object Streaming {
     * @param file the path of a file to write to
     */
   def writeStreamToFile(file: String): Sink[String, Future[IOResult]] = {
-    Flow[String].
-      map(s => ByteString(s + "\n")).
-      toMat(FileIO.toPath(Paths.get(file)))(Keep.right)
+      Flow[String].
+        map(s => ByteString(s + "\n")).
+        toMat(FileIO.toPath(Paths.get(file)))(Keep.right)
   }
+
+  def minSink: Sink[Double, Future[Double]] = 
+    Sink.fold(0.0)((comp, t) => if (t < comp) t else comp)
 
   def serialise(value: Any): Array[Byte] = {
     val stream: ByteArrayOutputStream = new ByteArrayOutputStream()

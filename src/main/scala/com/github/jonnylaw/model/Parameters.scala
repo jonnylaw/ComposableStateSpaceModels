@@ -7,10 +7,9 @@ import breeze.stats.distributions._
 import breeze.numerics.{exp, sqrt}
 import cats._
 import cats.implicits._
-import scala.util.{Try, Success, Failure}
 
 sealed trait Parameters { self =>
-  def sum(that: Parameters): Try[Parameters]
+  def sum(that: Parameters): Error[Parameters]
 
   def perturb(delta: Double): Rand[Parameters]
 
@@ -33,17 +32,6 @@ sealed trait Parameters { self =>
   def flatten: Seq[Double]
 
   def length: Int = this.flatten.length
-
-  // def map(f: Double => Double): Parameters
-
-  def toMap: Map[String, Double] = self match {
-    case BranchParameter(l, r) => l.toMap ++ r.toMap
-    case LeafParameter(s, sde) => s match {
-      case Some(v) => Map("scale" -> v) ++ sde.toMap
-      case None => sde.toMap
-    }
-    case EmptyParameter => Map[String, Double]()
-  }
 
   /**
     * Propose a new value of the parameters using a Multivariate Normal distribution
@@ -90,19 +78,19 @@ sealed trait Parameters { self =>
 
   def mapDbl(f: Double => Double): Parameters = self match {
     case LeafParameter(v, sdeParam) => Parameters.leafParameter(v.map(f), sdeParam.mapDbl(f))
-    case BranchParameter(l, r) => l.mapDbl(f) |+| r.mapDbl(f)
+    case BranchParameter(l, r) => Parameters.branchParameter(l.mapDbl(f), r.mapDbl(f))
     case EmptyParameter => EmptyParameter
   }
 }
 case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends Parameters {
 
-  def sum(that: Parameters): Try[Parameters] = that match {
+  def sum(that: Parameters): Error[Parameters] = that match {
     case LeafParameter(otherScale, sde) =>
       for {
         sdeSum <- sdeParam sum sde
         scaleSum = scale flatMap (v1 => otherScale map (v2 => v1 + v2))
       } yield Parameters.leafParameter(scaleSum, sdeSum)
-    case _ => Failure(throw new Exception(s"Can't sum LeafParameter and $that"))
+    case _ => Right(throw new Exception(s"Can't sum LeafParameter and $that"))
   }
 
   def flatten: Seq[Double] = scale match {
@@ -120,13 +108,13 @@ case class LeafParameter(scale: Option[Double], sdeParam: SdeParameter) extends 
 }
 
 case class BranchParameter(left: Parameters, right: Parameters) extends Parameters {
-  def sum(that: Parameters): Try[Parameters] = that match {
+  def sum(that: Parameters): Error[Parameters] = that match {
     case BranchParameter(l, r) => 
       for {
         sumLeft <- left sum l
         sumRight <- right sum r
       } yield Parameters.branchParameter(sumLeft, sumRight)
-    case _ => Failure(throw new Exception(s"Can't add BranchParameter and $that"))
+    case _ => Right(throw new Exception(s"Can't add BranchParameter and $that"))
   }
 
   def perturb(delta: Double): Rand[Parameters] = {
@@ -141,7 +129,7 @@ case class BranchParameter(left: Parameters, right: Parameters) extends Paramete
 
 case object EmptyParameter extends Parameters {
   def perturb(delta: Double): Rand[Parameters] = Rand.always(Parameters.emptyParameter)
-  def sum(that: Parameters): Try[Parameters] = Success(that)
+  def sum(that: Parameters): Error[Parameters] = Right(that)
   def flatten = Vector()
   // def map(f: Double => Double): Parameters = EmptyParameter
 }
@@ -173,13 +161,13 @@ object Parameters {
   /**
     * Sum parameter values
     */
-  def sumParameters(lp: Parameters, rp: Parameters): Try[Parameters] = lp sum rp
+  def sumParameters(lp: Parameters, rp: Parameters): Error[Parameters] = lp sum rp
 
   /**
     * Calculate the mean of the parameter values
     */
-  def mean(params: Seq[Parameters]): Try[Parameters] = {
-    val sum = params.foldLeft(Success(Parameters.emptyParameter): Try[Parameters])((a, b) =>
+  def mean(params: Seq[Parameters]): Error[Parameters] = {
+    val sum = params.foldLeft(Right(Parameters.emptyParameter): Error[Parameters])((a, b) =>
       a.flatMap(Parameters.sumParameters(_, b)))
 
     sum.map(_.mapDbl(_/params.length))

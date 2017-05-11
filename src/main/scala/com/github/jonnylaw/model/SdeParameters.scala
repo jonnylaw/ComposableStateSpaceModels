@@ -2,7 +2,6 @@ package com.github.jonnylaw.model
 
 import breeze.linalg.{DenseVector, diag}
 import breeze.stats.distributions._
-import scala.util.{Try, Success, Failure}
 import breeze.numerics.{exp, sqrt}
 import scala.language.implicitConversions
 import SdeParameter._
@@ -10,7 +9,7 @@ import SdeParameter._
 sealed trait SdeParameter { self =>
   def flatten: Seq[Double]
   def length: Int = this.flatten.length
-  def sum(that: SdeParameter): Try[SdeParameter]
+  def sum(that: SdeParameter): Error[SdeParameter]
   def perturb(delta: Double)(implicit rand: RandBasis = Rand): Rand[SdeParameter] = new Rand[SdeParameter] {
 
     def draw = {
@@ -23,7 +22,6 @@ sealed trait SdeParameter { self =>
   def add(delta: DenseVector[Double]): SdeParameter
   def map(f: DenseVector[Double] => DenseVector[Double]): SdeParameter
   def mapDbl(f: Double => Double): SdeParameter
-  def toMap: Map[String, Double]
 }
 
 case class GenBrownianParameter(
@@ -32,10 +30,10 @@ case class GenBrownianParameter(
   mu: DenseVector[Double],
   sigma: DenseVector[Double]) extends SdeParameter {
 
-  def sum(that: SdeParameter): Try[SdeParameter] = that match {
+  def sum(that: SdeParameter): Error[SdeParameter] = that match {
     case GenBrownianParameter(m01, c01, m1, s) =>
-      Success(SdeParameter.genBrownianParameter(m0 + m01: _*)(c0 + c01: _*)(mu + m1: _*)(sigma + s: _*))
-    case _ => Failure(throw new Exception(s"Can't sum Brownianparameter with $that"))
+      Right(SdeParameter.genBrownianParameter(m0 + m01: _*)(c0 + c01: _*)(mu + m1: _*)(sigma + s: _*))
+    case _ => Left(throw new Exception(s"Can't sum Brownianparameter with $that"))
   }
 
   def add(delta: DenseVector[Double]): SdeParameter = {
@@ -68,10 +66,10 @@ case class BrownianParameter(
   c0: DenseVector[Double], 
   sigma: DenseVector[Double]) extends SdeParameter {
 
-  def sum(that: SdeParameter): Try[SdeParameter] = that match {
+  def sum(that: SdeParameter): Error[SdeParameter] = that match {
     case BrownianParameter(m01, c01, c1) =>
-      Success(SdeParameter.brownianParameter(m0 + m01: _*)(c0 + c01: _*)(sigma + c1: _*))
-    case _ => Failure(throw new Exception(s"Can't sum Brownianparameter with $that"))
+      Right(SdeParameter.brownianParameter(m0 + m01: _*)(c0 + c01: _*)(sigma + c1: _*))
+    case _ => Left(throw new Exception(s"Can't sum Brownianparameter with $that"))
   }
 
   def add(delta: DenseVector[Double]): SdeParameter = {
@@ -91,10 +89,6 @@ case class BrownianParameter(
   def mapDbl(f: Double => Double): SdeParameter = {
     SdeParameter.brownianParameter(m0.map(f): _*)(c0.map(f): _*)(sigma.map(f): _*)
   }
-
-  def toMap: Map[String, Double] = {
-    SdeParameter.denseVectorToMap(m0, "m0") ++ SdeParameter.denseVectorToMap(c0, "c0") ++ SdeParameter.denseVectorToMap(sigma, "sigma")
-  }
 }
 
 case class OuParameter(
@@ -104,10 +98,10 @@ case class OuParameter(
   sigma: DenseVector[Double],
   theta: DenseVector[Double]) extends SdeParameter {
 
-  def sum(that: SdeParameter): Try[SdeParameter] = that match {
+  def sum(that: SdeParameter): Error[SdeParameter] = that match {
     case OuParameter(m, c, a, s, t) if t.size == theta.size && alpha.size == a.size =>
-      Success(SdeParameter.ouParameter(m0 + m: _*)(c0 + c: _*)(alpha + a: _*)(sigma + s: _*)(theta + t: _*))
-    case _ => Failure(throw new Exception(s"Can't sum OrnsteinParameter with $that"))
+      Right(SdeParameter.ouParameter(m0 + m: _*)(c0 + c: _*)(alpha + a: _*)(sigma + s: _*)(theta + t: _*))
+    case _ => Left(throw new Exception(s"Can't sum OrnsteinParameter with $that"))
   }
 
   def add(delta: DenseVector[Double]): SdeParameter = {
@@ -129,11 +123,6 @@ case class OuParameter(
 
   def mapDbl(f: Double => Double): SdeParameter = {
     SdeParameter.ouParameter(m0.map(f): _*)(c0.map(f): _*)(alpha.map(f): _*)(sigma.map(f): _*)(theta.map(f): _*)
-  }
-
-  def toMap: Map[String, Double] = {
-    SdeParameter.denseVectorToMap(m0, "m0") ++ SdeParameter.denseVectorToMap(c0, "c0") ++ SdeParameter.denseVectorToMap(alpha, "alpha") ++
-    SdeParameter.denseVectorToMap(sigma, "sigma") ++ SdeParameter.denseVectorToMap(theta, "theta")
   }
 }
 
