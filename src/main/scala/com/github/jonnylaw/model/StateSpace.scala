@@ -97,8 +97,8 @@ private final case class GenBrownianMotion(p: GenBrownianParameter, dimension: I
 }
 
 private final case class BrownianMotion(p: BrownianParameter, dimension: Int) extends Sde {
-  val params: BrownianParameter = (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match { 
-    case BrownianParameter(m, c, s) => BrownianParameter(m, c.map(exp(_)), s.map(exp(_))) 
+  val params: BrownianParameter = (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match {
+    case BrownianParameter(m, c, s) => BrownianParameter(m, c.map(exp(_)), s.map(exp(_)))
   }
 
   def initialState: Rand[State] = {
@@ -232,7 +232,7 @@ object Sde {
         for {
           l <- sde1.dW(dt)
           r <- Applicative[Rand].replicateA(sde2.dimension, Gaussian(0.0, sqrt(dt))).map(x => (DenseVector(x.toArray)))
-        } yield l |+ Tree.leaf(r)
+        } yield l +++ Tree.leaf(r)
       }
     }
   }

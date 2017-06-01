@@ -7,6 +7,7 @@ import scala.util.{Try, Success, Failure}
 import org.joda.time.DateTime   
 import com.github.nscala_time.time.Imports._
 import spray.json._ 
+import spire.implicits._
 
 /**
   * Marshalling from JSON and to JSON for Simulated Data and MCMC data 
@@ -44,14 +45,16 @@ object DataProtocols extends DefaultJsonProtocol {
     }
   }
 
-  implicit val leafParamFormat = jsonFormat2(LeafParameter.apply)
+  implicit val paramNodeFormat = jsonFormat2(ParamNode)
+
+  implicit val leafParamFormat = jsonFormat1(Leaf[ParamNode])
 
   implicit def paramsFormat = new RootJsonFormat[Parameters] {
     def write(obj: Parameters) = {
       def loop(params: Parameters): Vector[JsValue] = params match {
-        case l: LeafParameter => Vector(l.toJson)
-        case BranchParameter(l, r) => loop(l) ++ loop(r)
-        case EmptyParameter => Vector()
+        case l: Leaf[ParamNode] => Vector(l.toJson)
+        case Branch(l, r) => loop(l) ++ loop(r)
+        case Empty => Vector()
       }
 
       JsArray(loop(obj))
@@ -59,14 +62,14 @@ object DataProtocols extends DefaultJsonProtocol {
     def read(value: JsValue) = value match {
       case JsArray(elements) => {
         elements.
-          map(_.convertTo[LeafParameter]).
+          map(_.convertTo[Leaf[ParamNode]]).
           reduce((a: Parameters, b: Parameters) => a |+| b)
       }
       case x => deserializationError("Expected Some Parameters, but got " + x)
     }
   }
 
-  implicit val branchParamFormat: JsonFormat[BranchParameter] = lazyFormat(jsonFormat2(BranchParameter.apply))
+  implicit val branchParamFormat: JsonFormat[Branch[ParamNode]] = lazyFormat(jsonFormat2(Branch[ParamNode]))
 
   implicit val leafFormat = jsonFormat1(Leaf[DenseVector[Double]])
 
@@ -74,7 +77,8 @@ object DataProtocols extends DefaultJsonProtocol {
     def write(obj: State) = {
       def loop(state: State): Vector[JsValue] = state match {
         case l: Leaf[DenseVector[Double]] => Vector(l.toJson)
-        case Branch(l, r) => loop(l) ++ loop(r)
+        case Branch(l, r)                 => loop(l) ++ loop(r)
+        case Empty                        => Vector()
       }
 
       JsArray(loop(obj))

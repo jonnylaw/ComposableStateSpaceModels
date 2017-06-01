@@ -7,10 +7,11 @@ import breeze.linalg.{DenseVector, diag, DenseMatrix}
 import cats.implicits._
 import cats.{Monoid, Applicative}
 import cats.data.Reader
+import spire.implicits._
 
 class ModelSuite extends FlatSpec with Matchers {
   // a simple linear model with no observation noise, for testing
-  case class LinearModelNoNoise(sde: Sde, p: LeafParameter) extends Model {
+  case class LinearModelNoNoise(sde: Sde, p: ParamNode) extends Model {
     def observation = x => Rand.always(x)
 
     def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)
@@ -20,12 +21,12 @@ class ModelSuite extends FlatSpec with Matchers {
 
   // smart constructor for linear model
   def linearModelNoNoise(sde: UnparamSde): UnparamModel = Reader { p: Parameters => p match {
-    case param: LeafParameter => sde(param.sdeParam) map (s => LinearModelNoNoise(s, param))
+    case Leaf(param) => sde(param.sdeParam) map (s => LinearModelNoNoise(s, param))
     case _ => throw new Exception
   }}
 
   case class SeasonalModelNoNoise(
-    period: Int, harmonics: Int, sde: Sde, p: LeafParameter) extends Model {
+    period: Int, harmonics: Int, sde: Sde, p: ParamNode) extends Model {
 
       def observation = x => Rand.always(x)
 
@@ -47,7 +48,7 @@ class ModelSuite extends FlatSpec with Matchers {
     period: Int,
     h: Int,
     sde: UnparamSde): UnparamModel = Reader { p: Parameters => p match {
-    case param: LeafParameter => sde(param.sdeParam) map (s => SeasonalModelNoNoise(period, h, s, param))
+    case Leaf(param) => sde(param.sdeParam) map (s => SeasonalModelNoNoise(period, h, s, param))
     case _ => throw new Exception
   }}
 
@@ -70,7 +71,7 @@ class ModelSuite extends FlatSpec with Matchers {
   }
 
   "Compose two models" should "work" in {
-    val singleP = Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0))
+    val singleP = Tree.leaf(ParamNode(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0)))
 
     val p = singleP |+| singleP
 
@@ -87,7 +88,7 @@ class ModelSuite extends FlatSpec with Matchers {
 
   "Combine three models" should "result in a state space of three combined states" in {
     val p = List.fill(3)(
-      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0))).
+      Tree.leaf(ParamNode(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0)))).
       reduce((a, b) => a |+| b)
 
     val threeLinear = linearModelNoNoise(stepNull) |+|
@@ -102,7 +103,7 @@ class ModelSuite extends FlatSpec with Matchers {
 
   "Combine three Models" should "advance each state space seperately" in {
     val p = List.fill(3)(
-      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0))).
+      Tree.leaf(ParamNode(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0)))).
       reduce((a, b) => a |+| b)
 
     val threeLinear = linearModelNoNoise(Sde.brownianMotion(1)) |+|
@@ -121,7 +122,7 @@ class ModelSuite extends FlatSpec with Matchers {
 
   "Combine three models" should "return an observation which is the sum of the state space, plus measurement error" in {
     val p = List.fill(3)(
-      Parameters.leafParameter(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0))).
+      Tree.leaf(ParamNode(Some(1.0), SdeParameter.brownianParameter(1.0)(1.0)(1.0)))).
       reduce((a, b) => a |+| b)
 
     val threeLinear = linearModelNoNoise(stepNull) |+|

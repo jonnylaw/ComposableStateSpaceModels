@@ -1,13 +1,15 @@
 package parametertest
 
-import cats.implicits._
 import breeze.linalg.DenseVector
+import cats.implicits._
 import com.github.jonnylaw.model._
+import DataProtocols._
 import org.scalacheck.Prop.forAll
 import org.scalacheck._
 import Arbitrary.arbitrary
+import spire.algebra._
+import spire.implicits._
 import spray.json._
-import DataProtocols._
 
 class JsonSuite extends Properties("Json") with ParameterGen {
   val genLeafState = for {

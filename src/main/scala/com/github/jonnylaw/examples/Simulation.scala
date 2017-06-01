@@ -27,7 +27,7 @@ trait TestModel {
   
   // val model = Model.negativeBinomial(sde) |+| Model.seasonal(24, 4, sde2)
 
-  val params = Parameters.leafParameter(Some(2.0), sdeParam)
+  val params = Tree.leaf(ParamNode(Some(2.0), sdeParam))
   val model = Model.beta(sde)
 
   val modelName = "Beta"

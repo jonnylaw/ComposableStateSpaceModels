@@ -41,6 +41,7 @@ lazy val basic = Project(
       "org.scalanlp" %% "breeze" % "0.13",
       "com.github.fommil.netlib" % "all" % "1.1.2",
       "org.typelevel" %% "cats" % "0.9.0",
+      "org.typelevel" %% "cats-laws" % "0.9.0",
       "com.typesafe.akka" %% "akka-stream" % "2.4.17",
       "com.github.mpilquist" %% "simulacrum" % "0.10.0",
       "io.spray" %%  "spray-json" % "1.3.3",

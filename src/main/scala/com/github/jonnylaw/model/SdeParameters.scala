@@ -3,24 +3,30 @@ package com.github.jonnylaw.model
 import breeze.linalg.{DenseVector, diag}
 import breeze.stats.distributions._
 import breeze.numerics.{exp, sqrt}
+import cats.{Functor, Applicative}
 import scala.language.implicitConversions
 import SdeParameter._
+import spire.algebra._
+import scala.language.higherKinds
 
 sealed trait SdeParameter { self =>
   def flatten: Seq[Double]
-  def length: Int = this.flatten.length
-  def sum(that: SdeParameter): Error[SdeParameter]
-  def perturb(delta: Double)(implicit rand: RandBasis = Rand): Rand[SdeParameter] = new Rand[SdeParameter] {
 
-    def draw = {
+  def length: Int = this.flatten.length
+
+  def sum(that: SdeParameter): SdeParameter
+
+  def perturb(delta: Double)(implicit rand: RandBasis = Rand): Rand[SdeParameter] = {
       val n = self.flatten.length
       val innov = diag(DenseVector.fill(n)(delta).map(1/sqrt(_))) * DenseVector.rand(n, rand.gaussian(0, 1))
 
-      self.add(innov)
-    }
+      Rand.always(self.add(innov))
   }
+
   def add(delta: DenseVector[Double]): SdeParameter
+
   def map(f: DenseVector[Double] => DenseVector[Double]): SdeParameter
+
   def mapDbl(f: Double => Double): SdeParameter
 }
 
@@ -30,10 +36,10 @@ case class GenBrownianParameter(
   mu: DenseVector[Double],
   sigma: DenseVector[Double]) extends SdeParameter {
 
-  def sum(that: SdeParameter): Error[SdeParameter] = that match {
+  def sum(that: SdeParameter): SdeParameter = that match {
     case GenBrownianParameter(m01, c01, m1, s) =>
-      Right(SdeParameter.genBrownianParameter(m0 + m01: _*)(c0 + c01: _*)(mu + m1: _*)(sigma + s: _*))
-    case _ => Left(throw new Exception(s"Can't sum Brownianparameter with $that"))
+      SdeParameter.genBrownianParameter(m0 + m01: _*)(c0 + c01: _*)(mu + m1: _*)(sigma + s: _*)
+    case _ => throw new Exception(s"Can't sum Brownianparameter with $that")
   }
 
   def add(delta: DenseVector[Double]): SdeParameter = {
@@ -66,10 +72,10 @@ case class BrownianParameter(
   c0: DenseVector[Double], 
   sigma: DenseVector[Double]) extends SdeParameter {
 
-  def sum(that: SdeParameter): Error[SdeParameter] = that match {
+  def sum(that: SdeParameter): SdeParameter = that match {
     case BrownianParameter(m01, c01, c1) =>
-      Right(SdeParameter.brownianParameter(m0 + m01: _*)(c0 + c01: _*)(sigma + c1: _*))
-    case _ => Left(throw new Exception(s"Can't sum Brownianparameter with $that"))
+      SdeParameter.brownianParameter(m0 + m01: _*)(c0 + c01: _*)(sigma + c1: _*)
+    case _ => throw new Exception(s"Can't sum Brownianparameter with $that")
   }
 
   def add(delta: DenseVector[Double]): SdeParameter = {
@@ -98,10 +104,10 @@ case class OuParameter(
   sigma: DenseVector[Double],
   theta: DenseVector[Double]) extends SdeParameter {
 
-  def sum(that: SdeParameter): Error[SdeParameter] = that match {
+  def sum(that: SdeParameter): SdeParameter = that match {
     case OuParameter(m, c, a, s, t) if t.size == theta.size && alpha.size == a.size =>
-      Right(SdeParameter.ouParameter(m0 + m: _*)(c0 + c: _*)(alpha + a: _*)(sigma + s: _*)(theta + t: _*))
-    case _ => Left(throw new Exception(s"Can't sum OrnsteinParameter with $that"))
+      SdeParameter.ouParameter(m0 + m: _*)(c0 + c: _*)(alpha + a: _*)(sigma + s: _*)(theta + t: _*)
+    case _ => throw new Exception(s"Can't sum OrnsteinParameter with $that")
   }
 
   def add(delta: DenseVector[Double]): SdeParameter = {
@@ -146,9 +152,19 @@ object SdeParameter {
     OuParameter(m0, c0, alpha, sigma, theta)
   }
 
+  implicit def addableSde = new Addable[SdeParameter] {
+    def add(fa: SdeParameter, that: DenseVector[Double]): SdeParameter = {
+      fa add that
+    }
+  }
+
   def denseVectorToMap(s: DenseVector[Double], name: String): Map[String, Double] = {
     s.data.zipWithIndex.
       map { case (value, i) => (name + "_" + i -> value) }.
       foldLeft(Map[String, Double]())((acc, a) => acc + a)
+  }
+
+  implicit def addSdeParam = new AdditiveSemigroup[SdeParameter] {
+    def plus(x: SdeParameter, y: SdeParameter) = x sum y
   }
 }
