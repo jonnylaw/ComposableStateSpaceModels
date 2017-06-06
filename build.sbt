@@ -26,6 +26,7 @@ lazy val basic = Project(
     name := "ComposableModels",
     organization := "com.github.jonnylaw",
     scalaVersion := "2.12.1",
+    version := "0.6.3",
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-Xlint"),
     publishMavenStyle := true,
     publishArtifact in Test := false,
