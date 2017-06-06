@@ -1,10 +1,10 @@
 package com.github.jonnylaw.model
 
 import breeze.linalg.DenseVector
-import cats.{Functor, Applicative, Apply}
+import cats.{Functor, Applicative, Apply, Eq, Monoid}
 import scala.language.higherKinds
 import spire.implicits._
-import spire.algebra._
+import spire.algebra.{Semigroup, AdditiveSemigroup}
 
 /**
   * A binary tree implementation, to be used when combining models
@@ -44,7 +44,7 @@ sealed trait Tree[+A] { self =>
   }
 
   def foldMap[B >: A](f: B => B)(implicit M: Monoid[B]): B = {
-    self.fold(M.id)(identity)((b, a) => M.op(b, f(a)))
+    self.fold(M.empty)(identity)((b, a) => M.combine(b, f(a)))
   }
 
   def flatten: List[A] = self match {
@@ -121,8 +121,8 @@ object Tree {
     * Monoid to build a larger tree
     */
   implicit def composeTreeMonoid[A] = new Monoid[Tree[A]] {
-    def op(l: Tree[A], r: Tree[A]): Tree[A] = branch(l, r)
-    def id: Tree[Nothing] = empty
+    def combine(l: Tree[A], r: Tree[A]): Tree[A] = branch(l, r)
+    def empty: Tree[Nothing] = Tree.empty
   }
 
   implicit def treeAddSemigroup[A: AdditiveSemigroup] = new AdditiveSemigroup[Tree[A]] {
