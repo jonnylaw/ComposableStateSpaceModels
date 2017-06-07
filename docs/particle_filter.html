@@ -28,38 +28,15 @@ X(t_0) &\sim p(X(t_0) | \theta)
 
 <p>Roughly speaking, the particle filter approximates the latent state with a particle cloud. Consider a parameterised model where the values of \(\theta\) are know, then the steps to implement the bootstrap particle filter are as follows:</p>
 
-<ul>
-  <li>
-    <table>
-      <tbody>
-        <tr>
-          <td>Set \(i = 0\), Initialise the particle cloud by simulating N particles from the initial state distribution N times \(x(t_0)^{(k)} \sim p(x(t_0)^{(k)}</td>
-          <td>\theta), k = 1,…,N \)</td>
-        </tr>
-      </tbody>
-    </table>
-  </li>
-  <li>
-    <table>
-      <tbody>
-        <tr>
-          <td>Advance the particle cloud to the time of the next observation \(x(t_{i+i})^{(k)} \sim p((x(t_i)^{(k)}</td>
-          <td>x(t_{i-1})^{(k)}, \theta)), k=1,\dots,N\)</td>
-        </tr>
-      </tbody>
-    </table>
-  </li>
-  <li>
-    <table>
-      <tbody>
-        <tr>
-          <td>Calculate the marginal likelihood of the observation at time \(t_i\), for each particle: \(w^\star(t_i)^{(k)} \sim \pi(y(t_i)</td>
-          <td>x(t_i)^{(k)}, \theta), k=0,\dots,N\)</td>
-        </tr>
-      </tbody>
-    </table>
-  </li>
-  <li>Normalise the weights \(w(t_i)^{(k)} = w^\star(t_i)^{(k)} / \sum_{j=1}^N w^\star(t_i)^{(j)}\)</li>
+<ol>
+  <li>Set \(i = 0\), Initialise the particle cloud by simulating N particles from the initial state distribution N times:
+<script type="math/tex">x(t_0)^{(k)} \sim p(x(t_0)^{(k)} | \theta), k = 1,...,N</script></li>
+  <li>Advance the particle cloud to the time of the next observation:
+ <script type="math/tex">x(t_{i+i})^{(k)} \sim p((x(t_i)^{(k)} | x(t_{i-1})^{(k)}, \theta)), k=1,\dots,N</script></li>
+  <li>Calculate the marginal likelihood of the observation at time \(t_i\), for each particle: 
+<script type="math/tex">w^\star(t_i)^{(k)} \sim \pi(y(t_i) | x(t_i)^{(k)}, \theta), k=0,\dots,N\\)</script></li>
+  <li>Normalise the weights:
+<script type="math/tex">w(t_i)^{(k)} = w^\star(t_i)^{(k)} / \sum_{j=1}^N w^\star(t_i)^{(j)}\\)</script></li>
   <li>
     <table>
       <tbody>
@@ -71,7 +48,7 @@ X(t_0) &\sim p(X(t_0) | \theta)
     </table>
   </li>
   <li>If there are observations remaining, increment the value of \(i\) and go to step 2</li>
-</ul>
+</ol>
 
 <p>The value of interest is the filtering distribution, which is represented by a collection of particles at each time step. A statistic of interest is the mean of the filtering distribution, along with order statistics representing the uncertainty in estimating the filtering distribution. Increasing the number of particles in the filter will increase the accuracy of the estimate of the filtering distribution, at the cost of extra computation.</p>
 
@@ -84,9 +61,9 @@ X(t_0) &\sim p(X(t_0) | \theta)
 <span class="k">import</span> <span class="nn">cats.implicits._</span>
 
 <span class="k">val</span> <span class="n">sdeParameter</span> <span class="k">=</span> <span class="nc">SdeParameter</span><span class="o">.</span><span class="n">brownianParameter</span><span class="o">(</span><span class="n">m0</span> <span class="k">=</span> <span class="mf">1.0</span><span class="o">)(</span><span class="n">c0</span> <span class="k">=</span> <span class="mf">3.0</span><span class="o">)(</span><span class="n">sigma</span> <span class="k">=</span> <span class="mf">1.0</span><span class="o">)</span>
-<span class="k">val</span> <span class="n">p</span> <span class="k">=</span> <span class="nc">Parameters</span><span class="o">.</span><span class="n">leafParameter</span><span class="o">(</span><span class="n">scale</span> <span class="k">=</span> <span class="nc">Some</span><span class="o">(</span><span class="mf">3.0</span><span class="o">),</span> <span class="n">sdeParameter</span><span class="o">)</span>
+<span class="k">val</span> <span class="n">p</span> <span class="k">=</span> <span class="nc">Parameters</span><span class="o">(</span><span class="n">scale</span> <span class="k">=</span> <span class="nc">Some</span><span class="o">(</span><span class="mf">3.0</span><span class="o">),</span> <span class="n">sdeParameter</span><span class="o">)</span>
 <span class="k">val</span> <span class="n">sde</span> <span class="k">=</span> <span class="nc">Sde</span><span class="o">.</span><span class="n">brownianMotion</span><span class="o">(</span><span class="mi">1</span><span class="o">)</span>
-<span class="k">val</span> <span class="n">model</span> <span class="k">=</span> <span class="nc">Model</span><span class="o">.</span><span class="n">linearModel</span><span class="o">(</span><span class="n">sde</span><span class="o">)</span>
+<span class="k">val</span> <span class="n">model</span> <span class="k">=</span> <span class="nc">Model</span><span class="o">.</span><span class="n">linear</span><span class="o">(</span><span class="n">sde</span><span class="o">)</span>
 </code></pre>
 </div>
 

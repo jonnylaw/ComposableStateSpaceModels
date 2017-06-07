@@ -32,8 +32,8 @@ X(t_i) | (X(t_{i-1}) = x(t_{i-1})) &\sim \mathcal{N}(x(t_{i-1}), \sigma \textrm{
 
 <p>Now, we must specify the observation variance \(V\), which is required by the Gaussian Model. The variance is an option parameter, and hence represented by a Scala <code class="highlighter-rouge">Option</code>, and is specified on the log scale.</p>
 
-<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">val</span> <span class="n">gaussianModel</span> <span class="k">=</span> <span class="nc">Model</span><span class="o">.</span><span class="n">linearModel</span><span class="o">(</span><span class="n">sde</span><span class="o">)</span>
-<span class="k">val</span> <span class="n">gaussianParams</span> <span class="k">=</span> <span class="nc">Parameters</span><span class="o">.</span><span class="n">leafParameter</span><span class="o">(</span><span class="nc">Some</span><span class="o">(</span><span class="n">log</span><span class="o">(</span><span class="mf">1.0</span><span class="o">)),</span> <span class="n">sdeParam</span><span class="o">)</span>
+<div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">val</span> <span class="n">gaussianModel</span> <span class="k">=</span> <span class="nc">Model</span><span class="o">.</span><span class="n">linear</span><span class="o">(</span><span class="n">sde</span><span class="o">)</span>
+<span class="k">val</span> <span class="n">gaussianParams</span> <span class="k">=</span> <span class="nc">Parameters</span><span class="o">(</span><span class="nc">Some</span><span class="o">(</span><span class="n">log</span><span class="o">(</span><span class="mf">1.0</span><span class="o">)),</span> <span class="n">sdeParam</span><span class="o">)</span>
 </code></pre>
 </div>
 
@@ -75,8 +75,8 @@ X(t_i) | (X(t_{i-1}) = x(t_{i-1})) &\sim \mathcal{N}(x(t_{i-1}), \sigma \textrm{
 <p>To create a seasonal Gaussian model with a multivariate Brownian motion latent state, we can compose the model above with a seasonal model. Firstly, let’s specify a seasonal model with a period of 3 and 5 harmonics, this requires a latent state with 10-dimensions:</p>
 
 <div class="language-scala highlighter-rouge"><pre class="highlight"><code><span class="k">val</span> <span class="n">sdeMulti</span> <span class="k">=</span> <span class="nc">Sde</span><span class="o">.</span><span class="n">brownianMotion</span><span class="o">(</span><span class="mi">10</span><span class="o">)</span>
-<span class="k">val</span> <span class="n">seasonalModel</span> <span class="k">=</span> <span class="nc">Model</span><span class="o">.</span><span class="n">seasonalModel</span><span class="o">(</span><span class="mi">3</span><span class="o">,</span> <span class="mi">5</span><span class="o">,</span> <span class="n">sdeMulti</span><span class="o">)</span>
-<span class="k">val</span> <span class="n">seasonalParams</span> <span class="k">=</span> <span class="nc">Parameters</span><span class="o">.</span><span class="n">leafParameter</span><span class="o">(</span><span class="nc">None</span><span class="o">,</span> <span class="n">sdeParam</span><span class="o">)</span>
+<span class="k">val</span> <span class="n">seasonalModel</span> <span class="k">=</span> <span class="nc">Model</span><span class="o">.</span><span class="n">seasonal</span><span class="o">(</span><span class="mi">3</span><span class="o">,</span> <span class="mi">5</span><span class="o">,</span> <span class="n">sdeMulti</span><span class="o">)</span>
+<span class="k">val</span> <span class="n">seasonalParams</span> <span class="k">=</span> <span class="nc">Parameters</span><span class="o">(</span><span class="nc">None</span><span class="o">,</span> <span class="n">sdeParam</span><span class="o">)</span>
 </code></pre>
 </div>
 
