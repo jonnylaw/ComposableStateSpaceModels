@@ -133,7 +133,7 @@ object Streaming {
     * @param fileOut the output filename
     */
   def jsonToCSV(fileIn: String, fileOut: String)
-    (implicit mat: Materializer, fmt: JsonFormat[MetropState]): Future[IOResult] = {
+    (implicit mat: Materializer, fmt: JsonFormat[MetropState], sh: Show[ParamsState]): Future[IOResult] = {
 
     Streaming.readPosterior(fileIn, 0, 1).
       map(s => ParamsState(s.ll, s.params, s.accepted)).

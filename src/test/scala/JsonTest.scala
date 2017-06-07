@@ -1,13 +1,20 @@
 package parametertest
 
-import cats.implicits._
 import breeze.linalg.DenseVector
 import com.github.jonnylaw.model._
+import DataProtocols._
+import Tree._
+import Parameters._
+import SdeParameter._
+import Sde._
+import cats.Eq
+import cats.implicits._
 import org.scalacheck.Prop.forAll
 import org.scalacheck._
 import Arbitrary.arbitrary
+import spire.algebra._
+import spire.implicits._
 import spray.json._
-import DataProtocols._
 
 class JsonSuite extends Properties("Json") with ParameterGen {
   val genLeafState = for {
@@ -22,11 +29,11 @@ class JsonSuite extends Properties("Json") with ParameterGen {
   val genState: Gen[State] = Gen.oneOf(genBranchState, genLeafState)
 
   property("toJson should serialise State to JSON") = Prop.forAll(genState) { x0 =>
-    x0 == x0.toJson.compactPrint.parseJson.convertTo[State]
+    x0 === x0.toJson.compactPrint.parseJson.convertTo[State]
   }
 
   property("toJson should serialise Parameters to JSON") = Prop.forAll(parameters) { p =>
-    Parameters.isIsomorphic(p, p.toJson.compactPrint.parseJson.convertTo[Parameters])
+    p === p.toJson.compactPrint.parseJson.convertTo[Parameters]
   }
 
   val genObservationWithState = for {
@@ -52,9 +59,9 @@ class JsonSuite extends Properties("Json") with ParameterGen {
   property("toJson should serialise MetropState to JSON") = Prop.forAll(genMetropState) { d =>
     val parsed = d.toJson.compactPrint.parseJson.convertTo[MetropState]
 
-    parsed.ll == d.ll &&
-    parsed.accepted == d.accepted &&
-    Parameters.isIsomorphic(parsed.params, d.params) &&
-    Tree.isIsomorphic(parsed.sde.state, d.sde.state)
+    parsed.ll === d.ll &&
+    parsed.accepted === d.accepted &&
+    parsed.params === d.params &&
+    parsed.sde.state === d.sde.state
   }
 }

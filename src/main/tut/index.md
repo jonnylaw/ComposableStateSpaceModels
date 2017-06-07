@@ -79,8 +79,8 @@ The observations of a POMP can be from any parameterised distribution. The obser
 
 ```tut:silent:book
 val sde = Sde.brownianMotion(1)
-val negBinParams = Parameters.leafParameter(Some(log(3.0)), 
-  SdeParameter.brownianParameter(m0 = 0.0)(c0 = log(1.0))(sigma = log(0.01)))
+val sdeParam = SdeParameter.brownianParameter(m0 = 0.0)(c0 = log(1.0))(sigma = log(0.01))
+val negBinParams = Parameters(Some(log(3.0)), sdeParam)
 
 val negBinModel = Model.negativeBinomial(sde)
 
@@ -105,13 +105,12 @@ Unparameterised models are represented as `Reader[Parameters, Model]`. A semigro
 
 ```tut:book:silent
 val sde2 = Sde.ouProcess(8)
-val seasonalParams = Parameters.leafParameter(None,
-    SdeParameter.ouParameter(0.0)(log(1.0))(log(0.3))(log(0.01))
-      (1.5, 1.5, 1.0, 1.0, 1.5, 1.5, 0.1, 0.1))
+val ouParams = SdeParameter.ouParameter(0.0)(log(1.0))(log(0.3))(log(0.01))(1.5, 1.5, 1.0, 1.0, 1.5, 1.5, 0.1, 0.1)
+val seasonalParams = Parameters(None, ouParams)
 
 val composedParams = negBinParams |+| seasonalParams
 
-val composedMod = negBinModel |+| Model.seasonalModel(24, 4, sde2)
+val composedMod = negBinModel |+| Model.seasonal(24, 4, sde2)
 
 val composedSims = SimulateData(composedMod(composedParams)).
   observations.

@@ -37,8 +37,8 @@ Note that strictly positive parameters are specified on the log-scale. The param
 Now, we must specify the observation variance \\(V\\), which is required by the Gaussian Model. The variance is an option parameter, and hence represented by a Scala `Option`, and is specified on the log scale.
 
 ```tut:book:silent
-val gaussianModel = Model.linearModel(sde)
-val gaussianParams = Parameters.leafParameter(Some(log(1.0)), sdeParam)
+val gaussianModel = Model.linear(sde)
+val gaussianParams = Parameters(Some(log(1.0)), sdeParam)
 ```
 
 The `Model` object has many pre-defined models, the Gaussian model is called `linearModel` and all models are a function from `Sde => Parameters => Model`. Hence `model` is a function from `Parameters => Model`, once the parameters are supplied to the model we can access the functions belonging to the model:
@@ -80,8 +80,8 @@ To create a seasonal Gaussian model with a multivariate Brownian motion latent s
 
 ```tut:book:silent
 val sdeMulti = Sde.brownianMotion(10)
-val seasonalModel = Model.seasonalModel(3, 5, sdeMulti)
-val seasonalParams = Parameters.leafParameter(None, sdeParam)
+val seasonalModel = Model.seasonal(3, 5, sdeMulti)
+val seasonalParams = Parameters(None, sdeParam)
 ```
 
 Note that the parameters for each dimension of the Brownian motion are taken to be identical in this case. In order to compose this model, we need to compose both the parameters and the model in a specific order:

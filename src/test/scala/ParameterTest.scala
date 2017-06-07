@@ -3,9 +3,13 @@ package parametertest
 import breeze.linalg.{DenseVector, DenseMatrix}
 import cats.implicits._
 import com.github.jonnylaw.model._
+import Parameters._
+import SdeParameter._
 import org.scalacheck.Prop.forAll
 import org.scalacheck._
 import Arbitrary.arbitrary
+import spire.algebra._
+import spire.implicits._
 
 trait ParameterGen {
   val denseVector = (n: Int) => Gen.containerOfN[Array, Double](n, arbitrary[Double]).
@@ -28,7 +32,7 @@ trait ParameterGen {
   val genLeaf = for {
     v <- arbitrary[Double]
     sde <- genSde
-  } yield Parameters.leafParameter(Some(v), sde)
+  } yield Tree.leaf(ParamNode(Some(v), sde))
 
   def genBranch(level: Int) = for {
     left <- genParameters(level)
@@ -43,12 +47,13 @@ trait ParameterGen {
 object ParameterFunctionSuite extends Properties("Parameters") with ParameterGen {
   val input = (n: Int) => for {
     p <- parameters
-    d <- denseVector(p.length)
-    e <- denseVector(p.length)
+    d <- denseVector(Parameters.paramSize(p))
+    e <- denseVector(Parameters.paramSize(p))
   } yield (p, d, e)
 
   property("add on parameters should be commutative") = forAll(input(1)) { case (p, d, e) =>
-    p.add(d).sum(p.add(e)) == p.add(e).sum(p.add(d))
+    val S: Addable[Parameters] = implicitly[Addable[Parameters]]
+    S.add(p, d) + S.add(p, e) == S.add(p, e) + S.add(p, d)
   }
 
   val input1 = (n: Int) => for {
@@ -58,6 +63,7 @@ object ParameterFunctionSuite extends Properties("Parameters") with ParameterGen
   } yield (sde, d, e)
 
   property("add on sde parameters should be commutative") = forAll(input1(1)) { case (sde, d, e) =>
-    sde.add(d).sum(sde.add(e)) == sde.add(e).sum(sde.add(d))
+    val S: Addable[SdeParameter] = implicitly[Addable[SdeParameter]]
+    S.add(sde, d) + S.add(sde, e) == S.add(sde, e) + S.add(sde, d)
   }
 }

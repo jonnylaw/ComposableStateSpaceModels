@@ -3,8 +3,8 @@ package com.github.jonnylaw.model
 import breeze.stats.distributions._
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
 import breeze.numerics.{sqrt, exp}
-import cats.{Semigroup, Applicative}
-import cats.data.{Reader, Kleisli}
+import cats.{Semigroup, Applicative, Eq}
+import cats.data.{Reader}
 import cats.implicits._
 import akka.stream._
 import akka.stream.scaladsl._
@@ -97,8 +97,8 @@ private final case class GenBrownianMotion(p: GenBrownianParameter, dimension: I
 }
 
 private final case class BrownianMotion(p: BrownianParameter, dimension: Int) extends Sde {
-  val params: BrownianParameter = (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match { 
-    case BrownianParameter(m, c, s) => BrownianParameter(m, c.map(exp(_)), s.map(exp(_))) 
+  val params: BrownianParameter = (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match {
+    case BrownianParameter(m, c, s) => BrownianParameter(m, c.map(exp(_)), s.map(exp(_)))
   }
 
   def initialState: Rand[State] = {
@@ -232,8 +232,17 @@ object Sde {
         for {
           l <- sde1.dW(dt)
           r <- Applicative[Rand].replicateA(sde2.dimension, Gaussian(0.0, sqrt(dt))).map(x => (DenseVector(x.toArray)))
-        } yield l |+ Tree.leaf(r)
+        } yield l +++ Tree.leaf(r)
       }
+    }
+  }
+
+  /**
+    * Eq Type class for DenseVectors, used in combination with the Eq class for a binary Tree
+    */
+  implicit def eqDenseVec[A: Numeric]: Eq[DenseVector[A]] = new Eq[DenseVector[A]] {
+    def eqv(x: DenseVector[A], y: DenseVector[A]): Boolean = {
+      x == y
     }
   }
 }

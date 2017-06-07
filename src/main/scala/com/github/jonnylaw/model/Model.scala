@@ -10,6 +10,7 @@ import cats.implicits._
 import cats.data.Reader
 
 import StateSpace._
+import Parameters._
 
 trait Model {
   /**
@@ -43,12 +44,12 @@ trait Model {
 
 object Model {
   def poisson(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case param: LeafParameter => PoissonModel(sde(param.sdeParam), param)
+    case Leaf(param) => PoissonModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
   def beta(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case param: LeafParameter => BetaModel(sde(param.sdeParam), param)
+    case Leaf(param) => BetaModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
@@ -56,37 +57,37 @@ object Model {
     period: Int,
     harmonics: Int,
     sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-      case param: LeafParameter => SeasonalModel(period, harmonics, sde(param.sdeParam), param)
+      case Leaf(param) => SeasonalModel(period, harmonics, sde(param.sdeParam), param)
       case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
   def linear(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case param: LeafParameter => LinearModel(sde(param.sdeParam), param)
+    case Leaf(param) => LinearModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
   def studentsT(sde: UnparamSde, df: Int): Reader[Parameters, Model] = Reader { p => p match {
-    case param: LeafParameter => StudentsTModel(sde(param.sdeParam), df, param)
+    case Leaf(param) => StudentsTModel(sde(param.sdeParam), df, param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
   def bernoulli(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case param: LeafParameter => BernoulliModel(sde(param.sdeParam), param)
+    case Leaf(param) => BernoulliModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
   def lgcp(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case param: LeafParameter => LogGaussianCox(sde(param.sdeParam), param)
+    case Leaf(param) => LogGaussianCox(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
   def negativeBinomial(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case param: LeafParameter => NegativeBinomialModel(sde(param.sdeParam), param)
+    case Leaf(param) => NegativeBinomialModel(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
   def zeroInflatedPoisson(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case param: LeafParameter => ZeroInflatedPoisson(sde(param.sdeParam), param)
+    case Leaf(param) => ZeroInflatedPoisson(sde(param.sdeParam), param)
     case _ => throw new Exception("Can't build model from branch parameter")
   }}
 
@@ -108,7 +109,7 @@ object Model {
     * @return a composed model of mod1 and mod2, which can be composed again
     */
   def compose(mod1: UnparamModel, mod2: UnparamModel): UnparamModel = Reader { p => p match {
-    case BranchParameter(lp, rp) => {
+    case Branch(lp, rp) => {
       new Model {
         def observation = x => mod1(lp).observation(x)
 
@@ -119,6 +120,7 @@ object Model {
             mod1(lp).f(ls, t) + mod2(rp).f(rs, t)
           case x: Leaf[DenseVector[Double]] =>
             mod1(lp).f(x, t)
+          case Empty => 0.0
         }
 
         def sde: Sde = mod1(lp).sde |+| mod2(rp).sde
@@ -126,7 +128,7 @@ object Model {
         def dataLikelihood = (s, y) => mod1(lp).dataLikelihood(s, y)
       }
     }
-    case _ => throw new Exception("Can't Build composed model from leafParameter")
+    case _ => throw new Exception("Can't Build composed model from Leaf Parameter")
   }}
 }
 
@@ -136,7 +138,7 @@ object Model {
   * @return an model of the Student-T model, which can be composed with other models
   */
 
-private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) extends Model {
+private final case class StudentsTModel(sde: Sde, df: Int, p: ParamNode) extends Model {
   def observation = x => p.scale match {
     case Some(logv) => {
       val v = exp(logv)
@@ -160,7 +162,7 @@ private final case class StudentsTModel(sde: Sde, df: Int, p: LeafParameter) ext
   * Negative Binomial Model for Overdispersed Data, the mean (mu > 0) is the exponential of the 
   * latent state. The variance is equal to mu + mu^2 / size and proportional to the mean 
   */
-private final case class NegativeBinomialModel(sde: Sde, p: LeafParameter) extends Model {
+private final case class NegativeBinomialModel(sde: Sde, p: ParamNode) extends Model {
   def observation = x => p.scale match {
     case Some(logv) => {
       val size = exp(logv)
@@ -199,7 +201,7 @@ private final case class NegativeBinomialModel(sde: Sde, p: LeafParameter) exten
 private final case class SeasonalModel(
   period: Int, 
   harmonics: Int, 
-  sde: Sde, p: LeafParameter) extends Model {
+  sde: Sde, p: ParamNode) extends Model {
 
   def observation = x => p.scale match {
     case Some(logv) => {
@@ -233,7 +235,7 @@ private final case class SeasonalModel(
     * @param sde a solution to a diffusion process representing the evolution of the latent state
     * @return an UnparamModel which can be composed with other models
     */
-private final case class LinearModel(sde: Sde, p: LeafParameter) extends Model {
+private final case class LinearModel(sde: Sde, p: ParamNode) extends Model {
   def observation = x => p.scale match {
     case Some(logv) => {
       val v = exp(logv)
@@ -258,7 +260,7 @@ private final case class LinearModel(sde: Sde, p: LeafParameter) extends Model {
   * @param sde a solution to a diffusion process representing the evolution of the latent space
   * @return a Poisson UnparamModel which can be composed with other UnparamModels
   */
-private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model {
+private final case class PoissonModel(sde: Sde, p: ParamNode) extends Model {
   def observation = x => Poisson(link(x)) map (_.toDouble): Rand[Double]
 
   override def link(x: Double) = exp(x)
@@ -273,7 +275,7 @@ private final case class PoissonModel(sde: Sde, p: LeafParameter) extends Model 
   * The rate, eta(t) is the expected Poisson count at time t, and the scale parameter 
   * is the probability of extra zeros (so must lie between 0 and 1)
   */
-private final case class ZeroInflatedPoisson(sde: Sde, params: LeafParameter) extends Model {
+private final case class ZeroInflatedPoisson(sde: Sde, params: ParamNode) extends Model {
   def observation = x => params.scale match {
     case Some(v) => {
       val p = exp(v) / (1 + exp(v))
@@ -307,7 +309,7 @@ private final case class ZeroInflatedPoisson(sde: Sde, params: LeafParameter) ex
   * The bernoulli model with a one dimensional latent state
   * @param sde a solution to a diffusion process 
   */
-private final case class BernoulliModel(sde: Sde, p: LeafParameter) extends Model {
+private final case class BernoulliModel(sde: Sde, p: ParamNode) extends Model {
   def observation = p => Uniform(0, 1).map(_ < link(p)).map(a => if (a) 1.0 else 0.0)
 
   override def link(x: Gamma) = {
@@ -331,7 +333,7 @@ private final case class BernoulliModel(sde: Sde, p: LeafParameter) extends Mode
   }
 }
 
-private final case class BetaModel(sde: Sde, p: LeafParameter) extends Model {
+private final case class BetaModel(sde: Sde, p: ParamNode) extends Model {
   def  observation = gamma => p.scale match {
     case Some(beta) => new Beta(link(gamma), beta)
     case None => throw new Exception("Must provide shape parameter for Beta Model")
@@ -347,11 +349,15 @@ private final case class BetaModel(sde: Sde, p: LeafParameter) extends Model {
   }
 }
 
+// private final case class LogNormal(sde: Sde, p: ParamNode) extends Model {
+
+// }
+
 /**
   * The Log-Gaussian Cox-Process is used to model time to event data with 
   * log-gaussian varying hazard rate
   */
-private final case class LogGaussianCox(sde: Sde, p: LeafParameter) extends Model {
+private final case class LogGaussianCox(sde: Sde, p: ParamNode) extends Model {
   def observation = ???
 
   def f(s: State, t: Time) = s.fold(0.0)((x: DenseVector[Double]) => x(0))(_ + _)

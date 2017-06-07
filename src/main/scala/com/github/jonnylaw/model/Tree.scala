@@ -1,26 +1,23 @@
 package com.github.jonnylaw.model
 
-import cats._
+import breeze.linalg.DenseVector
+import cats.{Functor, Applicative, Apply, Eq, Monoid}
+import scala.language.higherKinds
+import spire.implicits._
+import spire.algebra.{Semigroup, AdditiveSemigroup}
 
 /**
   * A binary tree implementation, to be used when combining models
   * Hopefully this simplifies "zooming" into values and changing them
   */
-sealed trait Tree[A] { self =>
+sealed trait Tree[+A] { self =>
   import Tree._
 
   /**
-    * Add a Tree to the right of the tree
+    * Concatenate two trees
     */
-  def |+(that: Tree[A]): Tree[A] = {
+  def +++[B >: A](that: Tree[B]): Tree[B] = {
     branch(self, that)
-  }
-
-  /**
-    * Add a Tree to the left of the tree
-    */
-  def +|(that: Tree[A]): Tree[A] = {
-    branch(that, self)
   }
 
   /**
@@ -38,73 +35,103 @@ sealed trait Tree[A] { self =>
     */
   def fold[B](z: B)(f: A => B)(g: (B, B) => B): B = {
     def loop(acc: B, remaining: Tree[A]): B = remaining match {
-      case Leaf(a) => f(a)
+      case Leaf(a)      => f(a)
       case Branch(l, r) => g(loop(acc, l), loop(acc, r))
+      case Empty        => acc
     }
 
     loop(z, self)
   }
 
-  def foldMap(f: A => A)(implicit m: Monoid[A]): A = {
-    self.fold(m.empty)(identity)((b, a) => m.combine(b, f(a)))
+  def foldMap[B >: A](f: B => B)(implicit M: Monoid[B]): B = {
+    self.fold(M.empty)(identity)((b, a) => M.combine(b, f(a)))
   }
 
   def flatten: List[A] = self match {
-    case Leaf(a) => List[A](a)
+    case Leaf(a)      => List[A](a)
     case Branch(l, r) => l.flatten ++ r.flatten
+    case Empty        => List.empty
   }
 
   /**
     * Combine two trees which are the same shape using the function f
     */
   def zipWith[B, C](that: Tree[B])(f: (A, B) => C): Tree[C] = (self, that) match {
-    case (Leaf(a), Leaf(b)) => leaf(f(a, b))
+    case (Leaf(a), Leaf(b))             => leaf(f(a, b))
     case (Branch(l, r), Branch(l1, r1)) => branch(l.zipWith(l1)(f), r.zipWith(r1)(f))
-    case _ => throw new Exception("Can't zip different shaped trees")
+    case _                              => throw new Exception("Can't zip different shaped trees")
   }
 
   def prettyPrint: String = self match{
     case Branch(l, r) => "/ \\ \n" ++ l.prettyPrint ++ r.prettyPrint
-    case Leaf(a) => a.toString
+    case Leaf(a)      => a.toString
+    case Empty        => ""
   }
 
   /**
     * Add two (same shape) trees together, each leaf node is added
     */
-  def add(that: Tree[A])(implicit N: Numeric[A]): Tree[A] = self.zipWith(that)(N.plus)
+  def plus[B >: A](that: Tree[B])(implicit S: AdditiveSemigroup[B]): Tree[B] = 
+    self.zipWith(that)(S.plus)
 }
-case class Leaf[A](value: A) extends Tree[A]
-case class Branch[A](left: Tree[A], right: Tree[A]) extends Tree[A]
+case class  Leaf[A](value: A)                        extends Tree[A]
+case class  Branch[A](left: Tree[A], right: Tree[A]) extends Tree[A]
+case object Empty                                    extends Tree[Nothing]
 
 object Tree {
   def branch[A](l: Tree[A], r: Tree[A]): Tree[A] = Branch(l, r)
+
   def leaf[A](a: A): Tree[A] = Leaf(a)
 
+  def empty: Tree[Nothing] = Empty
+
   /**
-    * fill the tree from the left
-    * 
+    * Traverse a binary tree with an applicative function f: A => F[B] and return an F[Tree[B]]
+    * This is similar to map, but a map would return a Tree[F[B]]
+    * @param ta a Tree to be traversed
+    * @param f a function from the type at the tree leaves to an applicative of any type
+    * @return a structure with the form F[Tree[B]] 
     */
-  def constructTreeLeft[A](l: Seq[A]): Tree[A] = {
-    l.tail.foldLeft(Tree.leaf(l.head))(_ |+ Tree.leaf(_))
+  def traverse[F[_]: Applicative, A, B](ta: Tree[A])(f: A => F[B]): F[Tree[B]] = ta match {
+    case Leaf(v)      => Applicative[F].map(f(v))(Tree.leaf)
+    case Branch(l, r) => Applicative[F].map2(traverse(l)(f), traverse(r)(f)){ Tree.branch(_, _) }
+    case Empty        => Applicative[F].pure(empty)
   }
 
-  def isIsomorphic[A: Ordering](t: Tree[A], t1: Tree[A]): Boolean = {
-    t.flatten == t1.flatten
-  }
-
-  implicit val treeFun = new Functor[Tree] {
-    def pure[A](a: A): Tree[A] = leaf(a)
-
-    def map[A, B](a: Tree[A])(f: A => B): Tree[B] = a match {
-      case Leaf(a) => Leaf(f(a))
-      case Branch(l, r) => branch(map(l)(f), map(r)(f))
+  implicit def treeFunctor = new Functor[Tree] {
+    def map[A, B](fa: Tree[A])(f: A => B): Tree[B] = fa match {
+      case Leaf(v)      => Tree.leaf(f(v))
+      case Branch(l, r) => Tree.branch(map(l)(f), map(r)(f))
+      case Empty        => Empty
     }
   }
 
   /**
-    * Semigroup to build a larger tree
+    * fill the tree from the left
     */
-  implicit def composeTreeSemigroup[A] = new Semigroup[Tree[A]] {
+  def constructTreeLeft[A](l: Seq[A]): Tree[A] = {
+    l.tail.foldLeft(Tree.leaf(l.head))(_ +++ Tree.leaf(_))
+  }
+
+  def isIsomorphic[A](t: Tree[A], t1: Tree[A]): Boolean = {
+    t.flatten == t1.flatten
+  }
+
+  /**
+    * Monoid to build a larger tree
+    */
+  implicit def composeTreeMonoid[A] = new Monoid[Tree[A]] {
     def combine(l: Tree[A], r: Tree[A]): Tree[A] = branch(l, r)
+    def empty: Tree[Nothing] = Tree.empty
+  }
+
+  implicit def treeAddSemigroup[A: AdditiveSemigroup] = new AdditiveSemigroup[Tree[A]] {
+    def plus(x: Tree[A], y: Tree[A]) = x plus y
+  }
+
+  implicit def eqTree[A](implicit t: Eq[A]): Eq[Tree[A]] = new Eq[Tree[A]] {
+    def eqv(x: Tree[A], y: Tree[A]): Boolean = {
+      x.flatten == x.flatten
+    }
   }
 }

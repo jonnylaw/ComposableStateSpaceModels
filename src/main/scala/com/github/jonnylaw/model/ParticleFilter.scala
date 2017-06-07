@@ -19,6 +19,9 @@ import scala.collection.parallel.immutable.ParVector
 import scala.concurrent._
 import scala.language.higherKinds
 
+import spire.algebra._
+import spire.implicits._
+
 /**
   * Credible intervals from a set of samples in a distribution
   * @param lower the lower interval
@@ -461,12 +464,12 @@ object ParticleFilter {
   /**
     * Calculate the weighted mean of a particle cloud
     */
-  def weightedMean(x: Vector[State], w: Vector[Double]): State = {
+  def weightedMean(x: Vector[State], w: Vector[Double])(implicit S: AdditiveSemigroup[Double]): State = {
     val normalisedWeights = w map (_ / w.sum)
 
     x.zip(normalisedWeights).
       map { case (state, weight) => state map ((x: DenseVector[Double]) => x * weight) }.
-      reduce((a, b) => a.add(b))
+      reduce((a, b) => a + b)
   }
 
   /**
