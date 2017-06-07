@@ -81,13 +81,13 @@ package object model {
     }
   }
 
-  // implicit def parameterShow(implicit S: Show[SdeParameter]) = new Show[Parameters] {
-  //   def show(p: Parameters): String = p match {
-  //     case LeafParameter(v, sde) => v.map(x => s"$x, ").getOrElse("") + S.show(sde)
-  //     case BranchParameter(l, r) => show(l) + ", " + show(r)
-  //     case EmptyParameter => ""
-  //   }
-  // }
+  implicit def parameterShow(implicit S: Show[SdeParameter]) = new Show[Parameters] {
+    def show(p: Parameters): String = p match {
+      case Leaf(ParamNode(v, sde)) => v.map(x => s"$x, ").getOrElse("") + S.show(sde)
+      case Branch(l, r) => show(l) + ", " + show(r)
+      case Empty => ""
+    }
+  }
 
   implicit def stateSpaceShow(implicit S: Show[State]) = new Show[StateSpace] {
     def show(a: StateSpace): String = s"${a.time}, ${S.show(a.state)}"

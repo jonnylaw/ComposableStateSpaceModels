@@ -54,9 +54,9 @@ import akka.actor.ActorSystem
 import cats.implicits._
 
 val sdeParameter = SdeParameter.brownianParameter(m0 = 1.0)(c0 = 3.0)(sigma = 1.0)
-val p = Parameters.leafParameter(scale = Some(3.0), sdeParameter)
+val p = Parameters(scale = Some(3.0), sdeParameter)
 val sde = Sde.brownianMotion(1)
-val model = Model.linearModel(sde)
+val model = Model.linear(sde)
 ```
 
 This defines the parameters, the latent state and the observation model for the linear Gaussian Model. Now, we can simulate realisations from the model and use only the observations, \\(y\\) to estimate the filtering distribution \\(x(t)\\):

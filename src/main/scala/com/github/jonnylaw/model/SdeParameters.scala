@@ -3,7 +3,8 @@ package com.github.jonnylaw.model
 import breeze.linalg.{DenseVector, diag}
 import breeze.stats.distributions._
 import breeze.numerics.{exp, sqrt}
-import cats.{Functor, Applicative}
+import cats.{Functor, Applicative, Eq}
+import cats.implicits._
 import scala.language.implicitConversions
 import SdeParameter._
 import spire.algebra._
@@ -166,5 +167,17 @@ object SdeParameter {
 
   implicit def addSdeParam = new AdditiveSemigroup[SdeParameter] {
     def plus(x: SdeParameter, y: SdeParameter) = x sum y
+  }
+
+  implicit def eqSdeParam(implicit ev: Eq[DenseVector[Double]]) = new Eq[SdeParameter] {
+    def eqv(x: SdeParameter, y: SdeParameter): Boolean = (x, y) match {
+      case (BrownianParameter(m, c, s), BrownianParameter(m1, c1, s1)) => 
+        m === m1 && c === c1 && s === s1
+      case (GenBrownianParameter(m, c, s, mu), GenBrownianParameter(m1, c1, s1, mu1)) => 
+        m === m1 && c === c1 && s === s1 && mu === mu1
+      case (OuParameter(m, c, a, s, t), OuParameter(m1, c1, a1, s1, t1)) => 
+        m === m1 && c === c1 && s === s1 && t === t1 && a === a1
+      case _ => false
+    }
   }
 }

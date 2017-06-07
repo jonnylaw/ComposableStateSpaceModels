@@ -7,13 +7,21 @@ import breeze.stats.distributions._
 import breeze.numerics.{exp, sqrt}
 import cats._
 import cats.implicits._
-import spire.algebra._
+import spire.algebra.AdditiveSemigroup
 import spire.implicits._
 import scala.language.higherKinds
 
 case class ParamNode(scale: Option[Double], sdeParam: SdeParameter)
 
 object Parameters {
+  /**
+    * Constructor for a leaf parameter value
+    */
+  def apply(scale: Option[Double], sdeParam: SdeParameter): Parameters = {
+    Tree.leaf(ParamNode(scale, sdeParam))
+  }
+
+
   implicit def addSemiParamNode(implicit S: AdditiveSemigroup[SdeParameter]) = new AdditiveSemigroup[ParamNode] {
     def plus(x: ParamNode, y: ParamNode) = {
       val newScale = for {
@@ -86,6 +94,12 @@ object Parameters {
       case Leaf(v)      => Tree.leaf(S.add(v, that))
       case Branch(l, r) => add(l, that(0 to paramSize(l))) |+| add(l, that(paramSize(fa) to -1))
       case Empty        => Empty
+    }
+  }
+
+  implicit def eqParamNode[A](implicit ev: Eq[SdeParameter]): Eq[ParamNode] = new Eq[ParamNode] {
+    def eqv(x: ParamNode, y: ParamNode): Boolean = {
+      x.scale === y.scale && x.sdeParam === y.sdeParam
     }
   }
 

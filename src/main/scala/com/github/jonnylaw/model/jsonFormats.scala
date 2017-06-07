@@ -46,8 +46,17 @@ object DataProtocols extends DefaultJsonProtocol {
   }
 
   implicit val paramNodeFormat = jsonFormat2(ParamNode)
+//  implicit val paramLeafFormat = jsonFormat1(Leaf[ParamNode])
 
-  implicit val leafParamFormat = jsonFormat1(Leaf[ParamNode])
+  implicit def leafParamFormat = new RootJsonFormat[Leaf[ParamNode]] {
+    def write(obj: Leaf[ParamNode]): JsValue = {
+      obj.value.toJson
+    }
+
+    def read(value: JsValue): Leaf[ParamNode] = {
+      Leaf(value.convertTo[ParamNode])
+    }
+  }
 
   implicit def paramsFormat = new RootJsonFormat[Parameters] {
     def write(obj: Parameters) = {
