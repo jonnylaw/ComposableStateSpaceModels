@@ -210,12 +210,14 @@ object Sde {
 
       def drift(state: State): Tree[DenseVector[Double]] = state match {
         case Branch(l, r) => Tree.branch(sde1.drift(l), sde2.drift(r))
-        case state: Leaf[DenseVector[Double]] => throw new Exception
+        case _ => 
+          throw new Exception("Can't apply a composed SDE to a non-composed state")
       }
 
       def diffusion(state: State): Tree[DenseMatrix[Double]] = state match {
         case Branch(l, r) => Tree.branch(sde1.diffusion(l), sde2.diffusion(r))
-        case state: Leaf[DenseVector[Double]] => throw new Exception
+        case _ => 
+          throw new Exception("Can't apply a composed SDE to a non-composed state")
       }
 
       override def stepFunction(dt: TimeIncrement)(s: State) = s match {
@@ -240,9 +242,15 @@ object Sde {
   /**
     * Eq Type class for DenseVectors, used in combination with the Eq class for a binary Tree
     */
-  implicit def eqDenseVec[A: Numeric]: Eq[DenseVector[A]] = new Eq[DenseVector[A]] {
-    def eqv(x: DenseVector[A], y: DenseVector[A]): Boolean = {
-      x == y
-    }
-  }
+  implicit def eqDenseVec = 
+    new Eq[DenseVector[Double]] {
+      def tolerantEquiv(tol: Int)(a: Double, b: Double): Boolean = {
+        Math.abs(a - b) < Math.pow(10, -tol)
+      }
+      def eqv(x: DenseVector[Double], y: DenseVector[Double]): Boolean = {
+        (x.data.zip(y.data)).
+          map { case (a, b) => tolerantEquiv(3)(a, b) }.
+          reduce(_ && _)
+        }
+      }
 }

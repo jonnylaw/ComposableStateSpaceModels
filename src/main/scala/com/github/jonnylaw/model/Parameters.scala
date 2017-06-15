@@ -52,7 +52,8 @@ object Parameters {
     * Perturb a parameter tree with independent Gaussian noise, with variance delta
     */
   def perturb(delta: Double): Parameters => Rand[Parameters] = p => {
-    Tree.traverse(p)((y: ParamNode) => Gaussian(0.0, sqrt(delta)) map (i => map(y)(x => x + i)))
+    p traverse ((y: ParamNode) => Gaussian(0.0, sqrt(delta)).
+      map (i => map(y)(x => x + i)))
   }
 
   /**
@@ -68,14 +69,8 @@ object Parameters {
   /**
     * Returns the size of a parameter tree
     */
-  def paramSize(fa: Parameters): Int = fa match {
-    case Leaf(v)      => v.scale match {
-      case Some(_)  => v.sdeParam.length + 1
-      case None     => v.sdeParam.length
-    }
-    case Branch(l, r) => paramSize(l) + paramSize(r)
-    case Empty        => 0
-  }
+  def paramSize(fa: Parameters): Int = 
+    flattenParams(fa).size
 
   /**
     * Flatten parameters into a sequence of doubles
@@ -92,7 +87,7 @@ object Parameters {
   implicit def addableParams(implicit S: Addable[ParamNode]) = new Addable[Parameters] {
     def add(fa: Parameters, that: DenseVector[Double]): Parameters = fa match {
       case Leaf(v)      => Tree.leaf(S.add(v, that))
-      case Branch(l, r) => add(l, that(0 to paramSize(l))) |+| add(l, that(paramSize(fa) to -1))
+      case Branch(l, r) => add(l, that(0 to paramSize(l) - 1)) |+| add(r, that(paramSize(l) to -1))
       case Empty        => Empty
     }
   }

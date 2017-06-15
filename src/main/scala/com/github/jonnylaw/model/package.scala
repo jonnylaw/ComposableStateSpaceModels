@@ -34,7 +34,7 @@ package object model {
     def flatMap[A, B](fa: Rand[A])(f: A => Rand[B]): Rand[B] = fa.flatMap(f)
     def tailRecM[A, B](a: A)(f: A => Rand[Either[A,B]]): Rand[B] = f(a).draw match {
       case Right(b) => always(b)
-      case Left(b) => tailRecM(b)(f)
+      case Left(a1) => tailRecM(a1)(f)
     }
   }
 

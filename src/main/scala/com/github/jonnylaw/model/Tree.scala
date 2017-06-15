@@ -1,7 +1,7 @@
 package com.github.jonnylaw.model
 
 import breeze.linalg.DenseVector
-import cats.{Functor, Applicative, Apply, Eq, Monoid}
+import cats.{Monad, Applicative, Apply, Eq, Monoid}
 import scala.language.higherKinds
 import spire.implicits._
 import spire.algebra.{Semigroup, AdditiveSemigroup}
@@ -62,6 +62,36 @@ sealed trait Tree[+A] { self =>
     case _                              => throw new Exception("Can't zip different shaped trees")
   }
 
+  /**
+    * Zip with another tree of the same shape to form a tree of tuples
+    * @param that another tree
+    * @return an either value with a string error on the left or a tree of
+    * tuples on the right
+    */
+  def zip[B](that: Tree[B]): Either[String, Tree[(A, B)]] = (self, that) match {
+    case (Leaf(a), Leaf(b)) => Right(leaf((a, b)))
+    case (Branch(l, r), Branch(l1, r1)) => 
+      for {
+        left <- l.zip(l1)
+        right <- r.zip(r1)
+      } yield branch(left, right)
+    case _ => Left("Can't zip differently sized Trees")
+  }
+
+  /**
+    * Traverse a binary tree with an applicative function f: A => F[B] and return an F[Tree[B]]
+    * This is similar to map, but a map would return a Tree[F[B]]
+    * @param ta a Tree to be traversed
+    * @param f a function from the type at the tree leaves to an applicative of any type
+    * @return a structure with the form F[Tree[B]] 
+    */
+  def traverse[F[_]: Applicative, B](f: A => F[B]): F[Tree[B]] = self match {
+    case Leaf(v)      => Applicative[F].map(f(v))(Tree.leaf)
+    case Branch(l, r) => Applicative[F].map2(l traverse f, r traverse f){ Tree.branch(_, _) }
+    case Empty        => Applicative[F].pure(empty)
+  }
+
+
   def prettyPrint: String = self match{
     case Branch(l, r) => "/ \\ \n" ++ l.prettyPrint ++ r.prettyPrint
     case Leaf(a)      => a.toString
@@ -80,31 +110,33 @@ case object Empty                                    extends Tree[Nothing]
 
 object Tree {
   def branch[A](l: Tree[A], r: Tree[A]): Tree[A] = Branch(l, r)
-
   def leaf[A](a: A): Tree[A] = Leaf(a)
-
   def empty: Tree[Nothing] = Empty
 
-  /**
-    * Traverse a binary tree with an applicative function f: A => F[B] and return an F[Tree[B]]
-    * This is similar to map, but a map would return a Tree[F[B]]
-    * @param ta a Tree to be traversed
-    * @param f a function from the type at the tree leaves to an applicative of any type
-    * @return a structure with the form F[Tree[B]] 
-    */
-  def traverse[F[_]: Applicative, A, B](ta: Tree[A])(f: A => F[B]): F[Tree[B]] = ta match {
-    case Leaf(v)      => Applicative[F].map(f(v))(Tree.leaf)
-    case Branch(l, r) => Applicative[F].map2(traverse(l)(f), traverse(r)(f)){ Tree.branch(_, _) }
-    case Empty        => Applicative[F].pure(empty)
-  }
-
-  implicit def treeFunctor = new Functor[Tree] {
-    def map[A, B](fa: Tree[A])(f: A => B): Tree[B] = fa match {
-      case Leaf(v)      => Tree.leaf(f(v))
-      case Branch(l, r) => Tree.branch(map(l)(f), map(r)(f))
-      case Empty        => Empty
+  implicit def treeMonad = new Monad[Tree] {
+    def pure[A](a: A): Tree[A] = leaf(a)
+    def flatMap[A, B](fa: Tree[A])(f: A => Tree[B]): Tree[B] = fa match {
+      case Leaf(a) => f(a)
+      case Branch(l, r) => branch(flatMap(l)(f), flatMap(r)(f))
+      case Empty        => empty
+    }
+    def tailRecM[A, B](a: A)(f: A => Tree[Either[A, B]]): Tree[B] = f(a) match {
+      case Leaf(Left(a1)) => tailRecM(a1)(f)
+      case Leaf(Right(b)) => leaf(b)
+      case Branch(l, r) => branch(
+        flatMap(l) {
+          case Left(a1) => tailRecM(a1)(f)
+          case Right(b) => leaf(b)
+        },
+        flatMap(r) {
+          case Left(a1) => tailRecM(a1)(f)
+          case Right(b) => leaf(b)
+        }
+      )
+      case Empty        => empty
     }
   }
+
 
   /**
     * fill the tree from the left
