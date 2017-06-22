@@ -137,7 +137,6 @@ object Model {
   * @param stepFun the diffusion process solution to use for this model
   * @return an model of the Student-T model, which can be composed with other models
   */
-
 private final case class StudentsTModel(sde: Sde, df: Int, p: ParamNode) extends Model {
   def observation = x => p.scale match {
     case Some(logv) => {
@@ -166,10 +165,10 @@ private final case class NegativeBinomialModel(sde: Sde, p: ParamNode) extends M
   def observation = x => p.scale match {
     case Some(logv) => {
       val size = exp(logv)
-      val prob = size / (size + link(x))
+      val prob = link(x) / (size + link(x))
 
       for {
-        lambda <- Gamma(size, (1-prob) / prob)
+        lambda <- Gamma(size, prob / (1-prob))
         x <- Poisson(lambda)
       } yield x.toDouble
     }

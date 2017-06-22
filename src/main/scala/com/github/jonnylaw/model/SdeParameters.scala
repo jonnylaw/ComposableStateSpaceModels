@@ -3,7 +3,7 @@ package com.github.jonnylaw.model
 import breeze.linalg.{DenseVector, diag}
 import breeze.stats.distributions._
 import breeze.numerics.{exp, sqrt}
-import cats.{Functor, Applicative, Eq}
+import cats.{Functor, Applicative, Eq, Traverse, Eval}
 import cats.implicits._
 import scala.language.implicitConversions
 import SdeParameter._
@@ -29,6 +29,21 @@ sealed trait SdeParameter { self =>
   def map(f: DenseVector[Double] => DenseVector[Double]): SdeParameter
 
   def mapDbl(f: Double => Double): SdeParameter
+
+  def names: List[String]
+
+  def traverse[F[_]: Applicative](f: Double => F[Double]): F[SdeParameter] = self match {
+    case GenBrownianParameter(m, c, mu, s) => 
+      Applicative[F].map4(traverseDenseVector(m)(f), traverseDenseVector(c)(f), 
+        traverseDenseVector(mu)(f), traverseDenseVector(s)(f))(GenBrownianParameter(_, _ , _, _))
+    case BrownianParameter(m, c, s) => 
+      Applicative[F].map3(traverseDenseVector(m)(f), traverseDenseVector(c)(f), 
+        traverseDenseVector(s)(f))(BrownianParameter(_, _ , _))
+    case OuParameter(m, c, a, s, t) => 
+      Applicative[F].map5(traverseDenseVector(m)(f), traverseDenseVector(c)(f), 
+        traverseDenseVector(a)(f), traverseDenseVector(s)(f), traverseDenseVector(t)(f))(OuParameter(_, _ , _, _, _))
+      
+  }
 }
 
 case class GenBrownianParameter(
@@ -66,6 +81,12 @@ case class GenBrownianParameter(
     SdeParameter.denseVectorToMap(m0, "m0") ++ SdeParameter.denseVectorToMap(c0, "c0") ++
     SdeParameter.denseVectorToMap(mu, "mu") ++ SdeParameter.denseVectorToMap(sigma, "sigma")
   }
+
+  def names =
+    (SdeParameter.denseVectorToMap(m0, "m0") ++
+      SdeParameter.denseVectorToMap(c0, "C0") ++
+      SdeParameter.denseVectorToMap(mu, "mu") ++
+      SdeParameter.denseVectorToMap(sigma, "sigma")).keys.toList
 }
 
 case class BrownianParameter(
@@ -96,6 +117,11 @@ case class BrownianParameter(
   def mapDbl(f: Double => Double): SdeParameter = {
     SdeParameter.brownianParameter(m0.map(f): _*)(c0.map(f): _*)(sigma.map(f): _*)
   }
+
+  def names =
+    (SdeParameter.denseVectorToMap(m0, "m0") ++
+      SdeParameter.denseVectorToMap(c0, "C0") ++
+      SdeParameter.denseVectorToMap(sigma, "sigma")).keys.toList
 }
 
 case class OuParameter(
@@ -131,6 +157,14 @@ case class OuParameter(
   def mapDbl(f: Double => Double): SdeParameter = {
     SdeParameter.ouParameter(m0.map(f): _*)(c0.map(f): _*)(alpha.map(f): _*)(sigma.map(f): _*)(theta.map(f): _*)
   }
+
+  def names =
+    (SdeParameter.denseVectorToMap(m0, "m0") ++
+      SdeParameter.denseVectorToMap(c0, "C0") ++
+      SdeParameter.denseVectorToMap(alpha, "alpha") ++
+      SdeParameter.denseVectorToMap(sigma, "sigma") ++
+      SdeParameter.denseVectorToMap(theta, "theta")).keys.toList
+
 }
 
 object SdeParameter {
@@ -180,4 +214,7 @@ object SdeParameter {
       case _ => false
     }
   }
+
+    def traverseDenseVector[G[_]: Applicative](fa: DenseVector[Double])(f: Double => G[Double]): G[DenseVector[Double]] =
+      fa.data.toVector.traverse(f).map(x => DenseVector(x.toArray))
 }

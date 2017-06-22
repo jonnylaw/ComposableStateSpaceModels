@@ -5,7 +5,7 @@ import breeze.linalg.eigSym._
 import breeze.stats.covmat
 import breeze.stats.distributions._
 import breeze.numerics.{exp, sqrt}
-import cats._
+import cats.{Applicative, Eq, Traverse}
 import cats.implicits._
 import spire.algebra.AdditiveSemigroup
 import spire.implicits._
@@ -33,8 +33,19 @@ object Parameters {
     }
   }
 
+  /**
+    * Apply a function to each element of the parameter node case class
+    */
   def map(fa: ParamNode)(f: Double => Double): ParamNode = {
     ParamNode(fa.scale map f, fa.sdeParam map (_ mapValues f))
+  }
+
+  def traverseRand(fa: ParamNode)(f: Double => Rand[Double]): Rand[ParamNode] = {
+    Applicative[Rand].map2(fa.scale traverse f, fa.sdeParam.traverse(f))(ParamNode(_, _))
+  }
+
+  def traverse[F[_]: Applicative](fa: ParamNode)(f: Double => F[Double]): F[ParamNode] = {
+    Applicative[F].map2(fa.scale traverse f, fa.sdeParam.traverse(f))(ParamNode(_, _))
   }
 
   /**
@@ -52,7 +63,7 @@ object Parameters {
     * Perturb a parameter tree with independent Gaussian noise, with variance delta
     */
   def perturb(delta: Double): Parameters => Rand[Parameters] = p => {
-    Tree.traverse(p)((y: ParamNode) => Gaussian(0.0, sqrt(delta)) map (i => map(y)(x => x + i)))
+    Tree.traverse(p)((y: ParamNode) => traverseRand(y)(Gaussian(_, sqrt(delta))))
   }
 
   /**
@@ -131,5 +142,19 @@ object Parameters {
     val dim = paramSize(samples.head)
     val m = new DenseMatrix(samples.size, dim, samples.map(p => flattenParams(p).toArray).toArray.transpose.flatten)
     covmat.matrixCovariance(m)
+  }
+
+  /**
+    * Get parameter names from a tree of parameters
+    * @param p a tree of parameters
+    * @return a list of strings containing the names of the parameters
+    */
+  def paramNames(p: Parameters): List[String] = p match {
+    case Leaf(ParamNode(scale, sdeParam)) => scale match {
+      case Some(v) => "scale" :: sdeParam.names
+      case None => sdeParam.names
+    }
+    case Branch(l, r)                     => paramNames(l) ++ paramNames(r)
+    case Empty                            => List[String]()
   }
 }

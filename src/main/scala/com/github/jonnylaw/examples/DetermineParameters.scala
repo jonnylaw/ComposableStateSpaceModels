@@ -87,19 +87,19 @@ object DeterminePosterior extends App with TestModel {
     })
 }
 
-// /**
-//   * Convert the JSON files to CSVs
-//   */
-// object JsonToCSV extends App with TestModel {
-//   implicit val system = ActorSystem("PMMH")
-//   implicit val materializer = ActorMaterializer()
+/**
+  * Convert the JSON files to CSVs
+  */
+object JsonToCSV extends App with TestModel {
+  implicit val system = ActorSystem("PMMH")
+  implicit val materializer = ActorMaterializer()
 
-//   val files = List(s"data/${modelName}Posterior-1.json", s"data/${modelName}Posterior-2.json")
+  val files = List(s"data/${modelName}Posterior-1.json", s"data/${modelName}Posterior-2.json")
 
-//   Future.sequence(files.zipWithIndex map { case (file, i) =>
-//     Streaming.jsonToCSV(file, s"data/${modelName}Posterior-$i.csv")
-//   }).onComplete { s =>
-//     println(s)
-//     system.terminate()
-//   }
-// }
+  Future.sequence(files.zipWithIndex map { case (file, i) =>
+    Streaming.jsonToCSV(file, s"data/${modelName}Posterior-$i.csv")
+  }).onComplete { s =>
+    println(s)
+    system.terminate()
+  }
+}

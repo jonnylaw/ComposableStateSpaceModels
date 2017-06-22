@@ -112,6 +112,8 @@ object Streaming {
     FileIO.fromPath(Paths.get(file)).
       via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
       map(_.utf8String).
+      filter(!_.trim.startsWith("#")).
+      filter(_ >= " ").
       via(thinStream(thin)).
       drop(burnIn). // discard burn in iterations
       map(_.parseJson.convertTo[MetropState])
@@ -122,6 +124,8 @@ object Streaming {
     FileIO.fromPath(Paths.get(file)).
       via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
       map(_.utf8String).
+      filter(!_.trim.startsWith("#")).
+      filter(_ >= " ").
       via(thinStream(thin)).
       drop(burnIn). // discard burn in iterations
       map(_.parseJson.convertTo[ParamsState])
@@ -129,15 +133,24 @@ object Streaming {
 
   /**
     * Convert a file from JSON to CSV format
+    * with column headers
     * @param fileIn the input filename
     * @param fileOut the output filename
     */
   def jsonToCSV(fileIn: String, fileOut: String)
     (implicit mat: Materializer, fmt: JsonFormat[MetropState], sh: Show[ParamsState]): Future[IOResult] = {
+    val postSource = readPosterior(fileIn, 0, 1)
 
-    Streaming.readPosterior(fileIn, 0, 1).
-      map(s => ParamsState(s.ll, s.params, s.accepted)).
-      map(_.show).
+    // get the parameter names from file
+    val colNames = postSource.map(s => Parameters.paramNames(s.params)).runWith(Sink.head)
+
+    // write the parameter names followed by the values to a file
+    Source.fromFuture(colNames).
+      map(_.mkString(", ")).
+      concat(
+        postSource.
+          map(_.show)
+      ).
       runWith(Streaming.writeStreamToFile(fileOut))
   }
 
