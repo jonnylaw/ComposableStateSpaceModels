@@ -63,7 +63,7 @@ object Parameters {
     * Perturb a parameter tree with independent Gaussian noise, with variance delta
     */
   def perturb(delta: Double): Parameters => Rand[Parameters] = p => {
-    Tree.traverse(p)((y: ParamNode) => traverseRand(y)(Gaussian(_, sqrt(delta))))
+    p.traverse((y: ParamNode) => traverseRand(y)(Gaussian(_, sqrt(delta))))
   }
 
   /**
