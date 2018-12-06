@@ -126,7 +126,7 @@ case class ParticleMetropolisHastings(
 }
 
 /**
-  * Recalculate the likelihood
+  * Recalculate the likelihood from the previous time point
   */
 case class ApproxPMMH(
   initialParams: Parameters,
@@ -142,7 +142,7 @@ case class ApproxPMMH(
       propParams <- proposal(s.params)
       state = pf(propParams)
       oldState = pf(s.params)
-      a = state._1 + logTransition(propParams, s.params) + prior(propParams) - 
+      a = state._1 + logTransition(propParams, s.params) + prior(propParams) -
       logTransition(s.params, propParams) - oldState._1 - prior(s.params)
       u = Uniform(0, 1).draw
       prop = if (log(u) < a) {

@@ -80,7 +80,7 @@ case class SimulateData(model: Model) extends DataService[NotUsed] {
     * @return a Process, representing a distribution which depends on previous draws
     */
   def simMarkov(dt: TimeIncrement): Process[ObservationWithState] = {
-    
+
     val init = for {
       x0 <- model.sde.initialState
       gamma = model.f(x0, 0.0)

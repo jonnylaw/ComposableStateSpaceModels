@@ -18,8 +18,8 @@ import java.nio.file.Paths
 /**
   * Perform a pilot run, by running the particle filter over the data multiple times
   * to determine the variance of the estimate of the log-likelihood using different amount of particles.
-  * In order to run the PMMH algorithm quickly, a low number of particles is required, but an accurate 
-  * estimate of the likelihood is also required. 
+  * In order to run the PMMH algorithm quickly, a low number of particles is required, but an accurate
+  * estimate of the likelihood is also required.
   * A rule of thumb for the variance of the estimated log-likelihood is 1.0
   */
 object PilotRun extends App with TestModel {

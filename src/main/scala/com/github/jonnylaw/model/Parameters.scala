@@ -79,7 +79,7 @@ object Parameters {
   /**
     * Returns the size of a parameter tree
     */
-  def paramSize(fa: Parameters): Int = 
+  def paramSize(fa: Parameters): Int =
     flattenParams(fa).size
 
   /**

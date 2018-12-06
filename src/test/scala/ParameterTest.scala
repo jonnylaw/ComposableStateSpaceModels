@@ -24,15 +24,15 @@ trait ParameterGen {
 
   val genBrownian: Gen[SdeParameter] = for {
     v <- Gen.containerOfN[List, Double](3, arbitrary[Double])
-  } yield SdeParameter.brownianParameter(v: _*)(v: _*)(v: _*)
+  } yield SdeParameter.brownianParameterUnconstrained(v: _*)(v: _*)(v: _*)
 
   val genOrnstein: Gen[SdeParameter] = for {
     v <- Gen.containerOfN[List, Double](3, arbitrary[Double])
-  } yield SdeParameter.ouParameter(v: _*)(v: _*)(v: _*)(v: _*)(v: _*)
+  } yield SdeParameter.ouParameterUnconstrained(v: _*)(v: _*)(v: _*)(v: _*)(v: _*)
 
   val genGenBrownian: Gen[SdeParameter] = for {
     v <- Gen.containerOfN[List, Double](3, arbitrary[Double])
-  } yield SdeParameter.genBrownianParameter(v: _*)(v: _*)(v: _*)(v: _*)
+  } yield SdeParameter.genBrownianParameterUnconstrained(v: _*)(v: _*)(v: _*)(v: _*)
 
   val genSde: Gen[SdeParameter] = Gen.oneOf(genGenBrownian, genBrownian, genOrnstein)
 
@@ -46,7 +46,7 @@ trait ParameterGen {
     right <- genParameters(level)
   } yield left |+| right
 
-  def genParameters(level: Int): Gen[Parameters] = 
+  def genParameters(level: Int): Gen[Parameters] =
     if (level >= 10) genLeaf else Gen.oneOf(genLeaf, genBranch(level + 1))
 
   lazy val parameters: Gen[Parameters] = genParameters(0)
@@ -78,12 +78,12 @@ object ParameterFunctionSuite extends Properties("Parameters")
 }
 
 /**
-  * Test that parameter trees can be added upper
+  * Test that parameter trees can be added up
   * Commonly used when calculating summary
   */
 class ParameterAdditive extends FunSuite
                         with Matchers
-                        with Discipline 
+                        with Discipline
                         with ParameterGen {
 
   implicit val arbParam = Arbitrary(parameters)

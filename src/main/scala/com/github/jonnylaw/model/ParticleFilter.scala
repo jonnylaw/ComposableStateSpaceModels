@@ -32,13 +32,13 @@ case class CredibleInterval(lower: Double, upper: Double) {
 }
 
 /**
-  * Representation of the state of the particle filter, where the particles are in a Collection typeclass 
+  * Representation of the state of the particle filter, where the particles are in a Collection typeclass
   * defined in package.scala
   * @param t the time of the current observation
   * @param observation the current observation at time t
   * @param particles a collection containing an approximate sample from the filtering distribution p(x(t) | y(t0:t))
   * @param ll the estimated log-likelihood of the path given the observations so far
-  * @param ess the effective sample size 
+  * @param ess the effective sample size
   */
 case class PfState(
   t: Time,

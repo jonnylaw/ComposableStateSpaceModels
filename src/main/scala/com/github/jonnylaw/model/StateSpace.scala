@@ -68,8 +68,8 @@ trait Sde { self =>
 }
 
 private final case class GenBrownianMotion(p: GenBrownianParameter, dimension: Int) extends Sde {
-  val params: GenBrownianParameter = 
-    (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match { 
+  val params: GenBrownianParameter =
+    (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match {
       case GenBrownianParameter(m, c, mu, s) => GenBrownianParameter(m, c.map(exp(_)), mu, s.map(exp(_)))
     }
 
@@ -80,12 +80,12 @@ private final case class GenBrownianMotion(p: GenBrownianParameter, dimension: I
     }
   }
 
-  def drift(state: State) = Tree.leaf(Sde.buildParamRepeat(dimension)(params.mu))
+  def drift(state: State) = Tree.leaf(Sde.buildParamRepeat(dimension)(p.mu))
 
   def diffusion(state: State) = Tree.leaf(diag(params.sigma))
 
   override def stepFunction(dt: TimeIncrement)(s: State) = {
-    val res = s map { x => 
+    val res = s map { x =>
       val mean = x + params.mu * dt
       val varianceMatrix = DenseMatrix.eye[Double](dimension) * sqrt(params.sigma * dt)
 
@@ -97,9 +97,10 @@ private final case class GenBrownianMotion(p: GenBrownianParameter, dimension: I
 }
 
 private final case class BrownianMotion(p: BrownianParameter, dimension: Int) extends Sde {
-  val params: BrownianParameter = (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match {
-    case BrownianParameter(m, c, s) => BrownianParameter(m, c.map(exp(_)), s.map(exp(_)))
-  }
+  val params: BrownianParameter =
+    (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match {
+      case BrownianParameter(m, c, s) => BrownianParameter(m, c.map(exp(_)), s.map(exp(_)))
+    }
 
   def initialState: Rand[State] = {
     val root = diag(params.c0.map(sqrt(_))) // calculate cholesky of diagonal matrix
@@ -128,18 +129,20 @@ private final case class BrownianMotion(p: BrownianParameter, dimension: Int) ex
   */
 private final case class OuProcess(p: OuParameter, dimension: Int) extends Sde {
   /**
-    * Transform the parameters, as they are stored on a log scale
+    * Transform the parameters to be constrained
     */
-  val params: OuParameter = 
-    (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match { 
-      case OuParameter(m, c, a, s, t) => OuParameter(m, c.map(exp(_)), a.map(exp(_)), s.map(exp(_)), t)
+  val params: OuParameter =
+    (p.map(Sde.buildParamRepeat(dimension)): @unchecked) match {
+      case OuParameter(m, c, ph, mu, s) =>
+        OuParameter(m, c.map(exp(_)), ph.map(SdeParameter.logistic), mu, s.map(exp(_)))
     }
 
-  def variance(dt: TimeIncrement) = (params.sigma *:* params.sigma /:/ (params.alpha *:* 2.0)) *:* (DenseVector.ones[Double](dimension) - exp(params.alpha *:* -2.0 * dt))
+  def variance(dt: TimeIncrement) =
+    (params.sigma *:* params.sigma /:/ (params.phi *:* 2.0)) *:* (DenseVector.ones[Double](dimension) - exp(params.phi *:* -2.0 * dt))
 
   override def stepFunction(dt: TimeIncrement)(s: State) = {
     val res: State = s map { x =>
-      val mean =  params.theta + (x - params.theta) * exp(- params.alpha * dt)
+      val mean =  params.mu + (x - params.mu) * exp(- params.phi * dt)
 
       diag(variance(dt).map(sqrt(_))) * DenseVector.rand(dimension, rand.gaussian(0, 1)) += mean
     }
@@ -154,7 +157,7 @@ private final case class OuProcess(p: OuParameter, dimension: Int) extends Sde {
   }
 
   def drift(state: State) = {
-    state map (x => params.alpha * (params.theta - x))
+    state map (x => params.phi * (params.mu - x))
   }
 
   def diffusion(state: State) = Tree.leaf(diag(params.sigma))
@@ -171,7 +174,7 @@ case class StateSpace(time: Time, state: State) {
 
 object Sde {
   /**
-    * Given a target dimension and a vector of values, cyclically repeat the vector of values 
+    * Given a target dimension and a vector of values, cyclically repeat the vector of values
     * until the target dimension is reached
     */
   def buildParamRepeat(dim: Int)(m: DenseVector[Double]): DenseVector[Double] = {
@@ -194,7 +197,7 @@ object Sde {
     * for each dimension required
     * The parameters should be specified on a log scale.
     * @param dimension the dimension of the diffusion process
-    * @return a function from SdeParameter => Sde 
+    * @return a function from SdeParameter => Sde
     */
   def ouProcess(dimension: Int): UnparamSde = Reader { p => p match {
     case param: OuParameter => OuProcess(param, dimension)

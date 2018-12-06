@@ -12,32 +12,31 @@ import spray.json._
 import scala.concurrent.Future
 
 /**
-  * Specify a model to use 
+  * Specify a model to use
   */
 trait TestModel {
-  val sde = Sde.brownianMotion(1)
-  val sdeParam = SdeParameter.brownianParameter(0.0)(log(1.0))(log(0.01))
-  // val p = Parameters.leafParameter(Some(log(3.0)), sdeParam)
+
+  val sde = Sde.ouProcess(1)
+  val sdeParameters = SdeParameter.ouParameter(1.0)(0.5)(0.2)(1.5)(0.05)
 
   val sde2 = Sde.ouProcess(8)
-  val sde2Param = SdeParameter.ouParameter(0.0)(log(1.0))(log(0.3))(log(0.1))(1.5, 1.5, 1.0, 1.0, 1.5, 1.5, 0.1, 0.1)
-  // val p1 = Parameters.leafParameter(None, sde2Param)    
+  val sde2Parameters = SdeParameter.ouParameter(1.0)(2.0)(0.2)(-4, -4, 0, 0, 0, 0, -0.5, -0.5)(0.3)
 
-  // val params = p |+| p1
-  
-  // val model = Model.negativeBinomial(sde) |+| Model.seasonal(24, 4, sde2)
+  val modelName = "NegativeBinomial"
 
-  val params = Tree.leaf(ParamNode(Some(2.0), sdeParam))
-  val model = Model.beta(sde)
-
-  val modelName = "Beta"
+  val negbinMod = Model.negativeBinomial(sde)
+  val negbinParam = Parameters(Some(2.0), sdeParameters)
+  val seasonalMod = Model.seasonal(24, 4, sde2)
+  val seasonalParam = Parameters(None, sde2Parameters)
+  val params = negbinParam |+| seasonalParam
+  val model = negbinMod |+| seasonalMod
 }
 
 object SimOrnstein extends App with TestModel {
   implicit val system = ActorSystem("SimulateOU")
   implicit val materializer = ActorMaterializer()
 
-  sde2(sde2Param).
+  sde2(sde2Parameters).
     simStream(0.0, 0.01).
     take(5000).
     zipWithIndex.
@@ -58,6 +57,44 @@ object SimulateModel extends App with TestModel {
     take(5000).
     alsoTo(Streaming.dataCsvSink(s"data/${modelName}_sims.csv")).
     toMat(Streaming.dataJsonSink(s"data/${modelName}_sims.json"))(Keep.right).
+    run().
+    onComplete(_ => system.terminate())
+}
+
+object SimulateSeasonal extends App {
+  implicit val system = ActorSystem("SimulateSeasonal")
+  implicit val materializer = ActorMaterializer()
+
+  val sde = Sde.ouProcess(6)
+  val model = Model.seasonal(24, 3, sde)
+  val sdeParameters = SdeParameter.
+    ouParameter(0.1)(1.0)(0.4)(0.1)(0.5)
+
+  val params = Parameters(Some(1.0), sdeParameters)
+
+  SimulateData(model(params)).
+    observations.
+    take(1000).
+    toMat(Streaming.dataCsvSink(s"data/seasonal_sims.csv"))(Keep.right).
+    run().
+    onComplete(_ => system.terminate())
+}
+
+object SimulateLgcp extends App {
+  implicit val system = ActorSystem("SimulateLGCP")
+  implicit val materializer = ActorMaterializer()
+
+  val sde = Sde.ouProcess(1)
+  val model = Model.lgcp(sde)
+  val sdeParameters = SdeParameter.
+    ouParameter(0.1)(0.5)(0.4)(0.1)(0.5)
+  val params = Parameters(None, sdeParameters)
+
+  val events = SimulateData(model(params)).
+    simLGCP(0.0, 10.0, 2)
+
+  Source(events).
+    toMat(Streaming.dataCsvSink(s"data/lgcp_sims.csv"))(Keep.right).
     run().
     onComplete(_ => system.terminate())
 }
