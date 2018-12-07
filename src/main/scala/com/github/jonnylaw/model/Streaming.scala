@@ -23,9 +23,9 @@ object Streaming {
     * Perform a pilot run for the PMMH algorithm, to determine the number of particles to use in the filter
     */
   def pilotRun(
-    data: Vector[Data], 
-    model: UnparamModel, 
-    param: Parameters, 
+    data: Vector[Data],
+    model: UnparamModel,
+    param: Parameters,
     resample: Resample[State],
     particles: Vector[Int],
     repetitions: Int)(implicit mat: Materializer, ec: ExecutionContext) = {
@@ -50,15 +50,17 @@ object Streaming {
 
   def pmmhToJson(file: String,
     initParams: Parameters,
-    filter: BootstrapFilter,
+    filter: BootstrapFilter[Parameters, StateSpace[State]],
     proposal: Parameters => Rand[Parameters],
     logTransition: (Parameters, Parameters) => LogLikelihood,
     prior: Parameters => LogLikelihood,
     iters: Int)
-    (implicit mat: Materializer, f: JsonFormat[MetropState]): Future[IOResult] = {
+    (implicit mat: Materializer,
+    f: JsonFormat[MetropState[Parameters, StateSpace[State]]]): Future[IOResult] = {
 
-    MetropolisHastings.pmmhState(initParams, proposal, logTransition, prior)(filter).
-      via(Streaming.monitorStateStream).
+    MetropolisHastings.pmmhState(initParams, proposal,
+                                 logTransition, prior)(filter).
+      //via(Streaming.monitorStateStream).
       take(iters).
       map(_.toJson.compactPrint).
       runWith(Streaming.writeStreamToFile(file))
@@ -67,8 +69,8 @@ object Streaming {
   /**
     * Given output from the PMMH algorithm, monitor the acceptance rate online
     */
-  def monitorStream: Flow[ParamsState, ParamsState, NotUsed] = {
-    Flow[ParamsState].
+  def monitorStream: Flow[ParamsState[Parameters], ParamsState[Parameters], NotUsed] = {
+    Flow[ParamsState[Parameters]].
       zip(Source(Stream.from(1))).
       map { case (s, i) => {
         if (i % 100 == 0 ) {
@@ -79,8 +81,8 @@ object Streaming {
         }}}
   }
 
-  def monitorStateStream: Flow[MetropState, MetropState, NotUsed] = {
-    Flow[MetropState].
+  def monitorStateStream: Flow[MetropState[Parameters, State], MetropState[Parameters, State], NotUsed] = {
+    Flow[MetropState[Parameters, State]].
       zip(Source(Stream.from(1))).
       map { case (s, i) => {
         if (i % 100 == 0 ) {
@@ -108,7 +110,11 @@ object Streaming {
     * @param burnIn the number of iterations to drop from the front of the PMMH run
     * @param thin keep every thin'th iteration, specify thin = 1 for no thinning
     */
-  def readPosterior(file: String, burnIn: Int, thin: Int)(implicit f: JsonFormat[MetropState]) = {
+  def readPosterior(
+    file: String,
+    burnIn: Int,
+    thin: Int)(implicit f: JsonFormat[MetropState[Parameters, State]]) = {
+
     FileIO.fromPath(Paths.get(file)).
       via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
       map(_.utf8String).
@@ -116,19 +122,21 @@ object Streaming {
       filter(_ >= " ").
       via(thinStream(thin)).
       drop(burnIn). // discard burn in iterations
-      map(_.parseJson.convertTo[MetropState])
+      map(_.parseJson.convertTo[MetropState[Parameters, State]])
   }
 
   def readParamPosterior(file: String, burnIn: Int, thin: Int)
-    (implicit f: JsonFormat[ParamsState]): Source[ParamsState, Future[IOResult]] = {
+    (implicit f: JsonFormat[ParamsState[Parameters]]): Source[ParamsState[Parameters], Future[IOResult]] = {
     FileIO.fromPath(Paths.get(file)).
-      via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
+      via(Framing.delimiter(ByteString("\n"),
+                            maximumFrameLength = 8192,
+                            allowTruncation = true)).
       map(_.utf8String).
       filter(!_.trim.startsWith("#")).
       filter(_ >= " ").
       via(thinStream(thin)).
       drop(burnIn). // discard burn in iterations
-      map(_.parseJson.convertTo[ParamsState])
+      map(_.parseJson.convertTo[ParamsState[Parameters]])
   }
 
   /**
@@ -138,7 +146,7 @@ object Streaming {
     * @param fileOut the output filename
     */
   def jsonToCSV(fileIn: String, fileOut: String)
-    (implicit mat: Materializer, fmt: JsonFormat[MetropState], sh: Show[ParamsState]): Future[IOResult] = {
+    (implicit mat: Materializer, fmt: JsonFormat[MetropState[Parameters, State]], sh: Show[ParamsState[Parameters]]): Future[IOResult] = {
     val postSource = readPosterior(fileIn, 0, 1)
 
     // get the parameter names from file

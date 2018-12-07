@@ -165,7 +165,7 @@ object SimulateData {
     t0: Time,
     totalIncrement: TimeIncrement,
     precision: Int,
-    stepFunction: TimeIncrement => State => Rand[State]): scala.collection.immutable.Stream[StateSpace] = {
+    stepFunction: TimeIncrement => State => Rand[State]): scala.collection.immutable.Stream[StateSpace[State]] = {
 
     val deltat: TimeIncrement = Math.pow(10, -precision)
 
@@ -256,7 +256,7 @@ case class DataFromFile(file: String) extends DataService[Future[IOResult]] {
       via(Framing.delimiter(ByteString("\n"), maximumFrameLength = 8192, allowTruncation = true)).
       map(_.utf8String).
       map(a => a.split(",")).
-      map(d => TimedObservation(d(0).toDouble, if (d(1).isEmpty) { None } else { Some(d(1).toDouble) })) 
+      map(d => TimedObservation(d(0).toDouble, if (d(1).isEmpty) { None } else { Some(d(1).toDouble) }))
   }
 }
 

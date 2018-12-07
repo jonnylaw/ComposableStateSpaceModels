@@ -27,7 +27,7 @@ package object model {
   type StepFunction = (SdeParameter) => (State, TimeIncrement) => Rand[State]
   type State = Tree[DenseVector[Double]]
   type Resample[A] = (Vector[A], Vector[LogLikelihood]) => Vector[A]
-  type BootstrapFilter = Reader[Parameters, (LogLikelihood, Vector[StateSpace])]
+  type BootstrapFilter[P, S] = Reader[P, (LogLikelihood, Vector[S])]
 
   implicit def randMonad = new Monad[Rand] {
     def pure[A](x: A): Rand[A] = always(x)
@@ -89,22 +89,22 @@ package object model {
     }
   }
 
-  implicit def stateSpaceShow(implicit S: Show[State]) = new Show[StateSpace] {
-    def show(a: StateSpace): String = s"${a.time}, ${S.show(a.state)}"
+  implicit def stateSpaceShow(implicit S: Show[State]) = new Show[StateSpace[State]] {
+    def show(a: StateSpace[State]): String = s"${a.time}, ${S.show(a.state)}"
   }
 
-  implicit def itersShow(implicit S: Show[Parameters], T: Show[StateSpace]) = new Show[MetropState] {
-    def show(a: MetropState): String = 
+  implicit def itersShow(implicit S: Show[Parameters], T: Show[StateSpace[State]]) = new Show[MetropState[Parameters, State]] {
+    def show(a: MetropState[Parameters, State]): String =
       s"${S.show(a.params)}, ${a.accepted}"
   }
 
-  implicit def paramStateShow(implicit S: Show[Parameters]) = new Show[ParamsState] {
-    def show(a: ParamsState): String = 
+  implicit def paramStateShow(implicit S: Show[Parameters]) = new Show[ParamsState[Parameters]] {
+    def show(a: ParamsState[Parameters]): String = 
       s"${S.show(a.params)}, ${a.accepted}"
   }
 
-  implicit def filterShow(implicit S: Show[State]) = new Show[PfState] {
-    def show(a: PfState): String = a.observation match {
+  implicit def filterShow(implicit S: Show[State]) = new Show[PfState[State]] {
+    def show(a: PfState[State]): String = a.observation match {
       case Some(y) => s"${a.t}, $y, ${a.particles.map(S.show).mkString(", ")}, ${a.ess}"
       case None => s"${a.t}, NA, ${a.particles.map(S.show).mkString(", ")}, ${a.ess}"
     }
@@ -114,8 +114,8 @@ package object model {
     def show(a: CredibleInterval): String = s"${a.lower}, ${a.upper}"
   }
 
-  implicit def filterOutShow(implicit S: Show[State], C: Show[CredibleInterval]) = new Show[PfOut] {
-    def show(a: PfOut): String = a.observation match {
+  implicit def filterOutShow(implicit S: Show[State], C: Show[CredibleInterval]) = new Show[PfOut[State]] {
+    def show(a: PfOut[State]): String = a.observation match {
       case Some(x) =>
         s"${a.time}, $x, ${a.eta}, ${C.show(a.etaIntervals)}, ${S.show(a.state)}, ${a.stateIntervals.map(C.show).mkString(", ")}"
       case None =>
@@ -123,7 +123,7 @@ package object model {
     }
   }
 
-  implicit def forecastOutShow(implicit S: Show[State]) = new Show[ForecastOut] {
-    def show(a: ForecastOut): String = s"${a.t}, ${a.obs}, ${a.obsIntervals.toString}, ${a.eta}, ${a.etaIntervals.toString}, ${S.show(a.state)}, ${a.stateIntervals.mkString(", ")}"
+  implicit def forecastOutShow(implicit S: Show[State]) = new Show[ForecastOut[State]] {
+    def show(a: ForecastOut[State]): String = s"${a.t}, ${a.obs}, ${a.obsIntervals.toString}, ${a.eta}, ${a.etaIntervals.toString}, ${S.show(a.state)}, ${a.stateIntervals.mkString(", ")}"
   }
 }

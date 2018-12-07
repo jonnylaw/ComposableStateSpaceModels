@@ -26,7 +26,7 @@ trait Sde { self =>
   }
 
   /**
-    * A Wiener Process, given a time increment it generates a vector of Gaussian(0, dt) 
+    * A Wiener Process, given a time increment it generates a vector of Gaussian(0, dt)
     */
   def dW(dt: TimeIncrement): Rand[State] = {
     val sample = DenseMatrix.eye[Double](dimension) * sqrt(dt) * DenseVector.rand(dimension, rand.gaussian(0, 1))
@@ -62,7 +62,7 @@ trait Sde { self =>
     } yield StateSpace(t, x))
   }
 
-  def simInitStream(t0: Time, initialState: State, dt: TimeIncrement): Stream[StateSpace] = {
+  def simInitStream(t0: Time, initialState: State, dt: TimeIncrement): Stream[StateSpace[State]] = {
     simInit(t0, initialState, dt).steps.toStream
   }
 }
@@ -113,7 +113,7 @@ private final case class BrownianMotion(p: BrownianParameter, dimension: Int) ex
   def diffusion(state: State) = Tree.leaf(diag(params.sigma))
 
   override def stepFunction(dt: TimeIncrement)(s: State) = {
-    val res = s map { x => 
+    val res = s map { x =>
       val mean = x
       val varianceMatrix = DenseMatrix.eye[Double](dimension) * sqrt(params.sigma * dt)
 
@@ -165,12 +165,10 @@ private final case class OuProcess(p: OuParameter, dimension: Int) extends Sde {
 
 /**
   * A realisation from a stochastic differential equation
-  * @param time
-  * @param state
+  * @param time the time of the associated state
+  * @param state any type
   */
-case class StateSpace(time: Time, state: State) {
-  override def toString = time + "," + state.toString
-}
+case class StateSpace[S](time: Time, state: S) 
 
 object Sde {
   /**

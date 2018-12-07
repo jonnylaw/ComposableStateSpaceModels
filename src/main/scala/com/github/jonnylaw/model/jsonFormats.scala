@@ -4,13 +4,13 @@ import breeze.linalg.DenseVector
 import cats.implicits._
 import spray.json._
 import scala.util.{Try, Success, Failure}
-import org.joda.time.DateTime   
+import org.joda.time.DateTime
 import com.github.nscala_time.time.Imports._
-import spray.json._ 
+import spray.json._
 import spire.implicits._
 
 /**
-  * Marshalling from JSON and to JSON for Simulated Data and MCMC data 
+  * Marshalling from JSON and to JSON for Simulated Data and MCMC data
   * from the Composed Models Package
   */
 object DataProtocols extends DefaultJsonProtocol {
@@ -118,9 +118,9 @@ object DataProtocols extends DefaultJsonProtocol {
     }
   }
 
-  implicit val stateSpaceFormat = jsonFormat2(StateSpace)
-  implicit val metropFormat = jsonFormat4(MetropState.apply)
-  implicit val pmmhFormat = jsonFormat3(ParamsState.apply)
+  implicit def stateSpaceFormat[S: JsonFormat] = jsonFormat2(StateSpace.apply[S])
+  implicit def metropFormat[P: JsonFormat, S: JsonFormat] = jsonFormat4(MetropState.apply[P, S])
+  implicit def pmmhFormat[P: JsonFormat] = jsonFormat3(ParamsState.apply[P])
   implicit val tdFormat = jsonFormat2(TimedObservation.apply)
   implicit val osFormat = jsonFormat5(ObservationWithState.apply)
   implicit val tsFormat = jsonFormat3(TimestampObservation.apply)
@@ -139,7 +139,7 @@ object DataProtocols extends DefaultJsonProtocol {
 
   implicit val intFormat = jsonFormat2(CredibleInterval.apply)
 
-  implicit val pfOutFormat = jsonFormat6(PfOut.apply)
+  implicit def pfOutFormat[P: JsonFormat] = jsonFormat6(PfOut.apply[P])
 
-  implicit val pfStateFormat = jsonFormat5(PfState.apply)
+  implicit def pfStateFormat[P: JsonFormat] = jsonFormat5(PfState.apply[P])
 }
