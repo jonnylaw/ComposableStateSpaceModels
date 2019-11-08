@@ -168,7 +168,7 @@ private final case class OuProcess(p: OuParameter, dimension: Int) extends Sde {
   * @param time the time of the associated state
   * @param state any type
   */
-case class StateSpace[S](time: Time, state: S) 
+case class StateSpace[S](time: Time, state: S)
 
 object Sde {
   /**

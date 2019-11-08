@@ -60,7 +60,7 @@ object Streaming {
 
     MetropolisHastings.pmmhState(initParams, proposal,
                                  logTransition, prior)(filter).
-      //via(Streaming.monitorStateStream).
+      via(Streaming.monitorStateStream).
       take(iters).
       map(_.toJson.compactPrint).
       runWith(Streaming.writeStreamToFile(file))
@@ -81,8 +81,8 @@ object Streaming {
         }}}
   }
 
-  def monitorStateStream: Flow[MetropState[Parameters, State], MetropState[Parameters, State], NotUsed] = {
-    Flow[MetropState[Parameters, State]].
+  def monitorStateStream: Flow[MetropState[Parameters, StateSpace[State]], MetropState[Parameters, StateSpace[State]], NotUsed] = {
+    Flow[MetropState[Parameters, StateSpace[State]]].
       zip(Source(Stream.from(1))).
       map { case (s, i) => {
         if (i % 100 == 0 ) {

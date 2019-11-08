@@ -41,7 +41,7 @@ object Filtering extends App with TestModel {
 
 /**
   * Once the posterior distribution of the state and parameters, p(x, theta | y) has been
-  * determined, filtering can be performed online 
+  * determined, filtering can be performed online
   * 1. Read in the test data, dropping the first 4000 elements which are used to determine the posterior
   * 2. Set up the filter
   * 3. Read in the posterior distribution from a JSON file
@@ -65,7 +65,7 @@ object OnlineFiltering extends App with TestModel {
     // read in the posterior distribution from a file
     posterior <- Streaming.readPosterior(s"data/${modelName}Posterior-1.json", 10000, 2).
       runWith(Sink.seq)
-    simPosterior = Streaming.createDist(posterior)(x => (x.sde.state, x.params))
+    simPosterior = Streaming.createDist(posterior)(x => (x.state, x.params))
 
     // run the particle filter and write the results to a file
     io <- testData.

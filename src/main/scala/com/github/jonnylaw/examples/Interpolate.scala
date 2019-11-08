@@ -40,7 +40,7 @@ object Interpolate extends App with TestModel {
       map(ParticleFilter.getIntervals(model, params))
 
     io <- Source(summary).
-      map((s: PfOut) => s.show).
+      map((s: PfOut[State]) => s.show).
       runWith(Streaming.writeStreamToFile(s"data/${modelName}Interpolated.csv"))
     } yield io
 

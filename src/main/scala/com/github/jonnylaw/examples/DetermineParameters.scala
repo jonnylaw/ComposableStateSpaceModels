@@ -76,7 +76,7 @@ object DeterminePosterior extends App with TestModel {
       val pmmh = MetropolisHastings.pmmhState(params, Parameters.perturb(0.05), (a, b) => 0.0, prior)
 
       pmmh(pf).
-        via(Streaming.monitorStateStream).async.
+        // via(Streaming.monitorStateStream).async.
         take(100000).
         map(_.toJson.compactPrint).
         runWith(Streaming.writeStreamToFile(s"data/${modelName}Posterior-$chain.json"))

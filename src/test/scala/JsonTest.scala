@@ -57,11 +57,11 @@ class JsonSuite extends Properties("Json") with ParameterGen {
   } yield MetropState(ll, p, StateSpace(t, sde), accepted)
 
   property("toJson should serialise MetropState to JSON") = Prop.forAll(genMetropState) { d =>
-    val parsed = d.toJson.compactPrint.parseJson.convertTo[MetropState]
+    val parsed = d.toJson.compactPrint.parseJson.convertTo[MetropState[Parameters, State]]
 
     parsed.ll === d.ll &&
     parsed.accepted === d.accepted &&
     parsed.params === d.params &&
-    parsed.sde.state === d.sde.state
+    parsed.state === d.state.state
   }
 }
