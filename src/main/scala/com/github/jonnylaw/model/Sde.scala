@@ -4,11 +4,10 @@ import breeze.stats.distributions._
 import breeze.linalg.{DenseVector, DenseMatrix, diag}
 import breeze.numerics.{sqrt, exp}
 import cats.{Semigroup, Applicative, Eq}
-import cats.data.{Reader}
+import cats.data.ReaderT
 import cats.implicits._
-import akka.stream._
 import akka.stream.scaladsl._
-import SdeParameter._
+import scala.util.{Success, Failure}
 
 trait Sde { self =>
   implicit val rand: RandBasis = Rand
@@ -62,8 +61,8 @@ trait Sde { self =>
     } yield StateSpace(t, x))
   }
 
-  def simInitStream(t0: Time, initialState: State, dt: TimeIncrement): Stream[StateSpace[State]] = {
-    simInit(t0, initialState, dt).steps.toStream
+  def simInitStream(t0: Time, initialState: State, dt: TimeIncrement): Iterator[StateSpace[State]] = {
+    simInit(t0, initialState, dt).steps
   }
 }
 
@@ -179,14 +178,14 @@ object Sde {
     DenseVector.tabulate(dim)(i => m(i % m.size))
   }
 
-  def genBrownianMotion(dimension: Int): UnparamSde = Reader { p => p match {
-    case param: GenBrownianParameter => GenBrownianMotion(param, dimension)
-    case _ => throw new Exception(s"Incorrect parameters supplied to GenBrownianmotion, expected GenBrownianParameter, received $p")
+  def genBrownianMotion(dimension: Int): UnparamSde = ReaderT { p => p match {
+    case param: GenBrownianParameter => Success(GenBrownianMotion(param, dimension))
+    case _ => Failure(throw new Exception(s"Incorrect parameters supplied to GenBrownianmotion, expected GenBrownianParameter, received $p"))
   }}
 
-  def brownianMotion(dimension: Int): UnparamSde = Reader { p => p match {
-    case param: BrownianParameter => BrownianMotion(param, dimension)
-    case _ => throw new Exception(s"Incorrect parameters supplied to Brownianmotion, expected BrownianParameter, received $p")
+  def brownianMotion(dimension: Int): UnparamSde = ReaderT { p => p match {
+    case param: BrownianParameter => Success(BrownianMotion(param, dimension))
+    case _ => Failure(throw new Exception(s"Incorrect parameters supplied to Brownianmotion, expected BrownianParameter, received $p"))
   }}
 
   /**
@@ -197,9 +196,9 @@ object Sde {
     * @param dimension the dimension of the diffusion process
     * @return a function from SdeParameter => Sde
     */
-  def ouProcess(dimension: Int): UnparamSde = Reader { p => p match {
-    case param: OuParameter => OuProcess(param, dimension)
-    case _ => throw new Exception(s"Incorrect parameters supplied to OuProcess, expected OuParameter, received $p")
+  def ouProcess(dimension: Int): UnparamSde = ReaderT { p => p match {
+    case param: OuParameter => Success(OuProcess(param, dimension))
+    case _ => Failure(throw new Exception(s"Incorrect parameters supplied to OuProcess, expected OuParameter, received $p"))
   }}
 
   implicit def sdeSemigroup = new Semigroup[Sde] {
@@ -211,13 +210,13 @@ object Sde {
 
       def drift(state: State): Tree[DenseVector[Double]] = state match {
         case Branch(l, r) => Tree.branch(sde1.drift(l), sde2.drift(r))
-        case _ => 
+        case _ =>
           throw new Exception("Can't apply a composed SDE to a non-composed state")
       }
 
       def diffusion(state: State): Tree[DenseMatrix[Double]] = state match {
         case Branch(l, r) => Tree.branch(sde1.diffusion(l), sde2.diffusion(r))
-        case _ => 
+        case _ =>
           throw new Exception("Can't apply a composed SDE to a non-composed state")
       }
 
@@ -241,9 +240,9 @@ object Sde {
   }
 
   /**
-    * Eq Type class for DenseVectors, used in combination with the Eq class for a binary Tree
+    * Eq Type class for DenseVectors
     */
-  implicit def eqDenseVec = 
+  implicit def eqDenseVec =
     new Eq[DenseVector[Double]] {
       def tolerantEquiv(tol: Int)(a: Double, b: Double): Boolean = {
         Math.abs(a - b) < Math.pow(10, -tol)

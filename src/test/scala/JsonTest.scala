@@ -1,19 +1,16 @@
 package parametertest
 
-import breeze.linalg.DenseVector
 import com.github.jonnylaw.model._
 import DataProtocols._
 import Tree._
 import Parameters._
 import SdeParameter._
 import Sde._
-import cats.Eq
 import cats.implicits._
-import org.scalacheck.Prop.forAll
 import org.scalacheck._
 import Arbitrary.arbitrary
-import spire.algebra._
-import spire.implicits._
+//import spire.algebra._
+//import spire.implicits._
 import spray.json._
 
 class JsonSuite extends Properties("Json") with ParameterGen {
@@ -57,11 +54,11 @@ class JsonSuite extends Properties("Json") with ParameterGen {
   } yield MetropState(ll, p, StateSpace(t, sde), accepted)
 
   property("toJson should serialise MetropState to JSON") = Prop.forAll(genMetropState) { d =>
-    val parsed = d.toJson.compactPrint.parseJson.convertTo[MetropState[Parameters, State]]
+    val parsed = d.toJson.compactPrint.parseJson.convertTo[MetropState[Parameters, StateSpace[State]]]
 
     parsed.ll === d.ll &&
     parsed.accepted === d.accepted &&
     parsed.params === d.params &&
-    parsed.state === d.state.state
+    parsed.state.state === d.state.state
   }
 }

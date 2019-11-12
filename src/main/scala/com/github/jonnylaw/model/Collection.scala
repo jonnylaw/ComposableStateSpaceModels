@@ -5,10 +5,10 @@ import scala.language.higherKinds
 import scala.reflect.ClassTag
 import scala.collection.immutable.TreeMap
 import simulacrum._
-import Collection.ops._
+// import Collection.ops._
 
 /**
-  * A typeclass representing a Collection with a few additional 
+  * A typeclass representing a Collection with a few additional
   * features required for implementing the particle filter
   */
 @typeclass trait Collection[F[_]] {

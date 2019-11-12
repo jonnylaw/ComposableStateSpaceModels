@@ -1,10 +1,9 @@
 package com.github.jonnylaw.model
 
-import breeze.linalg.DenseVector
-import cats.{Monad, Applicative, Apply, Eq, Monoid}
+import cats.{Monad, Applicative, Eq, Monoid}
 import scala.language.higherKinds
-import spire.implicits._
-import spire.algebra.{Semigroup, AdditiveSemigroup}
+// import spire.implicits._
+import spire.algebra.AdditiveSemigroup
 
 /**
   * A binary tree implementation, to be used when combining models
@@ -161,9 +160,9 @@ object Tree {
     def plus(x: Tree[A], y: Tree[A]) = x plus y
   }
 
-  implicit def eqTree[A](implicit t: Eq[A]): Eq[Tree[A]] = new Eq[Tree[A]] {
+  implicit def eqTree[A: Eq]: Eq[Tree[A]] = new Eq[Tree[A]] {
     def eqv(x: Tree[A], y: Tree[A]): Boolean = {
-      x.flatten == x.flatten
+      x.flatten == y.flatten
     }
   }
 }

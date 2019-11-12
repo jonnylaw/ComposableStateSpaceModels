@@ -19,15 +19,13 @@ lazy val micrositeSettings = Seq(
     ))
 )
 
-lazy val basic = Project(
-  "basic-with-separate-config",
-  file("."),
-  settings = Defaults.coreDefaultSettings ++ micrositeSettings ++ Seq(
+lazy val core = (project in file("."))
+  .settings(Defaults.coreDefaultSettings ++ micrositeSettings ++ Seq(
     name := "ComposableModels",
     organization := "com.github.jonnylaw",
-    scalaVersion := "2.12.1",
-    version := "0.6.5",
-    scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-Xlint"),
+    scalaVersion := "2.13.0",
+    version := "0.7.0",
+    scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-Xlint", "-Ymacro-annotations"),
     publishMavenStyle := true,
     publishArtifact in Test := false,
     publishTo := {
@@ -37,27 +35,27 @@ lazy val basic = Project(
       else
         Some("Releases" at nexus + "service/local/staging/deploy/maven2")
     },
-    apiURL := Some(url("http://jonnylaw.github.io/ComposableStateSpaceModels/")),
+    apiURL := Some(url("https://jonnylaw.github.io/ComposableStateSpaceModels/")),
     libraryDependencies ++= Seq(
-      "org.scalanlp" %% "breeze" % "0.13",
+      "org.scalanlp" %% "breeze" % "1.0",
       "com.github.fommil.netlib" % "all" % "1.1.2",
-      "org.typelevel" %% "cats" % "0.9.0",
-      "org.typelevel" %% "cats-laws" % "0.9.0",
-      "com.typesafe.akka" %% "akka-stream" % "2.4.17",
-      "com.github.mpilquist" %% "simulacrum" % "0.10.0",
-      "io.spray" %%  "spray-json" % "1.3.3",
-      "com.github.nscala-time" %% "nscala-time" % "2.16.0",
-      "org.scalatest" %% "scalatest" % "3.0.1" % "test",
-      "org.scalacheck" %% "scalacheck" % "1.13.4" % "test"
+      "org.typelevel" %% "cats-core" % "2.0.0",
+      "com.typesafe.akka" %% "akka-stream" % "2.6.0",
+      "org.typelevel" %% "simulacrum" % "1.0.0",
+      "io.spray" %%  "spray-json" % "1.3.5",
+      "com.github.nscala-time" %% "nscala-time" % "2.22.0",
+      "org.scalatest" %% "scalatest" % "3.0.8" % Test,
+      "org.typelevel" %% "cats-laws" % "2.0.0" % Test,
+      "org.typelevel" %% "discipline-scalatest" % "1.0.0-RC1" % Test
     ),
     resolvers ++= Seq(
       "Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/",
-      "Sonatype Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots",
-      Resolver.sonatypeRepo("public")
+      "Sonatype Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
+      //Resolver.sonatypeRepo("public")
     ),
     testFrameworks += new TestFramework("org.scalameter.ScalaMeterFramework"),
     logBuffered := false,
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
+//    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
     pomExtra := (
       <url>https://github.com/jonnylaw/ComposableStateSpaceModels</url>
           <licenses>

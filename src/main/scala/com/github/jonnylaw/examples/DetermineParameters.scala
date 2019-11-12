@@ -1,19 +1,16 @@
 package com.github.jonnylaw.examples
 
 import akka.stream.scaladsl._
-import akka.stream._
+import scala.concurrent.Future
+import cats.data.Reader
+// import akka.stream._
 import akka.actor.ActorSystem
-import akka.util.ByteString
-import breeze.numerics.log
-import cats._
 import cats.implicits._
 import com.github.jonnylaw.model._
+import spray.json._
 import DataProtocols._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import spray.json._
-
-import java.nio.file.Paths
 
 /**
   * Perform a pilot run, by running the particle filter over the data multiple times
@@ -24,19 +21,19 @@ import java.nio.file.Paths
   */
 object PilotRun extends App with TestModel {
   implicit val system = ActorSystem("PilotRun")
-  implicit val materializer = ActorMaterializer()
 
   val particles = Vector(100, 200, 500, 1000, 2000)
   val resample: Resample[State] = Resampling.systematicResampling _
 
-  val res = for {
+  val res: Future[akka.stream.IOResult] = for {
     data <- DataFromFile(s"data/${modelName}_sims.csv").
       observations.
-      zip(Source(Stream.from(1))).
+      zip(Source(LazyList.from(1))).
       filter { case (_, i) => i % 10 == 0 }.
       map { case (data, _) => data }.
       runWith(Sink.seq)
-    vars = Streaming.pilotRun(data.toVector, model, params, resample, particles, 100)
+    parameterisedModel <- Future.fromTry(model(params))
+    vars = Streaming.pilotRun(data.toVector, parameterisedModel, resample, particles, 100)
     io <- vars.map { case (n, v) => s"$n, $v" }.
       runWith(Streaming.writeStreamToFile(s"data/${modelName}PilotRun.csv"))
   } yield io
@@ -57,14 +54,13 @@ object PilotRun extends App with TestModel {
   */
 object DeterminePosterior extends App with TestModel {
   implicit val system = ActorSystem("PMMH")
-  implicit val materializer = ActorMaterializer()
 
   val resample: Resample[State] = Resampling.systematicResampling _
   val prior = (p: Parameters) => 0.0
 
   DataFromFile(s"data/${modelName}_sims.csv").
     observations.
-    zip(Source(Stream.from(1))).
+    zip(Source(LazyList.from(1))).
     filter { case (_, i) => i % 10 == 0 }.
     map { case (data, _) => data }.
     take(400).
@@ -72,7 +68,8 @@ object DeterminePosterior extends App with TestModel {
     mapConcat(data => (1 to 2).map(chain => (chain, data))).
     mapAsync(2) { case (chain, d) =>
       val filter = ParticleFilter.filterLlState(d.toVector, resample, 100)
-      val pf = filter compose model
+      val pf: BootstrapFilter[Parameters, StateSpace[State]] = Reader {
+        (p: Parameters) => filter(model.run(p).get) }
       val pmmh = MetropolisHastings.pmmhState(params, Parameters.perturb(0.05), (a, b) => 0.0, prior)
 
       pmmh(pf).
@@ -81,7 +78,7 @@ object DeterminePosterior extends App with TestModel {
         map(_.toJson.compactPrint).
         runWith(Streaming.writeStreamToFile(s"data/${modelName}Posterior-$chain.json"))
     }.
-    runWith(Sink.onComplete { s => 
+    runWith(Sink.onComplete { s =>
       println(s)
       system.terminate()
     })
@@ -92,7 +89,6 @@ object DeterminePosterior extends App with TestModel {
   */
 object JsonToCSV extends App with TestModel {
   implicit val system = ActorSystem("PMMH")
-  implicit val materializer = ActorMaterializer()
 
   val files = List(s"data/${modelName}Posterior-1.json", s"data/${modelName}Posterior-2.json")
 

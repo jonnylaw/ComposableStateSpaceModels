@@ -5,16 +5,10 @@ import akka.stream._
 import akka.NotUsed
 import akka.util.ByteString
 import breeze.stats.distributions.Rand
-import breeze.linalg.DenseMatrix
-import cats._
 import cats.implicits._
-import cats.data.{Reader, Kleisli}
 import java.io._
 import java.nio.file._
 import scala.concurrent._
-import scala.concurrent.duration._
-import scala.collection.parallel.immutable.ParVector
-import scala.language.higherKinds
 import spray.json._
 
 object Streaming {
@@ -24,20 +18,17 @@ object Streaming {
     */
   def pilotRun(
     data: Vector[Data],
-    model: UnparamModel,
-    param: Parameters,
+    model: Model,
     resample: Resample[State],
     particles: Vector[Int],
     repetitions: Int)(implicit mat: Materializer, ec: ExecutionContext) = {
 
-    val proposal = (p: Parameters) => Rand.always(p)
-    val prior = (p: Parameters) => 0.0
-
-    def mll(particles: Int) = ParticleFilter.likelihood(data, resample, particles) compose model
+    def mll(ns: Int) = ParticleFilter.
+      likelihood(data, resample, ns).run(model)
 
     def iters(n: Int): Future[(Int, Double)] = {
       val lls = Source.repeat(1).
-        map(i => mll(n)(param)).
+        map(i => mll(n)).
         take(repetitions).
         runWith(Sink.seq)
 
@@ -67,11 +58,20 @@ object Streaming {
   }
 
   /**
+    * Calculate the mean of parameters in a fixed tumbling window
+    */
+  def calculateMeanParameters(window: Int): Flow[Parameters, Parameters, NotUsed] = {
+    Flow[Parameters].
+      grouped(window).
+      map(ps => Parameters.mean(ps))
+  }
+
+  /**
     * Given output from the PMMH algorithm, monitor the acceptance rate online
     */
   def monitorStream: Flow[ParamsState[Parameters], ParamsState[Parameters], NotUsed] = {
     Flow[ParamsState[Parameters]].
-      zip(Source(Stream.from(1))).
+      zip(Source(LazyList.from(1))).
       map { case (s, i) => {
         if (i % 100 == 0 ) {
           println(s"Iteration: $i, accepted: ${s.accepted.toDouble / i}")
@@ -83,7 +83,7 @@ object Streaming {
 
   def monitorStateStream: Flow[MetropState[Parameters, StateSpace[State]], MetropState[Parameters, StateSpace[State]], NotUsed] = {
     Flow[MetropState[Parameters, StateSpace[State]]].
-      zip(Source(Stream.from(1))).
+      zip(Source(LazyList.from(1))).
       map { case (s, i) => {
         if (i % 100 == 0 ) {
           println(s"Iteration: $i, accepted: ${s.accepted.toDouble / i}")
@@ -99,7 +99,7 @@ object Streaming {
     */
   def thinStream[A](n: Int): Flow[A, A, NotUsed] = {
     Flow[A].
-      zip(Source(Stream.from(1))).
+      zip(Source(LazyList.from(1))).
       filter { case (_, i) => i % n == 0 }.
       map(_._1)
   }
@@ -146,26 +146,24 @@ object Streaming {
     * @param fileOut the output filename
     */
   def jsonToCSV(fileIn: String, fileOut: String)
-    (implicit mat: Materializer, fmt: JsonFormat[MetropState[Parameters, State]], sh: Show[ParamsState[Parameters]]): Future[IOResult] = {
+    (implicit mat: Materializer, fmt: JsonFormat[MetropState[Parameters, State]]): Future[IOResult] = {
+    import CsvFormatShow._
     val postSource = readPosterior(fileIn, 0, 1)
 
     // get the parameter names from file
     val colNames = postSource.map(s => Parameters.paramNames(s.params)).runWith(Sink.head)
 
     // write the parameter names followed by the values to a file
-    Source.fromFuture(colNames).
+    Source.future(colNames).
       map(_.mkString(", ")).
-      concat(
-        postSource.
-          map(_.show)
-      ).
+      concat(postSource.map(_.show)).
       runWith(Streaming.writeStreamToFile(fileOut))
   }
 
 
   /**
     * Create a distribution from a sequence, possibly utilising a transformation f
-    * @param s a sequence of draws from a distribution, possibly from an MCMC runexamples
+    * @param s a sequence of draws from a distribution, possibly from an MCMC 
     * @param f a function to transform the draws from the distribution
     * @return a monadic distribution, Rand, which can be sampled from
     */
@@ -179,9 +177,12 @@ object Streaming {
     map(_.toJson.compactPrint).
     toMat(Streaming.writeStreamToFile(fileOut))(Keep.right)
 
-  def dataCsvSink(fileOut: String): Sink[Data, Future[IOResult]] = Flow[Data].
-    map(_.show).
-    toMat(Streaming.writeStreamToFile(fileOut))(Keep.right)
+  def dataCsvSink(fileOut: String): Sink[Data, Future[IOResult]] = {
+    import CsvFormatShow._
+    Flow[Data].
+      map(_.show).
+      toMat(Streaming.writeStreamToFile(fileOut))(Keep.right)
+  }
 
   /**
     * An Akka Sink to write a stream of strings to a file

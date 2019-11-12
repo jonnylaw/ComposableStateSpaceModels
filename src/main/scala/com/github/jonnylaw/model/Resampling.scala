@@ -7,10 +7,10 @@ import breeze.linalg.DenseVector
 import cats.implicits._
 
 import scala.collection.immutable.TreeMap
-import scala.concurrent._
-import scala.language.higherKinds
+// import scala.concurrent._
+// import scala.language.higherKinds
 import scala.collection._
-import Collection.ops._
+import scala.reflect.ClassTag
 
 object Resampling {
   /**
@@ -29,8 +29,8 @@ object Resampling {
   def indentity[A](samples: Vector[A], weights: Vector[Double]) = samples
 
   /**
-    * Given a list of ordered doubles, k, find the element at the corresponding 
-    * position in the empirical cumulative distribution function represented by a 
+    * Given a list of ordered doubles, k, find the element at the corresponding
+    * position in the empirical cumulative distribution function represented by a
     * treeMap
     */
   def findAllInTreeMap[A](ks: Vector[Double], ecdf: TreeMap[Double, A]): Vector[A] = {
@@ -146,7 +146,7 @@ object Resampling {
   }
 
   /**
-    * Sample one thing, uniformly, from a collection F
+    * Sample one thing, uniformly, from a sequence
     */
   def sampleOne[A](s: Seq[A]): A = {
     val index = math.abs(scala.util.Random.nextInt) % s.size
@@ -156,8 +156,8 @@ object Resampling {
   /**
     * Sample unifomly without replacement
     */
-  def sampleMany[A](n: Int, s: Vector[A]) = {
-    val indices = breeze.linalg.shuffle(s.indices).take(n)
+  def sampleMany[A: ClassTag](n: Int, s: Vector[A]) = {
+    val indices = breeze.linalg.shuffle(s.indices.toArray).take(n)
     indices map (i => s(i))
   }
 }

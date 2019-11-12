@@ -1,16 +1,14 @@
 package com.github.jonnylaw.examples
 
 import akka.stream.scaladsl._
-import akka.stream._
 import akka.actor.ActorSystem
-import akka.util.ByteString
-import breeze.numerics.log
 import cats.implicits._
 import com.github.jonnylaw.model._
+import scala.concurrent.Future
+import CsvFormatShow._
 
 object Interpolate extends App with TestModel {
   implicit val system = ActorSystem("Interpolation")
-  implicit val materializer = ActorMaterializer()
   implicit val executionContext = system.dispatcher
 
   val testData = DataFromFile(s"data/$modelName.csv").
@@ -23,7 +21,10 @@ object Interpolate extends App with TestModel {
 
     // set up the particle filter
     resample: Resample[List[State]] = Resampling.systematicResampling _
-    filter = ParticleFilter.interpolate(resample, t0, 1000) compose model
+    filter = ParticleFilter.interpolate(resample, t0, 1000)
+
+    // apply the parameters to the model
+    mod <- Future.fromTry(model(params))
 
     // remove some observations systematically, setting the observation to None
     interpolated <- testData.
@@ -32,12 +33,12 @@ object Interpolate extends App with TestModel {
         case _ => throw new Exception("Incorrect Data Format")
       }.
       map((d: Data) => d).
-      via(filter(params)).
+      via(filter(mod)).
       runWith(Sink.seq)
 
     summary = (interpolated, interpolated.last.particles.transpose).zipped.
       map { case (x, p) =>  PfState(x.t, x.observation, p, x.ll, x.ess) }.
-      map(ParticleFilter.getIntervals(model, params))
+      map(s => ParticleFilter.getIntervals(mod, s))
 
     io <- Source(summary).
       map((s: PfOut[State]) => s.show).

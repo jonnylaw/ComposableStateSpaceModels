@@ -1,11 +1,5 @@
 import com.github.jonnylaw.model._
-import org.scalacheck.Prop.forAll
 import org.scalacheck._
-import org.scalactic.TolerantNumerics
-import scala.collection.parallel.immutable.ParVector
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
-import scala.concurrent._
 
 /**
   * Property based tests for resampling methods

@@ -4,11 +4,10 @@ import akka.stream.scaladsl._
 import akka.stream._
 import akka.NotUsed
 import akka.util.ByteString
-import breeze.stats.distributions.{Rand, Exponential, Process, MarkovChain, Uniform}
-import breeze.numerics.{exp, sqrt}
+import breeze.stats.distributions.{Rand, Exponential, Uniform, Process}
+import breeze.numerics.exp
 import java.nio.file._
 import scala.concurrent.Future
-import scala.language.higherKinds
 import spray.json._
 import DataProtocols._
 import org.joda.time.DateTime
@@ -70,7 +69,7 @@ case class SimulateData(model: Model) extends DataService[NotUsed] {
       y <- model.observation(gamma)
     } yield ObservationWithState(t0, Some(y), eta, gamma, x0)
 
-    Flow[Time].scan(init.draw)((d0, t: Time) => simStep(t - d0.t)(d0).draw)
+    Flow[Time].scan(init.draw)((d0: ObservationWithState, t: Time) => simStep(t - d0.t)(d0).draw)
   }
 
   /**
@@ -165,12 +164,12 @@ object SimulateData {
     t0: Time,
     totalIncrement: TimeIncrement,
     precision: Int,
-    stepFunction: TimeIncrement => State => Rand[State]): scala.collection.immutable.Stream[StateSpace[State]] = {
+    stepFunction: TimeIncrement => State => Rand[State]): scala.collection.immutable.LazyList[StateSpace[State]] = {
 
     val deltat: TimeIncrement = Math.pow(10, -precision)
 
     // define a recursive stream from t0 to t = t0 + totalIncrement stepping by 10e-precision
-    scala.collection.immutable.Stream.
+    scala.collection.immutable.LazyList.
       iterate(StateSpace(t0, x0))(x =>
         StateSpace(x.time + deltat, stepFunction(deltat)(x.state).draw)).
       takeWhile(s => s.time <= t0 + totalIncrement)

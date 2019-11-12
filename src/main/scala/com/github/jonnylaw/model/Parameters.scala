@@ -1,12 +1,12 @@
 package com.github.jonnylaw.model
 
-import breeze.linalg.{DenseMatrix, DenseVector, diag, support}
+import breeze.linalg.{DenseMatrix, DenseVector, diag}
 import breeze.linalg.eigSym._
 import breeze.stats.covmat
 import breeze.stats.distributions._
-import breeze.numerics.{exp, sqrt}
+import breeze.numerics.sqrt
 import cats.{Applicative, Eq, Traverse}
-import cats.implicits._
+import cats.instances.option._
 import spire.algebra.AdditiveSemigroup
 import spire.implicits._
 import scala.language.higherKinds
@@ -20,7 +20,6 @@ object Parameters {
   def apply(scale: Option[Double], sdeParam: SdeParameter): Parameters = {
     Tree.leaf(ParamNode(scale, sdeParam))
   }
-
 
   implicit def addSemiParamNode(implicit S: AdditiveSemigroup[SdeParameter]) = new AdditiveSemigroup[ParamNode] {
     def plus(x: ParamNode, y: ParamNode) = {
@@ -41,20 +40,21 @@ object Parameters {
   }
 
   def traverseRand(fa: ParamNode)(f: Double => Rand[Double]): Rand[ParamNode] = {
-    Applicative[Rand].map2(fa.scale traverse f, fa.sdeParam.traverse(f))(ParamNode(_, _))
+    Applicative[Rand].map2(Traverse[Option].traverse(fa.scale)(f), fa.sdeParam.traverse(f))(ParamNode(_, _))
   }
 
   def traverse[F[_]: Applicative](fa: ParamNode)(f: Double => F[Double]): F[ParamNode] = {
-    Applicative[F].map2(fa.scale traverse f, fa.sdeParam.traverse(f))(ParamNode(_, _))
+    Applicative[F].map2(Traverse[Option].traverse(fa.scale)(f), fa.sdeParam.traverse(f))(ParamNode(_, _))
   }
 
   /**
     * Calculate the mean of the parameter values
     */
-  def mean(params: Seq[Parameters])(implicit S: AdditiveSemigroup[ParamNode]): Parameters = {
-    val sum = params.reduce(_ + _)
+  def mean(params: Seq[Parameters]): Parameters = {
+    val sum: Tree[ParamNode] = params.
+      reduce(_ + _)
 
-    sum.map(x => map(x)(_/params.length))
+    Tree.leaf(map(sum.getNode(0))(x => x / params.length))
   }
 
   def proposeIdent: Parameters => Rand[Parameters] = p => Rand.always(p)
@@ -122,12 +122,12 @@ object Parameters {
     Rand.always(S.add(p, innov))
   }
 
-  /**
-    * Check if two parameter trees are isomorphic in shape when traversed from the left
-    */
-  def isIsomorphic(p: Parameters, p1: Parameters): Boolean = {
-    p.flatten == p1.flatten
-  }
+  // /**
+  //   * Check if two parameter trees are isomorphic in shape when traversed from the left
+  //   */
+  // def isIsomorphic(p: Parameters, p1: Parameters): Boolean = {
+  //   p.flatten == p1.flatten
+  // }
 
   /**
     * Calculate the covariance of a sequence of parameters

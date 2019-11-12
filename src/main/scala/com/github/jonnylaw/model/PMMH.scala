@@ -1,17 +1,11 @@
 package com.github.jonnylaw.model
 
 import akka.NotUsed
-import breeze.stats.distributions.{Uniform, Rand, MultivariateGaussian, Process, MarkovChain, ContinuousDistr}
-import breeze.stats.distributions.Rand._
-import breeze.stats.distributions.MarkovChain._
-import breeze.linalg.{DenseMatrix, DenseVector}
+import breeze.stats.distributions.{Uniform, Rand, Process}
+import breeze.linalg.DenseVector
 import breeze.numerics._
 import akka.stream.scaladsl._
-import cats._
 import cats.data.Reader
-import scala.language.higherKinds
-import cats.implicits._
-import scala.concurrent._
 
 /**
   * The state of the metropolis-hastings algorithms

@@ -4,7 +4,7 @@ import breeze.linalg.{DenseVector, diag}
 import breeze.stats.distributions._
 import breeze.numerics.{exp, sqrt}
 import math.log
-import cats.{Functor, Applicative, Eq, Traverse, Eval}
+import cats.{Applicative, Eq}
 import cats.implicits._
 import scala.language.implicitConversions
 import SdeParameter._
@@ -16,7 +16,7 @@ sealed trait SdeParameter { self =>
 
   def length: Int = this.flatten.length
 
-  def sum(that: SdeParameter): SdeParameter
+  def plus(that: SdeParameter): SdeParameter
 
   def perturb(delta: Double)(implicit rand: RandBasis = Rand): Rand[SdeParameter] = {
       val n = self.flatten.length
@@ -35,13 +35,13 @@ sealed trait SdeParameter { self =>
 
   def traverse[F[_]: Applicative](f: Double => F[Double]): F[SdeParameter] = self match {
     case GenBrownianParameter(m, c, mu, s) =>
-      Applicative[F].map4(traverseDenseVector(m)(f), traverseDenseVector(c)(f), 
+      Applicative[F].map4(traverseDenseVector(m)(f), traverseDenseVector(c)(f),
         traverseDenseVector(mu)(f), traverseDenseVector(s)(f))(GenBrownianParameter(_, _ , _, _))
     case BrownianParameter(m, c, s) =>
-      Applicative[F].map3(traverseDenseVector(m)(f), traverseDenseVector(c)(f), 
+      Applicative[F].map3(traverseDenseVector(m)(f), traverseDenseVector(c)(f),
         traverseDenseVector(s)(f))(BrownianParameter(_, _ , _))
     case OuParameter(m, c, a, s, t) =>
-      Applicative[F].map5(traverseDenseVector(m)(f), traverseDenseVector(c)(f), 
+      Applicative[F].map5(traverseDenseVector(m)(f), traverseDenseVector(c)(f),
         traverseDenseVector(a)(f), traverseDenseVector(s)(f), traverseDenseVector(t)(f))(OuParameter(_, _ , _, _, _))
 
   }
@@ -53,10 +53,10 @@ case class GenBrownianParameter(
   mu: DenseVector[Double],
   sigma: DenseVector[Double]) extends SdeParameter {
 
-  def sum(that: SdeParameter): SdeParameter = that match {
+  def plus(that: SdeParameter): SdeParameter = that match {
     case GenBrownianParameter(m01, c01, m1, s) =>
       SdeParameter.genBrownianParameterUnconstrained(m0 + m01: _*)(c0 + c01: _*)(mu + m1: _*)(sigma + s: _*)
-    case _ => throw new Exception(s"Can't sum Brownianparameter with $that")
+    case _ => throw new Exception(s"Can't add GenBrownianParameter to $that")
   }
 
   def add(delta: DenseVector[Double]): SdeParameter = {
@@ -95,10 +95,10 @@ case class BrownianParameter(
   c0: DenseVector[Double],
   sigma: DenseVector[Double]) extends SdeParameter {
 
-  def sum(that: SdeParameter): SdeParameter = that match {
+  def plus(that: SdeParameter): SdeParameter = that match {
     case BrownianParameter(m01, c01, c1) =>
       SdeParameter.brownianParameterUnconstrained(m0 + m01: _*)(c0 + c01: _*)(sigma + c1: _*)
-    case _ => throw new Exception(s"Can't sum Brownianparameter with $that")
+    case _ => throw new Exception(s"Can't add BrownianParameter to $that")
   }
 
   def add(delta: DenseVector[Double]): SdeParameter = {
@@ -132,10 +132,10 @@ case class OuParameter(
   mu: DenseVector[Double],
   sigma: DenseVector[Double]) extends SdeParameter {
 
-  def sum(that: SdeParameter): SdeParameter = that match {
+  def plus(that: SdeParameter): SdeParameter = that match {
     case OuParameter(m, c, p, me, s) if me.size == mu.size && phi.size == p.size =>
       SdeParameter.ouParameterUnconstrained(m0 + m: _*)(c0 + c: _*)(phi + p: _*)(mu + me: _*)(sigma + s: _*)
-    case _ => throw new Exception(s"Can't sum OrnsteinParameter with $that")
+    case _ => throw new Exception(s"Can't add OrnsteinParameter to $that")
   }
 
   def add(delta: DenseVector[Double]): SdeParameter = {
@@ -228,16 +228,16 @@ object SdeParameter {
   }
 
   implicit def addSdeParam = new AdditiveSemigroup[SdeParameter] {
-    def plus(x: SdeParameter, y: SdeParameter) = x sum y
-  }
+    def plus(x: SdeParameter, y: SdeParameter) = x plus y
+      }
 
   implicit def eqSdeParam(implicit ev: Eq[DenseVector[Double]]) = new Eq[SdeParameter] {
     def eqv(x: SdeParameter, y: SdeParameter): Boolean = (x, y) match {
-      case (BrownianParameter(m, c, s), BrownianParameter(m1, c1, s1)) => 
+      case (BrownianParameter(m, c, s), BrownianParameter(m1, c1, s1)) =>
         m === m1 && c === c1 && s === s1
-      case (GenBrownianParameter(m, c, s, mu), GenBrownianParameter(m1, c1, s1, mu1)) => 
+      case (GenBrownianParameter(m, c, s, mu), GenBrownianParameter(m1, c1, s1, mu1)) =>
         m === m1 && c === c1 && s === s1 && mu === mu1
-      case (OuParameter(m, c, a, s, t), OuParameter(m1, c1, a1, s1, t1)) => 
+      case (OuParameter(m, c, a, s, t), OuParameter(m1, c1, a1, s1, t1)) =>
         m === m1 && c === c1 && s === s1 && t === t1 && a === a1
       case _ => false
     }

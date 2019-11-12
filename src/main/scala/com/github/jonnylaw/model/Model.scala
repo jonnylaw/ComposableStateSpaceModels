@@ -1,16 +1,14 @@
 package com.github.jonnylaw.model
 
-import breeze.numerics.{cos, sin, sqrt, exp, log, lgamma}
-import breeze.stats.distributions._
-import breeze.linalg.{DenseMatrix, DenseVector}
-
+import breeze.numerics.{cos, sin, exp, log, lgamma}
+import breeze.stats.distributions.{Gaussian, Poisson, StudentsT, Beta, Uniform, Rand}
+import breeze.linalg.DenseVector
 import cats._
-import cats.Semigroup
 import cats.implicits._
-import cats.data.Reader
-
-import StateSpace._
-import Parameters._
+import cats.data.ReaderT
+import scala.util.{Try, Failure}
+//import StateSpace._
+//import Parameters._
 
 trait Model {
   /**
@@ -19,7 +17,7 @@ trait Model {
     */
   def observation: Gamma => Rand[Observation]
   /**
-    * The linking-function, transforms the state space into the parameter space of the 
+    * The linking-function, transforms the state space into the parameter space of the
     * observation distribution using a possibly non-linear transformation
     */
   def link(x: Gamma): Eta = x
@@ -27,7 +25,7 @@ trait Model {
   /**
     * The Linear, deterministic transformation function. f is used to add seasonal factors or
     * other time depending linear transformations
-    */ 
+    */
   def f(s: State, t: Time): Gamma
   /**
     * An exact or approximate solution to a diffusion process, used to advance the latent state.
@@ -43,52 +41,53 @@ trait Model {
 }
 
 object Model {
-  def poisson(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case Leaf(param) => PoissonModel(sde(param.sdeParam), param)
-    case _ => throw new Exception("Can't build model from branch parameter")
+  def poisson(sde: UnparamSde): ReaderT[Try, Parameters, Model] = ReaderT { p => p match {
+    case Leaf(param) => sde.run(param.sdeParam).map(s => PoissonModel(s, param))
+    case _ => Failure(throw new Exception("Can't build model from branch parameter"))
   }}
 
-  def beta(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case Leaf(param) => BetaModel(sde(param.sdeParam), param)
-    case _ => throw new Exception("Can't build model from branch parameter")
-  }}
+  def beta(sde: UnparamSde): ReaderT[Try, Parameters, Model] =
+    ReaderT { p => p match {
+               case Leaf(param) => sde.run(param.sdeParam).map(s => BetaModel(s, param))
+               case _ => Failure(throw new Exception("Can't build model from branch parameter"))
+             }
+    }
 
   def seasonal(
     period: Int,
     harmonics: Int,
-    sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-      case Leaf(param) => SeasonalModel(period, harmonics, sde(param.sdeParam), param)
-      case _ => throw new Exception("Can't build model from branch parameter")
+    sde: UnparamSde): ReaderT[Try, Parameters, Model] = ReaderT { p => p match {
+      case Leaf(param) => sde.run(param.sdeParam).map(s => SeasonalModel(period, harmonics, s, param))
+      case _ => Failure(throw new Exception("Can't build model from branch parameter"))
   }}
 
-  def linear(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case Leaf(param) => LinearModel(sde(param.sdeParam), param)
-    case _ => throw new Exception("Can't build model from branch parameter")
+  def linear(sde: UnparamSde): ReaderT[Try, Parameters, Model] = ReaderT { p => p match {
+    case Leaf(param) => sde.run(param.sdeParam).map(s => LinearModel(s, param))
+    case _ => Failure(throw new Exception("Can't build model from branch parameter"))
   }}
 
-  def studentsT(sde: UnparamSde, df: Int): Reader[Parameters, Model] = Reader { p => p match {
-    case Leaf(param) => StudentsTModel(sde(param.sdeParam), df, param)
-    case _ => throw new Exception("Can't build model from branch parameter")
+  def studentsT(sde: UnparamSde, df: Int): ReaderT[Try, Parameters, Model] = ReaderT { p => p match {
+    case Leaf(param) => sde.run(param.sdeParam).map(s => StudentsTModel(s, df, param))
+    case _ => Failure(throw new Exception("Can't build model from branch parameter"))
   }}
 
-  def bernoulli(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case Leaf(param) => BernoulliModel(sde(param.sdeParam), param)
-    case _ => throw new Exception("Can't build model from branch parameter")
+  def bernoulli(sde: UnparamSde): ReaderT[Try, Parameters, Model] = ReaderT { p => p match {
+    case Leaf(param) => sde.run(param.sdeParam).map(s => BernoulliModel(s, param))
+    case _ => Failure(throw new Exception("Can't build model from branch parameter"))
   }}
 
-  def lgcp(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case Leaf(param) => LogGaussianCox(sde(param.sdeParam), param)
-    case _ => throw new Exception("Can't build model from branch parameter")
+  def lgcp(sde: UnparamSde): ReaderT[Try, Parameters, Model] = ReaderT { p => p match {
+    case Leaf(param) => sde.run(param.sdeParam).map(s => LogGaussianCox(s, param))
+    case _ => Failure(throw new Exception("Can't build model from branch parameter"))
   }}
 
-  def negativeBinomial(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case Leaf(param) => NegativeBinomialModel(sde(param.sdeParam), param)
-    case _ => throw new Exception("Can't build model from branch parameter")
+  def negativeBinomial(sde: UnparamSde): ReaderT[Try, Parameters, Model] = ReaderT { p => p match {
+    case Leaf(param) => sde.run(param.sdeParam).map(s => NegativeBinomialModel(s, param))                                                                          case _ => Failure(throw new Exception("Can't build model from branch parameter"))
   }}
 
-  def zeroInflatedPoisson(sde: UnparamSde): Reader[Parameters, Model] = Reader { p => p match {
-    case Leaf(param) => ZeroInflatedPoisson(sde(param.sdeParam), param)
-    case _ => throw new Exception("Can't build model from branch parameter")
+  def zeroInflatedPoisson(sde: UnparamSde): ReaderT[Try, Parameters, Model] = ReaderT { p => p match {
+    case Leaf(param) => sde.run(param.sdeParam).map(s => ZeroInflatedPoisson(s, param))
+    case _ => Failure(throw new Exception("Can't build model from branch parameter"))
   }}
 
   /**
@@ -101,34 +100,39 @@ object Model {
 
   /**
     * Combine two unparameterised models, usually applied with infix notation |+|
-    * by importing cats.implicits._, this is not commutative, the observation distribution must 
+    * by importing cats.implicits._, this is not commutative, the observation distribution must
     * be on the left-hand side of the composition
     * @param mod1 the left-hand model in the composition, if this is a composition of two
     * then the model with the desired observation distribution must be mod1
     * @param mod2 the right-hand model in the composition
     * @return a composed model of mod1 and mod2, which can be composed again
     */
-  def compose(mod1: UnparamModel, mod2: UnparamModel): UnparamModel = Reader { p => p match {
-    case Branch(lp, rp) => {
+  def compose(mod1: UnparamModel, mod2: UnparamModel): UnparamModel =
+    ReaderT { p => p match {
+               case Branch(lp, rp) => {
+                 for {
+                   model1 <- mod1.run(lp)
+                   model2 <- mod2.run(rp)
+                 } yield
       new Model {
-        def observation = x => mod1(lp).observation(x)
+        def observation = x => model1.observation(x)
 
-        override def link(x: Double) = mod1(lp).link(x)
+        override def link(x: Double) = model1.link(x)
 
         def f(s: State, t: Time) = s match {
           case Branch(ls, rs) =>
-            mod1(lp).f(ls, t) + mod2(rp).f(rs, t)
+            model1.f(ls, t) + model2.f(rs, t)
           case x: Leaf[DenseVector[Double]] =>
-            mod1(lp).f(x, t)
+            model1.f(x, t)
           case Empty => 0.0
         }
 
-        def sde: Sde = mod1(lp).sde |+| mod2(rp).sde
+        def sde: Sde = model1.sde |+| model2.sde
 
-        def dataLikelihood = (s, y) => mod1(lp).dataLikelihood(s, y)
+        def dataLikelihood = (s, y) => model1.dataLikelihood(s, y)
       }
     }
-    case _ => throw new Exception("Can't Build composed model from Leaf Parameter")
+    case _ => Failure(throw new Exception("Can't Build composed model from Leaf Parameter"))
   }}
 }
 
@@ -158,8 +162,8 @@ private final case class StudentsTModel(sde: Sde, df: Int, p: ParamNode) extends
 }
 
 /**
-  * Negative Binomial Model for Overdispersed Data, the mean (mu > 0) is the exponential of the 
-  * latent state. The variance is equal to mu + mu^2 / size and proportional to the mean 
+  * Negative Binomial Model for Overdispersed Data, the mean (mu > 0) is the exponential of the
+  * latent state. The variance is equal to mu + mu^2 / size and proportional to the mean
   */
 private final case class NegativeBinomialModel(sde: Sde, p: ParamNode) extends Model {
   def observation = x => p.scale match {
@@ -168,7 +172,7 @@ private final case class NegativeBinomialModel(sde: Sde, p: ParamNode) extends M
       val prob = link(x) / (size + link(x))
 
       for {
-        lambda <- Gamma(size, prob / (1-prob))
+        lambda <- breeze.stats.distributions.Gamma(size, prob / (1-prob))
         x <- Poisson(lambda)
       } yield x.toDouble
     }
@@ -198,8 +202,8 @@ private final case class NegativeBinomialModel(sde: Sde, p: ParamNode) extends M
   * @param sde a solution to a diffusion process representing the latent state
   */
 private final case class SeasonalModel(
-  period: Int, 
-  harmonics: Int, 
+  period: Int,
+  harmonics: Int,
   sde: Sde, p: ParamNode) extends Model {
 
   def observation = x => p.scale match {

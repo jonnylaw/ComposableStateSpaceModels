@@ -1,8 +1,5 @@
 import breeze.linalg._
-import breeze.stats._
-import breeze.stats.distributions._
 import com.github.jonnylaw.model._
-import org.scalacheck.Prop.forAll
 import org.scalacheck._
 import Arbitrary.arbitrary
 
@@ -20,8 +17,8 @@ object MvnTest extends Properties("MultivariateNormal") {
   } yield (mean, cov)
 
   val covariance = Gen.const(DenseMatrix((0.666, -0.333), (-0.333, 0.666)))
-  
-  // mean zero and covariance the given matrix, for some reason the off diagonals are much smaller than expected
+
+  // mean zero and covariance the given matrix
   property("draw should sample realisations from the MVN distribution") = Prop.forAll(covariance) { cov =>
     val n = 10000
     val samples = MultivariateNormal(DenseVector.zeros[Double](2), cov).sample(n)
