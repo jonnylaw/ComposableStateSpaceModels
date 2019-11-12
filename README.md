@@ -10,7 +10,7 @@ For library documentation, see the [guide](https://jonnylaw.github.io/Composable
 
 ### Using a build.sbt File
 
-This library is built for Scala 2.12.1, add the following dependency to your `build.sbt` file in the project root.
+This release version of this library is built for Scala 2.12.1, add the following dependency to your `build.sbt` file in the project root.
 
 ```scala
 libraryDependencies += "com.github.jonnylaw" %% "composablemodels" % "0.6.5"
