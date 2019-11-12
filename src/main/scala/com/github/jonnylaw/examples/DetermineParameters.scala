@@ -56,7 +56,7 @@ object DeterminePosterior extends App with TestModel {
   implicit val system = ActorSystem("PMMH")
 
   val resample: Resample[State] = Resampling.systematicResampling _
-  val prior = (p: Parameters) => 0.0
+  val prior = (p: Parameters) => 0.0 // choose a more informative prior than this!
 
   DataFromFile(s"data/${modelName}_sims.csv").
     observations.
