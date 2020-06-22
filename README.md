@@ -4,7 +4,9 @@
 
 This is a Scala library for inference and filtering of state space models with a continuous time latent state. The library relies on Akka Streams.
 
-For library documentation, see the [guide](https://jonnylaw.github.io/ComposableStateSpaceModels).
+For library documentation, see the [guide](https://jonnylaw.github.io/ComposableStateSpaceModels) or the paper,
+
+Law, J., Wilkinson, D.J. Composable models for online Bayesian analysis of streaming data. Stat Comput 28, 1119–1137 (2018). https://doi.org/10.1007/s11222-017-9783-1
 
 ## Quick Start
 
